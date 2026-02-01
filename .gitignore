@@ -70,6 +70,7 @@ yarn-error.log*
 /_ide_helper.php
 /_ide_helper_models.php
 /_ide_helper_facades.php
+/.phpstorm.meta.php
 /.vscode/
 public/sitemap-static.xml
 public/sitemap.xml

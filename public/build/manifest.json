@@ -1,12 +1,20 @@
 {
   "resources/css/app.css": {
-    "file": "assets/app-Dy1NlMwu.css",
+    "file": "assets/app-BekDcS9s.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
     "names": [
       "app.css"
     ]
+  },
+  "resources/fonts/roboto-flex/roboto-flex-cyrillic.woff2": {
+    "file": "assets/roboto-flex-cyrillic-gco5T1GF.woff2",
+    "src": "resources/fonts/roboto-flex/roboto-flex-cyrillic.woff2"
+  },
+  "resources/fonts/roboto-flex/roboto-flex-latin.woff2": {
+    "file": "assets/roboto-flex-latin-7RIjvx03.woff2",
+    "src": "resources/fonts/roboto-flex/roboto-flex-latin.woff2"
   },
   "resources/js/app.js": {
     "file": "assets/app-l0sNRNKZ.js",

@@ -1,7 +1,11 @@
 <?php
 
-test('returns a successful response', function () {
+test('home page renders base sections', function () {
     $response = $this->get(route('home'));
 
-    $response->assertOk();
+    $response
+        ->assertOk()
+        ->assertSee('Stankoman')
+        ->assertSee('Направления')
+        ->assertSee('Нужна консультация?');
 });
