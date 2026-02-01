@@ -1,0 +1,79 @@
+# -------------------------------------------------------------------
+# БАЗОВОЕ: каталоги зависимостей (только из корня репо)
+# -------------------------------------------------------------------
+/vendor/
+/node_modules/
+
+# Логи менеджеров пакетов
+npm-debug.log*
+yarn-error.log*
+
+# -------------------------------------------------------------------
+# LARAVEL 4
+# -------------------------------------------------------------------
+/bootstrap/compiled.php
+/app/storage/
+
+# -------------------------------------------------------------------
+# LARAVEL 5 / LUMEN
+# -------------------------------------------------------------------
+# Симлинк хранилища и HMR-файл Vite в публичке
+/public/storage
+/public/hot
+
+# -------------------------------------------------------------------
+# ВАРИАНТ с нестандартным публичным путём (public_html)
+# -------------------------------------------------------------------
+/public_html/storage/
+/public_html/hot
+
+
+/public/files
+/public/pics
+
+# Если понадобится держать пустую /public/build — положи туда .gitkeep
+
+# -------------------------------------------------------------------
+# СЕКРЕТЫ/СЕРВИСНЫЕ ФАЙЛЫ
+# -------------------------------------------------------------------
+/storage/*.key
+/storage/framework/
+/storage/logs/
+/storage/app/public/
+/bootstrap/cache/
+
+# .env и его варианты. Не игнорим .env.example намеренно.
+/.env
+/.env.*
+!/.env.example
+
+/Homestead.yaml
+/Homestead.json
+/.vagrant
+/.phpunit.result.cache
+
+# -------------------------------------------------------------------
+# ПРОЧЕЕ И СЛУЖЕБНОЕ
+# -------------------------------------------------------------------
+/storage/pail
+/.phpactor.json
+/auth.json
+/changes.diff
+/vite.config.js
+
+# Локальные папки окружения/инструментов
+/.osp/
+/mailpit/
+/meili/
+
+# IDE helper files
+/_ide_helper.php
+/_ide_helper_models.php
+/_ide_helper_facades.php
+/.vscode/
+public/sitemap-static.xml
+public/sitemap.xml
+public/sitemap-categories.xml
+public/sitemap-products-*.xml
+public/robots.txt
+/changes.diff
