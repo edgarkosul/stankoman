@@ -9,5 +9,16 @@ it('uses currentColor for the katalog icon fill', function () {
 it('sets the katalog icon class to text-white in the header', function () {
     $header = file_get_contents(resource_path('views/components/layouts/partials/header.blade.php'));
 
-    expect($header)->toContain('<x-icon name="katalog" class="w-5 h-5 text-white" />');
+    expect($header)->toContain('name="katalog" class="w-5 h-5 text-white"');
+});
+
+it('collapses header navigation items below xl with a dropdown', function () {
+    $header = file_get_contents(resource_path('views/components/layouts/partials/header.blade.php'));
+
+    expect($header)
+        ->toContain('hidden xl:list-item')
+        ->toContain('xl:hidden')
+        ->toContain('x-data="{ open: false }"')
+        ->toContain('x-show="open"')
+        ->toContain('Ещё');
 });

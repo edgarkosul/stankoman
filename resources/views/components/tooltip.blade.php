@@ -11,12 +11,12 @@
     $tooltipId = $tooltipId ?? 'tooltip-' . \Illuminate\Support\Str::uuid();
     $alignmentClasses = match ($align) {
         'center' => 'left-1/2 -translate-x-1/2',
-        'right' => 'right-0',
+        'right' => '-right-10',
         default => 'left-0',
     };
 @endphp
 
-<div {{ $attributes->merge(['class' => 'relative inline-flex group']) }}>
+<div {{ $attributes->merge(['class' => 'relative inline-flex group z-50']) }}>
     <span class="inline-flex items-center" aria-describedby="{{ $tooltipId }}">
         {{ $trigger ?? '' }}
     </span>
