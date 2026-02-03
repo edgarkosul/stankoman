@@ -45,6 +45,10 @@
     --color-zinc-900: #171717;
     --color-zinc-950: #0a0a0a;
 
+    --color-brand-green: #0f6a24;
+    --color-brand-red: #ea0005;
+    --color-brand-gray: #a1a1a1;
+
     --color-accent: var(--color-neutral-800);
     --color-accent-content: var(--color-neutral-800);
     --color-accent-foreground: var(--color-white);
@@ -209,7 +213,7 @@
     }
 
     html {
-        font-stretch: 75%;
+        font-stretch: 25%;
     }
 }
 

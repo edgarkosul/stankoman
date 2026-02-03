@@ -1,5 +1,5 @@
 <x-layouts.app title="Главная">
-    <section class="relative overflow-hidden bg-zinc-950 text-white">
+    {{-- <section class="relative overflow-hidden bg-zinc-950 text-white">
         <div class="pointer-events-none absolute inset-0">
             <div class="absolute -top-40 right-0 h-[28rem] w-[28rem] rounded-full bg-emerald-500/25 blur-3xl"></div>
             <div class="absolute -bottom-48 -left-10 h-[32rem] w-[32rem] rounded-full bg-amber-400/20 blur-3xl"></div>
@@ -8,7 +8,7 @@
             </div>
         </div>
 
-        <div class="relative mx-auto flex max-w-6xl flex-col gap-12 px-4 py-16 sm:py-24 lg:flex-row lg:items-center">
+        <div class="relative mx-auto flex max-w-7xl flex-col gap-12 px-4 py-16 sm:py-24 lg:flex-row lg:items-center">
             <div class="flex flex-1 flex-col gap-6">
                 <div class="flex flex-col gap-3">
                     <p class="text-xs font-mono uppercase tracking-[0.4em] text-white/60">Промышленная оснастка</p>
@@ -71,10 +71,10 @@
                 </div>
             </div>
         </div>
-    </section>
+    </section> --}}
 
     <section class="bg-zinc-50">
-        <div class="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-16">
+        <div class="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-16">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div class="flex flex-col gap-2">
                     <p class="text-xs font-mono uppercase tracking-[0.3em] text-zinc-500">Каталог</p>
@@ -160,7 +160,7 @@
             <div class="absolute right-0 top-0 h-56 w-56 rounded-full bg-emerald-100 blur-3xl"></div>
             <div class="absolute bottom-0 left-0 h-72 w-72 rounded-full bg-amber-100 blur-3xl"></div>
         </div>
-        <div class="relative mx-auto max-w-6xl px-4 py-16">
+        <div class="relative mx-auto max-w-7xl px-4 py-16">
             <div class="grid gap-10 lg:grid-cols-[0.9fr_1.1fr]">
                 <div class="flex flex-col gap-4">
                     <p class="text-xs font-mono uppercase tracking-[0.3em] text-zinc-500">Процесс</p>
@@ -227,7 +227,7 @@
         <div class="pointer-events-none absolute inset-0">
             <div class="absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full bg-sky-500/20 blur-3xl"></div>
         </div>
-        <div class="relative mx-auto flex max-w-6xl flex-col gap-8 px-4 py-14 lg:flex-row lg:items-center lg:justify-between">
+        <div class="relative mx-auto flex max-w-7xl flex-col gap-8 px-4 py-14 lg:flex-row lg:items-center lg:justify-between">
             <div class="flex max-w-2xl flex-col gap-3">
                 <p class="text-xs font-mono uppercase tracking-[0.3em] text-white/60">Связаться</p>
                 <h2 class="text-3xl font-semibold">Нужна консультация?</h2>
