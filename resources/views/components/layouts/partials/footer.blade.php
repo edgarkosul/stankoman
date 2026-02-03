@@ -1,3 +1,3 @@
 <footer>
-    {{ $slot }}
+    FOOTER
 </footer>
