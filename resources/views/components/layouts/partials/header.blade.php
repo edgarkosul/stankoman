@@ -136,7 +136,7 @@
             </nav>
         </div>
     </div>
-    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center flex-wrap lg:flex-nowrap justify-between gap-4">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center flex-wrap lg:flex-nowrap justify-between gap-8">
         {{-- LOGO --}}
         <div class="min-w-0 max-w-52 order-0 ">
             <a href="{{ route('home') }}" aria-label="На главную">
