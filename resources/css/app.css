@@ -246,11 +246,22 @@ select:focus[data-flux-control] {
 /* тема */
 .tippy-box[data-theme~="ks"] {
     background-color: var(--ks-tooltip-bg); /* #162c4d с 80% прозрачностью */
-    @apply text-white rounded-lg shadow-lg;
+    @apply text-white shadow-lg;
+    border-radius: 0;
 }
 
 .tippy-box[data-theme~="ks"] .tippy-content {
     @apply px-3 py-2 text-sm;
+}
+
+/* светлая тема для больших многострочных тултипов */
+.tippy-box[data-theme~="ks-light"] {
+    @apply bg-white text-zinc-900 shadow-lg ring-1 ring-black/5;
+    border-radius: 0;
+}
+
+.tippy-box[data-theme~="ks-light"] .tippy-content {
+    @apply p-4 text-sm;
 }
 
 /* цвет стрелки через ::before */
@@ -265,6 +276,20 @@ select:focus[data-flux-control] {
 }
 .tippy-box[data-theme~="ks"][data-placement^="right"] > .tippy-arrow::before {
     border-right-color: var(--ks-tooltip-bg);
+}
+
+/* цвет стрелки для светлой темы */
+.tippy-box[data-theme~="ks-light"][data-placement^="top"] > .tippy-arrow::before {
+    border-top-color: #fff;
+}
+.tippy-box[data-theme~="ks-light"][data-placement^="bottom"] > .tippy-arrow::before {
+    border-bottom-color: #fff;
+}
+.tippy-box[data-theme~="ks-light"][data-placement^="left"] > .tippy-arrow::before {
+    border-left-color: #fff;
+}
+.tippy-box[data-theme~="ks-light"][data-placement^="right"] > .tippy-arrow::before {
+    border-right-color: #fff;
 }
 
 /* \[:where(&)\]:size-4 {

@@ -4,7 +4,7 @@
     "src": "public/css/filament/filament/app.css"
   },
   "resources/css/app.css": {
-    "file": "assets/app-svxNIEO8.css",
+    "file": "assets/app-XYz7ZfG8.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -21,7 +21,7 @@
     "src": "resources/fonts/roboto-flex/roboto-flex-latin.woff2"
   },
   "resources/js/app.js": {
-    "file": "assets/app-CWLbEZym.js",
+    "file": "assets/app-Cq5vVMI6.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true

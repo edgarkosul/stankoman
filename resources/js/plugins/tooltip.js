@@ -37,7 +37,8 @@ export default function (Alpine) {
             ? (window.matchMedia('(hover: none), (pointer: coarse)').matches || (navigator.maxTouchPoints || 0) > 0)
             : false
 
-        const placement = ['top', 'bottom', 'left', 'right'].find(m => modifiers.includes(m)) || 'top'
+        const placementAttr = el.getAttribute('data-tooltip-placement')?.trim()
+        const placement = placementAttr || ['top', 'bottom', 'left', 'right'].find(m => modifiers.includes(m)) || 'top'
         const interactive = modifiers.includes('interactive')
         const theme = (modifiers.find(m => m.startsWith('theme-'))?.slice(6)) || 'ks'
 
@@ -49,6 +50,19 @@ export default function (Alpine) {
         const mobileOff = smart && modifiers.includes('mobile-off') && isTouchEnv
         const pressMode = smart && modifiers.includes('press') && isTouchEnv
         const forceHover = smart && modifiers.includes('hover-only') && isTouchEnv
+
+        const maxWidthAttr = el.getAttribute('data-tooltip-max-width')?.trim()
+        let maxWidth = 260
+        if (maxWidthAttr) {
+            if (maxWidthAttr === 'none') {
+                maxWidth = 'none'
+            } else {
+                const parsed = Number(maxWidthAttr)
+                if (!Number.isNaN(parsed) && parsed > 0) {
+                    maxWidth = parsed
+                }
+            }
+        }
 
         let trigger = modifiers.includes('click') ? 'click' : 'mouseenter focus'
         if (smart && isTouchEnv && !forceHover) {
@@ -100,7 +114,7 @@ export default function (Alpine) {
                 moveTransition: 'transform 0.2s ease-out',
                 offset: [skidding, distance],
                 hideOnClick: true,
-                maxWidth: 260,
+                maxWidth,
                 onCreate(inst) {
                     if (!el.hasAttribute('tabindex') && !/^(a|button|input|textarea|select)$/i.test(el.tagName)) {
                         el.setAttribute('tabindex', '0')
