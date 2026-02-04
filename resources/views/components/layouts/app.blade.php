@@ -19,10 +19,10 @@
 </head>
 
 <body>
-    <div>
+    <div class="flex min-h-screen flex-col">
         <x-layouts.partials.info />
         <x-layouts.partials.header />
-        <main>
+        <main class="flex-1">
             {{ $slot }}
         </main>
         <x-layouts.partials.footer />
