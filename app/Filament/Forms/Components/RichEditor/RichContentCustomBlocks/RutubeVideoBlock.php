@@ -4,6 +4,7 @@ namespace App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks;
 
 use Filament\Actions\Action;
 use Filament\Forms\Components\RichEditor\RichContentCustomBlock;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 
 class RutubeVideoBlock extends RichContentCustomBlock
@@ -22,7 +23,7 @@ class RutubeVideoBlock extends RichContentCustomBlock
     {
         return $action
             ->modalHeading('Видео Rutube')
-            ->modalDescription('Укажите ID видео Rutube и при необходимости ширину.')
+            ->modalDescription('Укажите ID видео Rutube, при необходимости ширину и выравнивание.')
             ->schema([
                 TextInput::make('rutube_id')
                     ->label('Rutube ID')
@@ -36,6 +37,15 @@ class RutubeVideoBlock extends RichContentCustomBlock
                     ->numeric()
                     ->nullable()
                     ->minValue(1),
+
+                Select::make('alignment')
+                    ->label('Выравнивание')
+                    ->options([
+                        'left' => 'По левому краю',
+                        'center' => 'По центру',
+                    ])
+                    ->default('center')
+                    ->required(),
             ]);
     }
 
@@ -58,6 +68,7 @@ class RutubeVideoBlock extends RichContentCustomBlock
         return view('filament.forms.components.rich-editor.rich-content-custom-blocks.rutube-video.index', [
             'rutubeId' => $config['rutube_id'] ?? null,
             'width' => is_numeric($config['width'] ?? null) ? (int) $config['width'] : null,
+            'alignment' => $config['alignment'] ?? 'center',
         ])->render();
     }
 }

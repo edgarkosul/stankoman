@@ -4,6 +4,7 @@ namespace App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks;
 
 use Filament\Actions\Action;
 use Filament\Forms\Components\RichEditor\RichContentCustomBlock;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 
 class YoutubeVideoBlock extends RichContentCustomBlock
@@ -22,7 +23,7 @@ class YoutubeVideoBlock extends RichContentCustomBlock
     {
         return $action
             ->modalHeading('Видео YouTube')
-            ->modalDescription('Укажите ID видео YouTube (часть после v= или после youtu.be/) и при необходимости ширину.')
+            ->modalDescription('Укажите ID видео YouTube (часть после v= или после youtu.be/), при необходимости ширину и выравнивание.')
             ->schema([
                 TextInput::make('video_id')
                     ->label('YouTube video ID')
@@ -31,10 +32,20 @@ class YoutubeVideoBlock extends RichContentCustomBlock
                     ->maxLength(64),
 
                 TextInput::make('width')
+                    ->belowContent('Ширина видео в пикселях. Оставьте пустым для адаптивной ширины.')
                     ->label('Ширина, px')
                     ->numeric()
                     ->nullable()
                     ->minValue(1),
+
+                Select::make('alignment')
+                    ->label('Выравнивание')
+                    ->options([
+                        'left' => 'По левому краю',
+                        'center' => 'По центру',
+                    ])
+                    ->default('center')
+                    ->required(),
             ]);
     }
 
@@ -57,6 +68,7 @@ class YoutubeVideoBlock extends RichContentCustomBlock
         return view('filament.forms.components.rich-editor.rich-content-custom-blocks.youtube-video.index', [
             'videoId' => $config['video_id'] ?? null,
             'width' => is_numeric($config['width'] ?? null) ? (int) $config['width'] : null,
+            'alignment' => $config['alignment'] ?? 'center',
         ])->render();
     }
 }

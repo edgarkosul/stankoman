@@ -2,6 +2,10 @@
 @import "../../vendor/livewire/flux/dist/flux.css";
 @import "tippy.js/dist/tippy.css";
 @import "tippy.js/animations/shift-away-subtle.css";
+@import "swiper/css";
+@import "swiper/css/navigation";
+@import "swiper/css/thumbs";
+@import "swiper/css/free-mode";
 
 @font-face {
     font-family: "Roboto Flex";
@@ -293,11 +297,62 @@ select:focus[data-flux-control] {
 }
 
 .static-page .video{
-    @apply max-w-7xl px-2 aspect-video;
+    @apply max-w-7xl mx-auto px-2 aspect-video;
 }
 
 .static-page .video iframe {
     @apply w-full h-full;
+}
+
+.static-page .video.video--left {
+    @apply ml-0 mr-auto;
+}
+
+.static-page .video.video--center {
+    @apply mx-auto;
+}
+
+@layer components {
+    .image-gallery {
+        @apply grid gap-3 max-w-4xl mx-auto;
+        --swiper-navigation-color: #EA0005;
+    }
+
+    .image-gallery.image-gallery--left {
+        @apply ml-0 mr-auto;
+    }
+
+    .image-gallery.image-gallery--center {
+        @apply mx-auto;
+    }
+
+    .image-gallery .swiper {
+        @apply w-full;
+    }
+
+    .image-gallery__main {
+        @apply h-96 sm:h-128;
+    }
+
+    .image-gallery__thumbs {
+        @apply h-20 sm:h-36;
+    }
+
+    .image-gallery__thumbs .swiper-slide {
+        @apply opacity-50;
+    }
+
+    .image-gallery__thumbs .swiper-slide-thumb-active {
+        @apply opacity-100;
+    }
+
+    .image-gallery a {
+        @apply block h-full w-full;
+    }
+
+    .image-gallery img {
+        @apply h-full w-full object-cover;
+    }
 }
 
 /* \[:where(&)\]:size-4 {

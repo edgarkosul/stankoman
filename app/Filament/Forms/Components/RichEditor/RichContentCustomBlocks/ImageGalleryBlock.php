@@ -6,6 +6,7 @@ use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor\RichContentCustomBlock;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 
 class ImageGalleryBlock extends RichContentCustomBlock
@@ -44,6 +45,20 @@ class ImageGalleryBlock extends RichContentCustomBlock
                     ->columns(1)
                     ->collapsible()
                     ->reorderable(),
+                TextInput::make('width')
+                    ->belowContent('Ширина галереи в пикселях. Оставьте пустым для адаптивной ширины.')
+                    ->label('Ширина, px')
+                    ->numeric()
+                    ->nullable()
+                    ->minValue(1),
+                Select::make('alignment')
+                    ->label('Выравнивание')
+                    ->options([
+                        'left' => 'По левому краю',
+                        'center' => 'По центру',
+                    ])
+                    ->default('center')
+                    ->required(),
             ]);
     }
 
@@ -58,6 +73,8 @@ class ImageGalleryBlock extends RichContentCustomBlock
     {
         return view('filament.forms.components.rich-editor.rich-content-custom-blocks.image-gallery.index', [
             'images' => $config['images'] ?? [],
+            'width' => is_numeric($config['width'] ?? null) ? (int) $config['width'] : null,
+            'alignment' => $config['alignment'] ?? 'center',
         ])->render();
     }
 }
