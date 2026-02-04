@@ -292,6 +292,14 @@ select:focus[data-flux-control] {
     border-right-color: #fff;
 }
 
+.static-page .video{
+    @apply max-w-7xl px-2 aspect-video;
+}
+
+.static-page .video iframe {
+    @apply w-full h-full;
+}
+
 /* \[:where(&)\]:size-4 {
     @apply size-4;
 } */

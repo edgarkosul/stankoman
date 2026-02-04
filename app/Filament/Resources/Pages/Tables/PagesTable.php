@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\Pages\Tables;
 
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -16,6 +18,13 @@ class PagesTable
                 TextColumn::make('slug')->label('Slug')->copyable()->searchable(),
                 IconColumn::make('is_published')->label('Опубликовано')->boolean()->sortable(),
                 TextColumn::make('updated_at')->label('Обновлено')->dateTime('Y-m-d H:i')->sortable(),
+            ])
+            ->recordActions([
+                DeleteAction::make(),
+            ])
+            ->toolbarActions([
+                DeleteBulkAction::make()
+                    ->chunkSelectedRecords(250),
             ])
             ->defaultSort('updated_at', 'desc');
     }

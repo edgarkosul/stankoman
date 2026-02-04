@@ -1,10 +1,6 @@
 {
-  "public/css/filament/filament/app.css": {
-    "file": "assets/app-Vk1LS9MR.css",
-    "src": "public/css/filament/filament/app.css"
-  },
   "resources/css/app.css": {
-    "file": "assets/app-XYz7ZfG8.css",
+    "file": "assets/app-aEU_JHXO.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",

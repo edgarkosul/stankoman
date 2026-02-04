@@ -4,13 +4,17 @@ namespace App\Models;
 
 use App\Observers\PageObserver;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Mews\Purifier\Casts\CleanHtmlInput;
+
+// use Mews\Purifier\Casts\CleanHtmlInput;
 
 #[ObservedBy([PageObserver::class])]
 class Page extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'title',
         'slug',
@@ -24,7 +28,7 @@ class Page extends Model
     protected $casts = [
         'is_published' => 'bool',
         'published_at' => 'datetime',
-        'content' => CleanHtmlInput::class,
+        // 'content' => CleanHtmlInput::class,
     ];
 
     public function menuItems(): HasMany

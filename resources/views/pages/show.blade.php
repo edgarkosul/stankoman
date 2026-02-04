@@ -1,5 +1,5 @@
 <x-layouts.app title="{{ $page->meta_title ?? $page->title }}">
-    <div class="mx-auto max-w-5xl px-4 py-10">
+    <div class="static-page mx-auto max-w-7xl px-4 py-10">
         <h1 class="text-2xl font-semibold tracking-tight">
             {{ $page->title }}
         </h1>
@@ -10,8 +10,18 @@
             </p>
         @endif
 
+        @php
+            $content = blank($page->content) ? '<p></p>' : $page->content;
+        @endphp
+
         <div class="prose prose-zinc mt-8 max-w-none">
-            {!! $page->content !!}
+            {!! Filament\Forms\Components\RichEditor\RichContentRenderer::make($content)->customBlocks([
+                App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock::class,
+                App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock::class,
+                App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock::class,
+                App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock::class,
+                App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock::class,
+            ])->toUnsafeHtml() !!}
         </div>
     </div>
 </x-layouts.app>

@@ -24,6 +24,6 @@ class MenuForm
                     ->maxLength(32)
                     ->unique(ignoreRecord: true),
             ])->columns(2),
-        ]);
+        ])->columns(1);
     }
 }
