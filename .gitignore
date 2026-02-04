@@ -78,3 +78,8 @@ public/sitemap-categories.xml
 public/sitemap-products-*.xml
 public/robots.txt
 /changes.diff
+AGENTS.md
+boost.json
+composer.lock
+package-lock.json
+.codex/skills/developing-with-fortify/SKILL.md
