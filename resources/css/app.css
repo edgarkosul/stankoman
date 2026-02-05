@@ -298,11 +298,11 @@ select:focus[data-flux-control] {
 }
 
 .static-page .video{
-    @apply max-w-7xl mx-auto px-2 aspect-video;
+    @apply max-w-7xl mx-auto px-2 aspect-video shadow-xl;
 }
 
 .static-page .video iframe {
-    @apply w-full h-full;
+    @apply w-full h-full border border-brand-green;
 }
 
 .static-page .video.video--left {
@@ -344,7 +344,7 @@ select:focus[data-flux-control] {
     }
 
     .image-gallery__main {
-        @apply h-96 sm:h-128;
+        @apply h-96 sm:h-128  shadow border border-brand-green;
     }
 
     .image-gallery__thumbs {
