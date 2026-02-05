@@ -22,10 +22,9 @@
                         x-effect="if ($refs.panel) { $refs.panel.style.maxHeight = open ? $refs.panel.scrollHeight + 'px' : '0px'; }"
                         class="rounded">
                         <div class="flex items-center gap-2 rounded px-3 py-2 text-sm text-zinc-900 hover:bg-zinc-100">
-                            <a href="{{ $item['href'] }}"
-                                class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
+                            <span class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
                                 {{ $item['label'] }}
-                            </a>
+                            </span>
                             <button type="button" class="flex size-6 items-center justify-center"
                                 @click="open = !open" :aria-expanded="open.toString()"
                                 aria-controls="menu-mobile-{{ $item['id'] }}">
@@ -63,10 +62,9 @@
             @if (count($item['children']))
                 <li class="relative" x-data="navDropdown()" @mouseenter="show()" @mouseleave="hide(150)"
                     @keydown.escape.window="close()">
-                    <a href="{{ $item['href'] }}"
-                        class="inline-flex items-center gap-2 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
+                    <span class="inline-flex items-center gap-2 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
                         {{ $item['label'] }} <x-icon name="arrow_down" class="w-3 h-3" />
-                    </a>
+                    </span>
 
                     <div x-show="open" @mouseenter="show()" @mouseleave="hide(150)" @click.outside="close()"
                         x-transition:enter="transition ease-out duration-150"
@@ -75,7 +73,7 @@
                         x-transition:leave="transition ease-in duration-100"
                         x-transition:leave-start="opacity-100 translate-y-0"
                         x-transition:leave-end="opacity-0 translate-y-1"
-                        class="absolute left-0 top-full z-20 mt-2 w-64 whitespace-normal border border-zinc-200 bg-white p-2 shadow-lg"
+                        class="absolute right-0 top-full z-20 mt-2 w-64 whitespace-normal border border-zinc-200 bg-white p-2 shadow-lg"
                         style="display:none" role="menu">
                         @foreach ($item['children'] as $child)
                             <a href="{{ $child['href'] }}"
@@ -120,10 +118,9 @@
                                 class="rounded">
                                 <div
                                     class="flex items-center gap-2 rounded px-3 py-2 text-sm text-zinc-900 hover:bg-zinc-100">
-                                    <a href="{{ $item['href'] }}"
-                                        class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
+                                    <span class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
                                         {{ $item['label'] }}
-                                    </a>
+                                    </span>
                                     <button type="button" class="flex size-6 items-center justify-center"
                                         @click="open = !open" :aria-expanded="open.toString()"
                                         aria-controls="menu-more-{{ $item['id'] }}">
@@ -164,10 +161,9 @@
             @if (count($item['children']))
                 <li class="relative" x-data="navDropdown()" @mouseenter="show()" @mouseleave="hide(150)"
                     @keydown.escape.window="close()">
-                    <a href="{{ $item['href'] }}"
-                        class="inline-flex items-center gap-2 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
+                    <span class="inline-flex items-center gap-2 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
                         {{ $item['label'] }} <x-icon name="arrow_down" class="w-3 h-3" />
-                    </a>
+                    </span>
 
                     <div x-show="open" @mouseenter="show()" @mouseleave="hide(150)" @click.outside="close()"
                         x-transition:enter="transition ease-out duration-150"
@@ -176,7 +172,7 @@
                         x-transition:leave="transition ease-in duration-100"
                         x-transition:leave-start="opacity-100 translate-y-0"
                         x-transition:leave-end="opacity-0 translate-y-1"
-                        class="absolute left-0 top-full z-20 mt-2 w-64 whitespace-normal border border-zinc-200 bg-white p-2 shadow-lg"
+                        class="absolute right-0 top-full z-20 mt-2 w-64 whitespace-normal border border-zinc-200 bg-white p-2 shadow-lg"
                         style="display:none" role="menu">
                         @foreach ($item['children'] as $child)
                             <a href="{{ $child['href'] }}"
@@ -221,10 +217,9 @@
                                 class="rounded">
                                 <div
                                     class="flex items-center gap-2 rounded px-3 py-2 text-sm text-zinc-900 hover:bg-zinc-100">
-                                    <a href="{{ $item['href'] }}"
-                                        class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
+                                    <span class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
                                         {{ $item['label'] }}
-                                    </a>
+                                    </span>
                                     <button type="button" class="flex size-6 items-center justify-center"
                                         @click="open = !open" :aria-expanded="open.toString()"
                                         aria-controls="menu-xl-more-{{ $item['id'] }}">

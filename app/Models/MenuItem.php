@@ -59,6 +59,19 @@ class MenuItem extends Model
             ->orderBy('sort');
     }
 
+    public function hasChildren(): bool
+    {
+        if ($this->relationLoaded('children')) {
+            return $this->children->isNotEmpty();
+        }
+
+        if (array_key_exists('children_count', $this->attributes)) {
+            return (int) $this->attributes['children_count'] > 0;
+        }
+
+        return $this->children()->exists();
+    }
+
     public function page(): BelongsTo
     {
         return $this->belongsTo(Page::class);

@@ -7,6 +7,7 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGaller
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
+use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\RichEditor\RichEditorTool;
@@ -96,5 +97,16 @@ class PageForm
                 Textarea::make('meta_description')->label('Meta description')->maxLength(300)->rows(3),
             ])->columns(2),
         ])->columns(1);
+    }
+
+    public static function headerActions(): array
+    {
+        return [
+            Action::make('openPage')
+                ->label('Открыть страницу')
+                ->icon(Heroicon::ArrowTopRightOnSquare)
+                ->url(fn ($record) => route('page.show', $record, absolute: false), shouldOpenInNewTab: true)
+                ->hidden(fn ($record) => blank($record?->slug)),
+        ];
     }
 }

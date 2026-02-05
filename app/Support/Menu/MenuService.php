@@ -19,12 +19,7 @@ class MenuService
             }
 
             // Берём только активные пункты. Сразу подгружаем страницу (slug) для type=page.
-            $items = MenuItem::query()
-                ->where('menu_id', $menu->id)
-                ->active()
-                ->orderByRaw('parent_id is not null') // сначала root (parent_id=null), затем дети
-                ->orderBy('parent_id')
-                ->orderBy('sort')
+            $items = $menu->itemsForTree()
                 ->with(['page:id,slug,is_published'])
                 ->get([
                     'id', 'menu_id', 'parent_id',
@@ -32,6 +27,13 @@ class MenuService
                     'url', 'route_name', 'route_params', 'page_id',
                     'target', 'rel',
                 ]);
+
+            $hasChildren = [];
+            foreach ($items as $item) {
+                if ($item->parent_id) {
+                    $hasChildren[$item->parent_id] = true;
+                }
+            }
 
             $nodes = [];
             $roots = [];
@@ -44,7 +46,7 @@ class MenuService
                 }
 
                 // Если пункт ссылается на page, но страница не опубликована/не найдена — лучше скрыть (иначе 404).
-                if ($item->type === 'page') {
+                if ($item->type === 'page' && ! isset($hasChildren[$item->id])) {
                     if (! $item->page || ! $item->page->is_published) {
                         continue;
                     }
@@ -89,7 +91,7 @@ class MenuService
 
     private function cacheKey(string $menuKey): string
     {
-        return "menu:{$menuKey}:tree:v1";
+        return "menu:{$menuKey}:tree:v2";
     }
 
     private function makeHref(MenuItem $item): string
@@ -163,13 +165,16 @@ class MenuService
 
     private function stripInternal(array $node): array
     {
+        $children = array_map(fn ($c) => $this->stripInternal($c), $node['children']);
+        $hasChildren = count($children) > 0;
+
         return [
             'id' => $node['id'],
             'label' => $node['label'],
-            'href' => $node['href'],
-            'target' => $node['target'],
-            'rel' => $node['rel'],
-            'children' => array_map(fn ($c) => $this->stripInternal($c), $node['children']),
+            'href' => $hasChildren ? null : $node['href'],
+            'target' => $hasChildren ? null : $node['target'],
+            'rel' => $hasChildren ? null : $node['rel'],
+            'children' => $children,
         ];
     }
 }

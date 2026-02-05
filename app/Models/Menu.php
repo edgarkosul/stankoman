@@ -23,6 +23,15 @@ class Menu extends Model
         return $this->hasMany(MenuItem::class);
     }
 
+    public function itemsForTree(): HasMany
+    {
+        return $this->items()
+            ->where('is_active', true)
+            ->orderByRaw('parent_id is not null')
+            ->orderBy('parent_id')
+            ->orderBy('sort');
+    }
+
     public function rootItems(): HasMany
     {
         return $this->items()

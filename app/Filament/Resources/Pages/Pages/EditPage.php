@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Pages\Pages;
 
 use App\Filament\Resources\Pages\PageResource;
+use App\Filament\Resources\Pages\Schemas\PageForm;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
@@ -13,6 +14,7 @@ class EditPage extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            ...PageForm::headerActions(),
             DeleteAction::make(),
         ];
     }

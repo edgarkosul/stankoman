@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Menus\Pages;
 use App\Filament\Resources\Menus\MenuResource;
 use App\Models\MenuItem;
 use App\Models\Page as StaticPage;
+use App\Support\Menu\MenuService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\KeyValue;
@@ -72,6 +73,7 @@ class BuilderMenu extends Page implements HasForms
         $items = $state['items'] ?? [];
 
         $this->syncLevel($items, parentId: null, depth: 0);
+        app(MenuService::class)->forget($this->record->key);
 
         Notification::make()
             ->title('Меню сохранено')
@@ -87,6 +89,7 @@ class BuilderMenu extends Page implements HasForms
     {
         $fields = [
             Hidden::make('id'),
+            Hidden::make('has_children'),
 
             TextInput::make('label')
                 ->label('Название')
@@ -100,7 +103,11 @@ class BuilderMenu extends Page implements HasForms
                     'route' => 'Маршрут Laravel',
                     'url' => 'Внешний URL',
                 ])
-                ->required()
+                ->required(fn (Get $get) => ! $this->hasChildrenState($get))
+                ->disabled(fn (Get $get) => $this->hasChildrenState($get))
+                ->helperText(fn (Get $get) => $this->hasChildrenState($get)
+                    ? 'У пункта с подпунктами ссылка отключена.'
+                    : null)
                 ->live(),
 
             Select::make('page_id')
@@ -108,27 +115,27 @@ class BuilderMenu extends Page implements HasForms
                 ->options(fn () => StaticPage::query()->orderBy('title')->pluck('title', 'id')->all())
                 ->searchable()
                 ->preload()
-                ->visible(fn (Get $get) => $get('type') === 'page')
-                ->required(fn (Get $get) => $get('type') === 'page'),
+                ->visible(fn (Get $get) => $get('type') === 'page' && ! $this->hasChildrenState($get))
+                ->required(fn (Get $get) => $get('type') === 'page' && ! $this->hasChildrenState($get)),
 
             Select::make('route_name')
                 ->label('Route name')
                 ->options(fn () => $this->routeOptions())
                 ->searchable()
-                ->visible(fn (Get $get) => $get('type') === 'route')
-                ->required(fn (Get $get) => $get('type') === 'route'),
+                ->visible(fn (Get $get) => $get('type') === 'route' && ! $this->hasChildrenState($get))
+                ->required(fn (Get $get) => $get('type') === 'route' && ! $this->hasChildrenState($get)),
 
             KeyValue::make('route_params')
                 ->label('Route params')
                 ->keyLabel('Key')
                 ->valueLabel('Value')
-                ->visible(fn (Get $get) => $get('type') === 'route'),
+                ->visible(fn (Get $get) => $get('type') === 'route' && ! $this->hasChildrenState($get)),
 
             TextInput::make('url')
                 ->label('URL')
                 ->placeholder('https://example.com')
-                ->visible(fn (Get $get) => $get('type') === 'url')
-                ->required(fn (Get $get) => $get('type') === 'url')
+                ->visible(fn (Get $get) => $get('type') === 'url' && ! $this->hasChildrenState($get))
+                ->required(fn (Get $get) => $get('type') === 'url' && ! $this->hasChildrenState($get))
                 ->maxLength(2048),
 
             Toggle::make('is_active')
@@ -140,11 +147,13 @@ class BuilderMenu extends Page implements HasForms
                 ->options([
                     null => 'В этой вкладке',
                     '_blank' => 'В новой вкладке',
-                ]),
+                ])
+                ->disabled(fn (Get $get) => $this->hasChildrenState($get)),
 
             TextInput::make('rel')
                 ->label('rel')
-                ->placeholder('nofollow noopener'),
+                ->placeholder('nofollow noopener')
+                ->disabled(fn (Get $get) => $this->hasChildrenState($get)),
         ];
 
         if ($withChildren) {
@@ -179,7 +188,8 @@ class BuilderMenu extends Page implements HasForms
             ->where('menu_id', $this->record->id)
             ->whereNull('parent_id')
             ->orderBy('sort')
-            ->with(['children' => fn ($q) => $q->orderBy('sort')])
+            ->withCount('children')
+            ->with(['children' => fn ($q) => $q->orderBy('sort')->withCount('children')])
             ->get();
 
         return $roots->map(fn (MenuItem $item) => $this->toState($item, withChildren: true))->all();
@@ -191,6 +201,7 @@ class BuilderMenu extends Page implements HasForms
             'id' => $item->id,
             'label' => $item->label,
             'type' => $item->type,
+            'has_children' => $item->hasChildren(),
 
             'url' => $item->url,
             'route_name' => $item->route_name,
@@ -267,13 +278,14 @@ class BuilderMenu extends Page implements HasForms
     private function normalizePayload(array $item): array
     {
         $type = $item['type'] ?? 'page';
+        $hasChildren = $this->itemHasChildren($item);
 
         $payload = [
             'label' => (string) ($item['label'] ?? ''),
             'type' => $type,
             'is_active' => (bool) ($item['is_active'] ?? true),
-            'target' => $item['target'] ?? null,
-            'rel' => $item['rel'] ?? null,
+            'target' => $hasChildren ? null : ($item['target'] ?? null),
+            'rel' => $hasChildren ? null : ($item['rel'] ?? null),
         ];
 
         // Сбрасываем неактуальные поля — чтобы база была чистой
@@ -281,6 +293,10 @@ class BuilderMenu extends Page implements HasForms
         $payload['route_name'] = null;
         $payload['route_params'] = null;
         $payload['page_id'] = null;
+
+        if ($hasChildren) {
+            return $payload;
+        }
 
         if ($type === 'url') {
             $payload['url'] = (string) ($item['url'] ?? '');
@@ -297,5 +313,26 @@ class BuilderMenu extends Page implements HasForms
         }
 
         return $payload;
+    }
+
+    private function hasChildrenState(Get $get): bool
+    {
+        $children = $get('children');
+        if (is_array($children)) {
+            return count($children) > 0;
+        }
+
+        return (bool) $get('has_children');
+    }
+
+    private function itemHasChildren(array $item): bool
+    {
+        $children = $item['children'] ?? null;
+
+        if (is_array($children)) {
+            return count($children) > 0;
+        }
+
+        return (bool) ($item['has_children'] ?? false);
     }
 }
