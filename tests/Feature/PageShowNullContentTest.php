@@ -10,5 +10,7 @@ it('renders published page when content is null', function () {
 
     $this->get(route('page.show', ['page' => $page->slug]))
         ->assertSuccessful()
-        ->assertSee($page->title);
+        ->assertSee($page->title)
+        ->assertSee('static-page')
+        ->assertSee('fi-prose');
 });

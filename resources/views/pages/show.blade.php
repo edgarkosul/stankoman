@@ -14,7 +14,7 @@
             $content = blank($page->content) ? '<p></p>' : $page->content;
         @endphp
 
-        <div class="prose prose-zinc mt-8 max-w-none">
+        <div class="fi-prose mt-8 max-w-none">
             {!! Filament\Forms\Components\RichEditor\RichContentRenderer::make($content)->customBlocks([
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock::class,
