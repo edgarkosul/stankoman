@@ -21,17 +21,16 @@
                     <div x-data="{ open: false }"
                         x-effect="if ($refs.panel) { $refs.panel.style.maxHeight = open ? $refs.panel.scrollHeight + 'px' : '0px'; }"
                         class="rounded">
-                        <div class="flex items-center gap-2 rounded px-3 py-2 text-sm text-zinc-900 hover:bg-zinc-100">
+                        <button type="button"
+                            class="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-zinc-900 hover:bg-zinc-100"
+                            @click="open = !open" :aria-expanded="open.toString()"
+                            aria-controls="menu-mobile-{{ $item['id'] }}">
                             <span class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
                                 {{ $item['label'] }}
                             </span>
-                            <button type="button" class="flex size-6 items-center justify-center"
-                                @click="open = !open" :aria-expanded="open.toString()"
-                                aria-controls="menu-mobile-{{ $item['id'] }}">
-                                <x-icon name="arrow_down" class="w-3 h-3 transition-transform"
-                                    x-bind:class="{ 'rotate-180': open }" />
-                            </button>
-                        </div>
+                            <x-icon name="arrow_down" class="w-3 h-3 transition-transform"
+                                x-bind:class="{ 'rotate-180': open }" />
+                        </button>
                         <div id="menu-mobile-{{ $item['id'] }}" x-ref="panel"
                             class="overflow-hidden transition-all duration-200 ease-out" style="max-height: 0px;">
                             <div class="space-y-1 pb-2 pl-6">
@@ -116,18 +115,16 @@
                             <div x-data="{ open: false }"
                                 x-effect="if ($refs.panel) { $refs.panel.style.maxHeight = open ? $refs.panel.scrollHeight + 'px' : '0px'; }"
                                 class="rounded">
-                                <div
-                                    class="flex items-center gap-2 rounded px-3 py-2 text-sm text-zinc-900 hover:bg-zinc-100">
+                                <button type="button"
+                                    class="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-zinc-900 hover:bg-zinc-100"
+                                    @click="open = !open" :aria-expanded="open.toString()"
+                                    aria-controls="menu-more-{{ $item['id'] }}">
                                     <span class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
                                         {{ $item['label'] }}
                                     </span>
-                                    <button type="button" class="flex size-6 items-center justify-center"
-                                        @click="open = !open" :aria-expanded="open.toString()"
-                                        aria-controls="menu-more-{{ $item['id'] }}">
-                                        <x-icon name="arrow_down" class="w-3 h-3 transition-transform"
-                                            x-bind:class="{ 'rotate-180': open }" />
-                                    </button>
-                                </div>
+                                    <x-icon name="arrow_down" class="w-3 h-3 transition-transform"
+                                        x-bind:class="{ 'rotate-180': open }" />
+                                </button>
                                 <div id="menu-more-{{ $item['id'] }}" x-ref="panel"
                                     class="overflow-hidden transition-all duration-200 ease-out"
                                     style="max-height: 0px;">
@@ -215,18 +212,16 @@
                             <div x-data="{ open: false }"
                                 x-effect="if ($refs.panel) { $refs.panel.style.maxHeight = open ? $refs.panel.scrollHeight + 'px' : '0px'; }"
                                 class="rounded">
-                                <div
-                                    class="flex items-center gap-2 rounded px-3 py-2 text-sm text-zinc-900 hover:bg-zinc-100">
+                                <button type="button"
+                                    class="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-zinc-900 hover:bg-zinc-100"
+                                    @click="open = !open" :aria-expanded="open.toString()"
+                                    aria-controls="menu-xl-more-{{ $item['id'] }}">
                                     <span class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
                                         {{ $item['label'] }}
                                     </span>
-                                    <button type="button" class="flex size-6 items-center justify-center"
-                                        @click="open = !open" :aria-expanded="open.toString()"
-                                        aria-controls="menu-xl-more-{{ $item['id'] }}">
-                                        <x-icon name="arrow_down" class="w-3 h-3 transition-transform"
-                                            x-bind:class="{ 'rotate-180': open }" />
-                                    </button>
-                                </div>
+                                    <x-icon name="arrow_down" class="w-3 h-3 transition-transform"
+                                        x-bind:class="{ 'rotate-180': open }" />
+                                </button>
                                 <div id="menu-xl-more-{{ $item['id'] }}" x-ref="panel"
                                     class="overflow-hidden transition-all duration-200 ease-out"
                                     style="max-height: 0px;">
