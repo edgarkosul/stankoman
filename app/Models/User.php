@@ -2,13 +2,15 @@
 
 namespace App\Models;
 
+use Filament\Panel;
+use Illuminate\Support\Str;
+use Illuminate\Notifications\Notifiable;
+use Filament\Models\Contracts\FilamentUser;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Str;
 
-class User extends Authenticatable implements MustVerifyEmail
+class User extends Authenticatable implements MustVerifyEmail,FilamentUser
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
@@ -57,5 +59,17 @@ class User extends Authenticatable implements MustVerifyEmail
             ->take(2)
             ->map(fn ($word) => Str::substr($word, 0, 1))
             ->implode('');
+    }
+
+    public function canAccessPanel(Panel $panel): bool
+    {
+        // если панелей несколько — можно ограничить только админку:
+        // if ($panel->getId() !== 'admin') return false;
+
+        return in_array(
+            strtolower($this->email ?? ''),
+            config('filament_admin.emails', []),
+            true
+        );
     }
 }
