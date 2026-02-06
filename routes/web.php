@@ -13,4 +13,4 @@ Route::get('/page/{page:slug}', PageController::class)
     ->name('page.show');
 
 require __DIR__.'/settings.php';
-// test
+
