@@ -5,11 +5,13 @@
                 <div class="flex items-center gap-2 text-sm">
                     <x-tooltip {{-- title="Режим работы:" --}} subtitle="г. Краснодар, трасса М4-ДОН">
                         <x-slot:trigger>
-                            <x-icon name="spot" class="w-5 h-5" />
+                            <span class="inline-flex items-center gap-2">
+                                <x-icon name="spot" class="w-5 h-5" />
+                                <span class="hidden md:block">Краснодар</span>
+                            </span>
                         </x-slot:trigger>
                         пос. Новознаменский, ул. Андреевская, 2
                     </x-tooltip>
-                    <span class="hidden md:block">Краснодар</span>
                 </div>
             </div>
             <div class="flex gap-3">
@@ -44,11 +46,13 @@
                         <x-tooltip {{-- title="Режим работы:" --}} align="right" subtitle="ПН - Пт: 9:00 - 18:00"
                             subtitle2="Сб-Вс: выходной ">
                             <x-slot:trigger>
-                                <x-icon name="info" class="w-5 h-5" />
+                                <span class="inline-flex items-center gap-2">
+                                    <x-icon name="info" class="w-5 h-5" />
+                                    <span class="whitespace-nowrap hidden xs:block">Режим работы</span>
+                                </span>
                             </x-slot:trigger>
                             Любой текст из снипетов в админке
                         </x-tooltip>
-                        <div class="whitespace-nowrap hidden xs:block">Режим работы</div>
                     </div>
                 </div>
             </div>
