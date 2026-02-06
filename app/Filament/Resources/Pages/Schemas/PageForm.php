@@ -6,6 +6,7 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YandexMapBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
@@ -68,14 +69,14 @@ class PageForm
                             ->jsHandler("confirm('Очистить описание?') && ".'$getEditor'.'()?.chain().focus().clearContent().run()'),
                     ])
                     ->toolbarButtons([
-                        ['bold', 'italic', 'underline', 'textColor', 'strike', 'subscript', 'superscript', 'link'],
-                        ['h2', 'h3', 'alignStart', 'alignCenter', 'alignEnd'],
+                        ['bold', 'italic', 'underline', 'textColor', 'strike', 'subscript', 'superscript', 'small', 'lead', 'link'],
+                        ['h1', 'h2', 'h3', 'alignStart', 'alignCenter', 'alignEnd'],
                         ['blockquote', 'codeBlock', 'bulletList', 'orderedList'],
                         ['table', 'attachFiles', 'customBlocks'],
                         ['undo', 'redo'],
                         ['horizontalRule', 'grid', 'gridDelete'],
                     ])
-                    ->enableToolbarButtons([['clearContent']])
+                    ->enableToolbarButtons([['clearContent', 'clearFormatting']])
                     // если хочешь картинки из редактора:
                     ->fileAttachmentsDisk('public')
                     ->fileAttachmentsDirectory('pages')
@@ -86,6 +87,7 @@ class PageForm
                         ImageGalleryBlock::class,
                         RutubeVideoBlock::class,
                         YoutubeVideoBlock::class,
+                        YandexMapBlock::class,
                         RawHtmlBlock::class,
                     ])
                     ->fileAttachmentsDisk('public')->fileAttachmentsDirectory('pics')->fileAttachmentsVisibility('public'),
