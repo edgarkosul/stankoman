@@ -28,6 +28,7 @@ class BuilderMenu extends Page implements HasForms
     use InteractsWithRecord;
 
     protected static string $resource = MenuResource::class;
+    protected static ?string $title = 'Конструктор меню';
 
     protected string $view = 'filament.resources.menus.pages.builder-menu';
 
@@ -48,10 +49,12 @@ class BuilderMenu extends Page implements HasForms
             ->statePath('data')
             ->components([
                 Repeater::make('items')
-                    ->label('Пункты меню (1-й уровень)')
+                    ->label('1-й уровень')
                     ->reorderable()
                     ->default([])
                     ->itemLabel(fn (array $state): string => $state['label'] ?? 'Пункт меню')
+                    ->collapsible()
+                    ->collapsed()
                     ->schema($this->menuItemFields(withChildren: true)),
             ]);
     }
@@ -153,15 +156,18 @@ class BuilderMenu extends Page implements HasForms
             TextInput::make('rel')
                 ->label('rel')
                 ->placeholder('nofollow noopener')
+                ->helperText('служебные теги ссылки (через пробел). Не знаете — оставьте пустым. Часто: noopener noreferrer + при необходимости nofollow')
                 ->disabled(fn (Get $get) => $this->hasChildrenState($get)),
         ];
 
         if ($withChildren) {
             $fields[] = Repeater::make('children')
-                ->label('Подпункты (2-й уровень)')
+                ->label('2-й уровень')
                 ->reorderable()
                 ->default([])
                 ->itemLabel(fn (array $state): string => $state['label'] ?? 'Подпункт')
+                ->collapsible()
+                ->collapsed()
                 ->schema($this->menuItemFields(withChildren: false));
         }
 
