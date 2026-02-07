@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use Carbon\CarbonImmutable;
+use Filament\Support\Assets\Js;
+use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
@@ -24,6 +26,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->registerFilamentAssets();
     }
 
     protected function configureDefaults(): void
@@ -43,5 +46,15 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null
         );
+    }
+
+    protected function registerFilamentAssets(): void
+    {
+        FilamentAsset::register([
+            Js::make(
+                'rich-content-plugins/text-size',
+                resource_path('js/dist/filament/rich-content-plugins/text-size.js'),
+            )->loadedOnRequest(),
+        ]);
     }
 }

@@ -37,6 +37,7 @@
 @source '../../vendor/livewire/flux/stubs/**/*.blade.php';
 @source inline('wght-{100..900..100}');
 @source inline('wdth-{25..150..5}');
+@source inline('text-xs text-sm text-base text-lg text-xl text-2xl text-3xl text-4xl text-5xl text-6xl text-7xl text-8xl text-9xl');
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -446,6 +447,23 @@ select:focus[data-flux-control] {
 
     .image-gallery img {
         @apply h-full w-full object-cover;
+    }
+
+    .hero-slider {
+        @apply relative w-full overflow-hidden;
+        --swiper-navigation-color: #ea0005;
+    }
+
+    .hero-slider .swiper-slide {
+        @apply w-full;
+    }
+
+    .hero-slider__slide {
+        @apply block w-full h-full;
+    }
+
+    .hero-slider__slide img {
+        @apply w-full h-full object-cover;
     }
 }
 

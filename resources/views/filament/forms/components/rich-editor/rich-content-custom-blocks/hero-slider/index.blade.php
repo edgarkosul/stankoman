@@ -33,17 +33,24 @@
 @endphp
 
 @if ($slides->isNotEmpty())
-    <div class="hero-slider" data-hero-slider>
-        @foreach ($slides as $slide)
-            @if ($slide['url'])
-                <a class="hero-slider__slide" href="{{ $slide['url'] }}">
-                    <img src="{{ $slide['src'] }}" alt="{{ $slide['alt'] }}" loading="lazy" />
-                </a>
-            @else
-                <div class="hero-slider__slide">
-                    <img src="{{ $slide['src'] }}" alt="{{ $slide['alt'] }}" loading="lazy" />
+    <div class="swiper hero-slider fi-not-prose" data-hero-slider>
+        <div class="swiper-wrapper">
+            @foreach ($slides as $slide)
+                <div class="swiper-slide">
+                    @if ($slide['url'])
+                        <a class="hero-slider__slide" href="{{ $slide['url'] }}">
+                            <img src="{{ $slide['src'] }}" alt="{{ $slide['alt'] }}" loading="lazy" />
+                        </a>
+                    @else
+                        <div class="hero-slider__slide">
+                            <img src="{{ $slide['src'] }}" alt="{{ $slide['alt'] }}" loading="lazy" />
+                        </div>
+                    @endif
                 </div>
-            @endif
-        @endforeach
+            @endforeach
+        </div>
+
+        <div class="swiper-button-next"></div>
+        <div class="swiper-button-prev"></div>
     </div>
 @endif

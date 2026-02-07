@@ -15,7 +15,9 @@
         @endphp
 
         <div class="fi-prose mt-8 max-w-none">
-            {!! Filament\Forms\Components\RichEditor\RichContentRenderer::make($content)->customBlocks([
+            {!! Filament\Forms\Components\RichEditor\RichContentRenderer::make($content)->plugins([
+                App\Filament\Forms\Components\RichEditor\Plugins\TextSizeRichContentPlugin::make(),
+            ])->customBlocks([
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock::class,

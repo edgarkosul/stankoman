@@ -9,6 +9,7 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideo
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\HeroSliderBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YandexMapBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
+use App\Filament\Forms\Components\RichEditor\Plugins\TextSizeRichContentPlugin;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\RichEditor;
@@ -70,12 +71,15 @@ class PageForm
                             ->jsHandler("confirm('Очистить описание?') && ".'$getEditor'.'()?.chain().focus().clearContent().run()'),
                     ])
                     ->toolbarButtons([
-                        ['bold', 'italic', 'underline', 'textColor', 'strike', 'subscript', 'superscript', 'small', 'lead', 'link'],
+                        ['bold', 'italic', 'underline', 'textColor', 'textSize', 'strike', 'subscript', 'superscript', 'small', 'lead', 'link'],
                         ['h1', 'h2', 'h3', 'alignStart', 'alignCenter', 'alignEnd'],
                         ['blockquote', 'codeBlock', 'bulletList', 'orderedList'],
                         ['table', 'attachFiles', 'customBlocks'],
                         ['undo', 'redo'],
                         ['horizontalRule', 'grid', 'gridDelete'],
+                    ])
+                    ->plugins([
+                        TextSizeRichContentPlugin::make(),
                     ])
                     ->enableToolbarButtons([['clearContent', 'clearFormatting']])
                     // если хочешь картинки из редактора:
