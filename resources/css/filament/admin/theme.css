@@ -4,35 +4,35 @@
 @source '../../../../resources/views/filament/**/*';
 
 @layer components {
-  .fi-panel-admin .fi-fo-repeater-item.fi-fo-repeater-item-has-header {
+  .fi-panel-admin.builder-menu-page .fi-fo-repeater-item.fi-fo-repeater-item-has-header {
     @apply ring-2 ring-primary-500/30 dark:ring-primary-400/40;
   }
 
-  .fi-panel-admin .fi-fo-repeater .fi-fo-repeater-add .fi-btn.fi-ac-btn-action {
+  .fi-panel-admin.builder-menu-page .fi-fo-repeater .fi-fo-repeater-add .fi-btn.fi-ac-btn-action {
     @apply bg-sky-500 text-white hover:bg-sky-400 dark:bg-sky-500 dark:hover:bg-sky-400 ring-1 ring-sky-500/50 dark:ring-sky-400/60;
   }
 
-  .fi-panel-admin .fi-fo-repeater-item-has-header .fi-fo-repeater-item-content .fi-fo-repeater .fi-fo-repeater-item-has-header {
+  .fi-panel-admin.builder-menu-page .fi-fo-repeater-item-has-header .fi-fo-repeater-item-content .fi-fo-repeater .fi-fo-repeater-item-has-header {
     @apply ring-2 ring-sky-500/40 dark:ring-sky-400/50;
   }
 
-  .fi-panel-admin .fi-page-main .fi-fo-field-label-col .fi-fo-field-label-content {
+  .fi-panel-admin.builder-menu-page .fi-page-main .fi-fo-field-label-col .fi-fo-field-label-content {
     @apply text-xl text-primary-600 dark:text-primary-400;
   }
 
-  .fi-panel-admin .fi-page-main .fi-fo-repeater-item-content .fi-fo-field-label-col .fi-fo-field-label-content {
+  .fi-panel-admin.builder-menu-page .fi-page-main .fi-fo-repeater-item-content .fi-fo-field-label-col .fi-fo-field-label-content {
     @apply text-xs text-gray-950 dark:text-white;
   }
 
-  .fi-panel-admin .fi-page-main .fi-fo-repeater-item-content .fi-fo-field:has(.fi-fo-repeater) > .fi-fo-field-label-col .fi-fo-field-label-content {
+  .fi-panel-admin.builder-menu-page .fi-page-main .fi-fo-repeater-item-content .fi-fo-field:has(.fi-fo-repeater) > .fi-fo-field-label-col .fi-fo-field-label-content {
     @apply text-xl text-sky-500 dark:text-sky-400;
   }
 
-  .fi-panel-admin .fi-fo-repeater-item-header .fi-fo-repeater-item-header-label {
+  .fi-panel-admin.builder-menu-page .fi-fo-repeater-item-header .fi-fo-repeater-item-header-label {
     @apply text-2xl leading-tight font-semibold;
   }
 
-  .fi-panel-admin .fi-fo-repeater-item-has-header .fi-fo-repeater-item-content .fi-fo-repeater .fi-fo-repeater-item-header .fi-fo-repeater-item-header-label {
+  .fi-panel-admin.builder-menu-page .fi-fo-repeater-item-has-header .fi-fo-repeater-item-content .fi-fo-repeater .fi-fo-repeater-item-header .fi-fo-repeater-item-header-label {
     @apply leading-tight font-semibold;
   }
 }

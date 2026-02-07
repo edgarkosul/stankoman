@@ -32,6 +32,8 @@ class BuilderMenu extends Page implements HasForms
 
     protected string $view = 'filament.resources.menus.pages.builder-menu';
 
+    protected array $extraBodyAttributes = ['class' => 'builder-menu-page'];
+
     public ?array $data = [];
 
     public function mount(int|string $record): void
