@@ -84,8 +84,8 @@
                 @endforeach
             </div>
 
-            <div class="swiper-button-next" data-image-gallery-next></div>
-            <div class="swiper-button-prev" data-image-gallery-prev></div>
+            <div class="swiper-button-next max-sm:!hidden" data-image-gallery-next></div>
+            <div class="swiper-button-prev max-sm:!hidden" data-image-gallery-prev></div>
         </div>
 
         <div class="swiper image-gallery__thumbs" data-image-gallery-thumbs>

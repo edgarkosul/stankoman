@@ -50,7 +50,7 @@
             @endforeach
         </div>
 
-        <div class="swiper-button-next"></div>
-        <div class="swiper-button-prev"></div>
+        <div class="swiper-button-next max-sm:!hidden"></div>
+        <div class="swiper-button-prev max-sm:!hidden"></div>
     </div>
 @endif
