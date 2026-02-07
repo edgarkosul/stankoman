@@ -20,6 +20,7 @@
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock::class,
+                App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\HeroSliderBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YandexMapBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock::class,
             ])->toUnsafeHtml() !!}

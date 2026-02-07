@@ -6,6 +6,7 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\HeroSliderBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YandexMapBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
 use Filament\Actions\Action;
@@ -87,6 +88,7 @@ class PageForm
                         ImageGalleryBlock::class,
                         RutubeVideoBlock::class,
                         YoutubeVideoBlock::class,
+                        HeroSliderBlock::class,
                         YandexMapBlock::class,
                         RawHtmlBlock::class,
                     ])
