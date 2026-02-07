@@ -1,6 +1,6 @@
 <header class="">
     <div class="bg-zinc-100 ">
-        <div class="flex max-w-7xl m-auto py-2 px-4 gap-2  justify-between">
+        <div class="flex max-w-7xl m-auto py-2 px-2 xs:px-3 sm:px-4 md:px-6 gap-2  justify-between">
             <div class="flex  flex-col gap-8">
                 <div class="flex items-center gap-2 text-sm">
                     <x-tooltip {{-- title="Режим работы:" --}} subtitle="г. Краснодар, трасса М4-ДОН">
@@ -59,7 +59,7 @@
             <x-header-menu />
         </div>
     </div>
-    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center flex-wrap lg:flex-nowrap justify-between gap-8">
+    <div class="max-w-7xl mx-auto px-2 xs:px-3 sm:px-4 md:px-6 py-4 flex items-center flex-wrap lg:flex-nowrap justify-between gap-8">
         {{-- LOGO --}}
         <div class="min-w-0 max-w-52 order-0 ">
             <a href="{{ route('home') }}" aria-label="На главную">
