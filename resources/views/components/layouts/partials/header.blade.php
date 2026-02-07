@@ -59,7 +59,7 @@
             <x-header-menu />
         </div>
     </div>
-    <div class="max-w-7xl mx-auto px-2 xs:px-3 sm:px-4 md:px-6 py-4 flex items-center flex-wrap lg:flex-nowrap justify-between gap-8">
+    <div class="max-w-7xl mx-auto px-2 xs:px-3 sm:px-4 md:px-6 py-4 flex items-center flex-wrap lg:flex-nowrap justify-between gap-4 xs:gap-6 md:gap-8">
         {{-- LOGO --}}
         <div class="min-w-0 max-w-52 order-0 ">
             <a href="{{ route('home') }}" aria-label="На главную">
