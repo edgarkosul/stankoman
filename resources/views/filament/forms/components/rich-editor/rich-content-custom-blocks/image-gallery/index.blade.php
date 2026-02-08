@@ -15,20 +15,29 @@
         return \Illuminate\Support\Facades\Storage::disk('public')->url($value);
     };
 
+    $resolver = app(\App\Support\ImageDerivativesResolver::class);
+
     $galleryImages = collect($images ?? [])
-        ->map(function ($image) use ($toUrl): array {
+        ->map(function ($image) use ($toUrl, $resolver): array {
             $path = is_array($image) ? ($image['file'] ?? null) : null;
             $alt = is_array($image) ? ($image['alt'] ?? '') : '';
             $src = $toUrl(is_string($path) ? $path : null);
             $width = null;
             $height = null;
+            $webpSrcset = null;
 
             if (is_string($path) && $path !== '') {
-                $storagePath = \Illuminate\Support\Str::startsWith($path, 'storage/')
-                    ? \Illuminate\Support\Str::after($path, 'storage/')
-                    : $path;
+                $storagePath = null;
 
-                if (! \Illuminate\Support\Str::startsWith($storagePath, ['http://', 'https://', '/'])) {
+                if (\Illuminate\Support\Str::startsWith($path, 'storage/')) {
+                    $storagePath = \Illuminate\Support\Str::after($path, 'storage/');
+                } elseif (\Illuminate\Support\Str::startsWith($path, '/storage/')) {
+                    $storagePath = \Illuminate\Support\Str::after($path, '/storage/');
+                } elseif (! \Illuminate\Support\Str::startsWith($path, ['http://', 'https://', '/'])) {
+                    $storagePath = $path;
+                }
+
+                if (is_string($storagePath) && $storagePath !== '') {
                     $disk = \Illuminate\Support\Facades\Storage::disk('public');
 
                     if ($disk->exists($storagePath)) {
@@ -42,6 +51,8 @@
                             }
                         }
                     }
+
+                    $webpSrcset = $resolver->buildWebpSrcset($storagePath);
                 }
             }
 
@@ -50,6 +61,7 @@
                 'alt' => $alt,
                 'width' => $width,
                 'height' => $height,
+                'webpSrcset' => $webpSrcset,
             ];
         })
         ->filter(fn (array $image): bool => filled($image['src']))
@@ -78,7 +90,14 @@
                             @endif
                             target="_blank"
                         >
-                            <img src="{{ $image['src'] }}" alt="{{ $image['alt'] }}" loading="lazy" />
+                            @if ($image['webpSrcset'])
+                                <picture>
+                                    <source type="image/webp" srcset="{{ $image['webpSrcset'] }}" sizes="100vw">
+                                    <img src="{{ $image['src'] }}" alt="{{ $image['alt'] }}" loading="lazy" />
+                                </picture>
+                            @else
+                                <img src="{{ $image['src'] }}" alt="{{ $image['alt'] }}" loading="lazy" />
+                            @endif
                         </a>
                     </div>
                 @endforeach
@@ -92,7 +111,14 @@
             <div class="swiper-wrapper">
                 @foreach ($galleryImages as $image)
                     <div class="swiper-slide">
-                        <img src="{{ $image['src'] }}" alt="{{ $image['alt'] }}" loading="lazy" />
+                        @if ($image['webpSrcset'])
+                            <picture>
+                                <source type="image/webp" srcset="{{ $image['webpSrcset'] }}" sizes="100vw">
+                                <img src="{{ $image['src'] }}" alt="{{ $image['alt'] }}" loading="lazy" />
+                            </picture>
+                        @else
+                            <img src="{{ $image['src'] }}" alt="{{ $image['alt'] }}" loading="lazy" />
+                        @endif
                     </div>
                 @endforeach
             </div>

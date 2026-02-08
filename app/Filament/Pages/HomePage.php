@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Concerns\QueuesContentImageDerivatives;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\HeroSliderBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock;
@@ -28,6 +29,8 @@ use UnitEnum;
 
 class HomePage extends FilamentPage
 {
+    use QueuesContentImageDerivatives;
+
     private const PAGE_SLUG = 'home';
     private const PAGE_TITLE = 'Главная';
 
@@ -141,6 +144,34 @@ class HomePage extends FilamentPage
     /**
      * @return array<Action>
      */
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('generate_webp_derivatives')
+                ->label('Сгенерировать WebP')
+                ->icon('heroicon-o-photo')
+                ->color('gray')
+                ->disabled(fn () => ! $this->hasAnyContentImages($this->homeContentValues()))
+                ->action(function () {
+                    $queued = $this->queueContentImageDerivatives($this->homeContentValues(), false);
+                    $this->notifyContentImageDerivativesQueued($queued, false);
+                }),
+            Action::make('regenerate_webp_derivatives')
+                ->label('Перегенерировать WebP (force)')
+                ->icon('heroicon-o-arrow-path')
+                ->color('warning')
+                ->requiresConfirmation()
+                ->disabled(fn () => ! $this->hasAnyContentImages($this->homeContentValues()))
+                ->action(function () {
+                    $queued = $this->queueContentImageDerivatives($this->homeContentValues(), true);
+                    $this->notifyContentImageDerivativesQueued($queued, true);
+                }),
+        ];
+    }
+
+    /**
+     * @return array<Action>
+     */
     protected function getFormActions(): array
     {
         return [
@@ -155,6 +186,15 @@ class HomePage extends FilamentPage
     protected function hasFullWidthFormActions(): bool
     {
         return false;
+    }
+
+    private function homeContentValues(): array
+    {
+        $state = $this->form->getState();
+
+        return [
+            $state['content'] ?? $this->page?->content,
+        ];
     }
 
     public function save(): void

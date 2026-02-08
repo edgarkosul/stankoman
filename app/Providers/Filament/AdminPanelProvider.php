@@ -59,6 +59,7 @@ class AdminPanelProvider extends PanelProvider
              ->brandName('StankoMan.ru')
              ->brandLogo(asset('images/logo.svg'))
              ->brandLogoHeight('3rem')
-             ->favicon(asset('favicon.svg'));
+             ->favicon(asset('favicon.svg'))
+             ->sidebarCollapsibleOnDesktop();
     }
 }
