@@ -1,4 +1,5 @@
-<header class="">
+<header class="relative" x-data="{ catalogOpen: false }" @keydown.escape.window="catalogOpen = false">
+
     <div class="bg-zinc-100 ">
         <div class="flex max-w-7xl m-auto py-2 px-2 xs:px-3 sm:px-4 md:px-6 gap-2  justify-between">
             <div class="flex  flex-col gap-8">
@@ -14,6 +15,7 @@
                     </x-tooltip>
                 </div>
             </div>
+
             <div class="flex gap-3">
                 <div class="flex flex-col gap-8">
                     <div class="flex items-center gap-3 text-sm">
@@ -59,7 +61,8 @@
             <x-header-menu />
         </div>
     </div>
-    <div class="max-w-7xl mx-auto px-2 xs:px-3 sm:px-4 md:px-6 py-4 flex items-center flex-wrap lg:flex-nowrap justify-between gap-4 xs:gap-6 md:gap-8">
+    <div
+        class=" max-w-7xl mx-auto px-2 xs:px-3 sm:px-4 md:px-6 py-4 flex items-center flex-wrap lg:flex-nowrap justify-between gap-4 xs:gap-6 md:gap-8">
         {{-- LOGO --}}
         <div class="min-w-0 max-w-52 order-0 ">
             <a href="{{ route('home') }}" aria-label="На главную">
@@ -69,9 +72,13 @@
         </div>
         {{-- КАТАЛОГ + ПОИСК --}}
         <div class="flex-1 flex gap-4 min-w-3xs sm:min-w-142 order-2 lg:order-1">
-            <button x-data x-tooltip.smart.bottom.offset-10.lt-xl="'КАТАЛОГ'"
-                class="flex items-center gap-2 bg-brand-green green hover:bg-[#1c7731] text-white wdth-80 font-bold h-11 px-4 cursor-pointer"><x-icon
-                    name="katalog" class="w-5 h-5 text-white" /><span class="hidden xl:block">КАТАЛОГ</span></button>
+            <button x-tooltip.smart.bottom.offset-10.lt-xl="'КАТАЛОГ'" @click.stop="catalogOpen = !catalogOpen"
+                :aria-expanded="catalogOpen" aria-controls="catalog-nav"
+                class="flex items-center gap-2 bg-brand-green green hover:bg-[#1c7731] text-white wdth-80 font-bold h-11 px-4 cursor-pointer">
+                <x-icon x-show="!catalogOpen" name="katalog" class="w-5 h-5 text-white" />
+                <x-icon x-show="catalogOpen" x-cloak name="x" class="w-5 h-5 text-white" />
+                <span class="hidden xl:block">КАТАЛОГ</span>
+            </button>
             <livewire:header.search class="flex-1 min-w-0" />
         </div>
         {{-- ИКОНКИ ПРАВЫЕ --}}
@@ -108,6 +115,10 @@
                 </div>
             </div>
         </div>
-
+        {{-- CATEGORIES MENU --}}
     </div>
+    <nav id="catalog-nav" x-show="catalogOpen" x-cloak x-transition @click.outside="catalogOpen = false"
+        class="absolute inset-x-0 z-50 bg-zinc-600 h-25">
+        <div class="max-w-7xl mx-auto">LI</div>
+    </nav>
 </header>

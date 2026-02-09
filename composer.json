@@ -10,14 +10,15 @@
         "blade-ui-kit/blade-heroicons": "^2.6",
         "blade-ui-kit/blade-icons": "^1.8",
         "filament/filament": "^5.0",
+        "intervention/image": "^3.0",
+        "intervention/image-laravel": "^1.5",
         "laravel/fortify": "^1.30",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
         "livewire/flux": "^2.9.0",
         "livewire/livewire": "^4.0",
         "mews/purifier": "^3.4",
-        "intervention/image": "^3.0",
-        "intervention/image-laravel": "^1.5"
+        "solution-forest/filament-tree": "^4.0"
     },
     "require-dev": {
         "barryvdh/laravel-ide-helper": "^3.6",

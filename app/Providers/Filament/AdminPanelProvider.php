@@ -63,6 +63,7 @@ class AdminPanelProvider extends PanelProvider
             ->favicon(asset('favicon.svg'))
             ->sidebarCollapsibleOnDesktop()
             ->navigationGroups([
+                NavigationGroup::make('Фильтры')->collapsed(),
                 NavigationGroup::make('Контент')->collapsed(),
                 NavigationGroup::make('Меню')->collapsed(),
             ]);

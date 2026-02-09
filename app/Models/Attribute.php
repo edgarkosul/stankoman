@@ -6,6 +6,7 @@ use App\Models\Unit;
 use App\Models\Category;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use App\Models\AttributeProductLink;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -203,6 +204,11 @@ class Attribute extends Model
             'attribute_id',
             'product_id'
         )->withTimestamps();
+    }
+
+    public function productLinks(): HasMany
+    {
+        return $this->hasMany(AttributeProductLink::class, 'attribute_id');
     }
 
     public function categories(): BelongsToMany

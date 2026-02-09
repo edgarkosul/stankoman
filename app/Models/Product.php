@@ -7,11 +7,13 @@ use Illuminate\Support\Str;
 use App\Models\AttributeOption;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use App\Models\ProductAttributeValue;
 use App\Models\Pivots\ProductCategory;
 use App\Models\ProductAttributeOption;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Attribute as AttributeDef;
+use App\Support\ImageDerivativesResolver;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
@@ -43,6 +45,8 @@ use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
  * @property string|null $image
  * @property string|null $thumb
  * @property array<array-key, mixed>|null $gallery
+ * @property-read string|null $image_url
+ * @property-read string|null $image_webp_srcset
  * @property string|null $meta_title
  * @property string|null $meta_description
  * @property string|null $promo_info
@@ -213,6 +217,62 @@ class Product extends Model
     public function getPriceAttribute(): float
     {
         return (float) $this->price_amount;
+    }
+
+    protected function imageUrl(): EloquentAttribute
+    {
+        return EloquentAttribute::make(
+            get: function ($value, array $attributes) {
+                $path = $attributes['image'] ?? null;
+                if (! is_string($path) || trim($path) === '') {
+                    return null;
+                }
+
+                $path = trim($path);
+
+                if (Str::startsWith($path, ['http://', 'https://', '/'])) {
+                    return $path;
+                }
+
+                if (Str::startsWith($path, 'storage/')) {
+                    return '/' . $path;
+                }
+
+                return Storage::disk('public')->url($path);
+            },
+        );
+    }
+
+    protected function imageWebpSrcset(): EloquentAttribute
+    {
+        return EloquentAttribute::make(
+            get: function ($value, array $attributes) {
+                $path = $attributes['image'] ?? null;
+                if (! is_string($path) || trim($path) === '') {
+                    return null;
+                }
+
+                $path = trim($path);
+
+                if (Str::startsWith($path, ['http://', 'https://', '//'])) {
+                    return null;
+                }
+
+                if (Str::startsWith($path, '/storage/')) {
+                    $path = Str::after($path, '/storage/');
+                } elseif (Str::startsWith($path, 'storage/')) {
+                    $path = Str::after($path, 'storage/');
+                } elseif (Str::startsWith($path, '/')) {
+                    return null;
+                }
+
+                if ($path === '') {
+                    return null;
+                }
+
+                return app(ImageDerivativesResolver::class)->buildWebpSrcset($path);
+            },
+        );
     }
 
 

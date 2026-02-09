@@ -7,7 +7,11 @@
         @endif
 
         <div class="mt-8 grid gap-6 md:grid-cols-[280px_1fr]">
-            <x-product.image :src="$product->image" :alt="$product->name" />
+            <x-product.image
+                :src="$product->image_url"
+                :webp-srcset="$product->image_webp_srcset"
+                :alt="$product->name"
+            />
 
             <div class="grid gap-4">
                 <div>

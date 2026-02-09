@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 use App\Models\Attribute as AttributeDef;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use SolutionForest\FilamentTree\Concern\ModelTree;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -57,6 +58,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  */
 class Category extends Model
 {
+    use ModelTree;
 
     protected $fillable = [
         'parent_id',
