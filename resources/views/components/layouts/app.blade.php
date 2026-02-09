@@ -22,6 +22,7 @@
     <div class="flex min-h-screen flex-col">
         <x-layouts.partials.info />
         <x-layouts.partials.header />
+        <x-navigation.breadcrumbs />
         <main class="flex-1">
             {{ $slot }}
         </main>

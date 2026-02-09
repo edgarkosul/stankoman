@@ -6,6 +6,7 @@ use App\Models\CategoryAttribute;
 use Illuminate\Support\Collection;
 use App\Models\Pivots\ProductCategory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Attribute as AttributeDef;
 use Illuminate\Database\Eloquent\Builder;
@@ -218,6 +219,14 @@ class Category extends Model
             if ($m->img && ! str_starts_with($m->img, 'http')) {
                 Storage::disk('public')->delete($m->img);
             }
+        });
+
+        static::saved(function () {
+            Cache::forget('catalog.menu.v1');
+        });
+
+        static::deleted(function () {
+            Cache::forget('catalog.menu.v1');
         });
 
     }

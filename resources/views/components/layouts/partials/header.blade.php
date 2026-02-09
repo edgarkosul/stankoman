@@ -1,4 +1,7 @@
-<header class="sticky top-0 z-50" x-data="{ catalogOpen: false }" @keydown.escape.window="catalogOpen = false">
+<header class="sticky top-0 z-50"
+    x-data="catalogMenu(@js($catalogMenuActiveRootId))"
+    @keydown.escape.window="catalogOpen = false"
+>
 
     <div class="bg-zinc-100 ">
         <div class="flex max-w-7xl m-auto py-2 px-2 xs:px-3 sm:px-4 md:px-6 gap-2  justify-between">
@@ -127,280 +130,64 @@
 
                     <!-- ЛЕВАЯ КОЛОНКА (фикс ширина + свой скролл) -->
                     <aside
-                        class="min-h-0 overflow-y-auto bg-zinc-500/30 px-5 py-6 overscroll-contain scrollbar-w-0.5 scrollbar scrollbar-thumb-brand-green/70 scrollbar-track-zinc-50 space-y-3 text-lg font-semibold">
-                        <p>Инструмент</p>
-                        <p>Генераторы</p>
-                        <p>Станки</p>
-                        <p>Ручной инструмент</p>
-                        <p>Сад и дача</p>
-                        <p>Сварочное оборудование</p>
-                        <p>Климат</p>
-                        <p>Клининг</p>
-                        <p>Насосы и водоснабжение</p>
-                        <p>Компрессоры и пневмоинструмент</p>
-                        <p>Товары для дома и офиса</p>
-                        <p>Лестницы, леса, вышки-туры</p>
-                        <p>Строительство</p>
-                        <p>Производство</p>
-                        <p>Склад</p>
-                        <p>Автотовары</p>
-                        <p>Дорожная продукция</p>
-                        <p>Расходка и крепеж</p>
-                        <p>Электрика и свет</p>
-                        <p>Отдых и туризм</p>
-                        <p>Электроинструмент</p>
-                        <p>Измерительный инструмент</p>
-                        <p>Оснастка и расходники</p>
-                        <p>Ручные столярные инструменты</p>
-                        <p>Садовая техника</p>
-                        <p>Бытовая техника</p>
-                        <p>Вентиляция и кондиционирование</p>
-                        <p>Отопительное оборудование</p>
-                        <p>Системы полива</p>
-                        <p>Лакокрасочные материалы</p>
-                        <p>Сухие строительные смеси</p>
-                        <p>Крепеж и метизы</p>
-                        <p>Пиломатериалы</p>
-                        <p>Изоляция и утеплители</p>
-                        <p>Сантехника и водоотведение</p>
-                        <p>Безопасность и охрана труда</p>
-                        <p>Крепежные элементы</p>
-                        <p>Фурнитура и комплектующие</p>
-                        <p>Освещение и электромонтаж</p>
-                        <p>Аккумуляторная техника</p>
-                        <p>...</p>
+                        class="min-h-0 overflow-y-auto bg-zinc-500/30 py-6 overscroll-contain scrollbar-w-0.5 scrollbar scrollbar-thumb-brand-green/70 scrollbar-track-zinc-50 text-lg font-semibold">
+                        @forelse ($catalogMenuRoots as $root)
+                            <a
+                                href="{{ route('catalog.leaf', ['path' => $root['menu_path']]) }}"
+                                class="block px-6 py-3 hover:text-brand-gray hover:bg-zinc-50"
+                                @mouseenter="setActive({{ $root['id'] }})"
+                                @mouseleave="cancelPending({{ $root['id'] }})"
+                                @focus="setActiveInstant({{ $root['id'] }})"
+                                :class="activeCatalogRootId === {{ $root['id'] }} ? 'text-brand-gray bg-zinc-50' : ''"
+                            >
+                                {{ $root['name'] }}
+                            </a>
+                        @empty
+                            <p class="text-sm text-zinc-600">Категорий пока нет.</p>
+                        @endforelse
                     </aside>
 
                     <!-- ПРАВАЯ ОБЛАСТЬ (остаток + свой скролл) -->
                     <section
-                        class="min-h-0 min-w-0 overflow-y-auto p-3 overscroll-contain scrollbar-w-0.5 scrollbar scrollbar-thumb-brand-green/70 scrollbar-track-zinc-50">
-                        <!-- Автоколонки: 1 -> 2 -> 3 -> 4 -->
-                        <div class="columns-1 md:columns-2 xl:columns-3 2xl:columns-4 gap-8 [column-fill:balance]">
-                            <!-- ВАЖНО: каждый блок не должен рваться между колонками -->
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Станки</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Деревообрабатывающие станки</li>
-                                    <li>Металлообрабатывающие станки</li>
-                                    <li>Принадлежности для станков</li>
-                                    <li>Станки для обработки камня</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Пескоструйное оборудование</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Пескоструйные аппараты</li>
-                                    <li>Пескоструйные камеры</li>
-                                    <li>Принадлежности для аппаратов</li>
-                                    <li>Принадлежности для камер</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Пневмоинструмент</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Пневмопистолеты</li>
-                                    <li>Наборы пневмоинструмента</li>
-                                    <li>Пневмогайковерты</li>
-                                    <li>Пневмошлифмашины</li>
-                                    <li>Пневмодрели</li>
-                                    <li>Пневмостеплеры</li>
-                                    <li>Пневмошуруповерты</li>
-                                    <li>...</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Средства защиты</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Защита от тока</li>
-                                    <li>Спецодежда</li>
-                                    <li>СИЗ органов дыхания</li>
-                                    <li>СИЗ органов зрения и головы</li>
-                                    <li>СИЗ органов слуха</li>
-                                    <li>СИЗ рук и ног</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Электроинструмент</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Дрели и шуруповерты</li>
-                                    <li>Перфораторы</li>
-                                    <li>Углошлифмашины</li>
-                                    <li>Лобзики и пилы</li>
-                                    <li>Фрезеры</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Оснастка и расходники</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Сверла и коронки</li>
-                                    <li>Диски отрезные</li>
-                                    <li>Шлифовальные круги</li>
-                                    <li>Наборы бит</li>
-                                    <li>Пильные полотна</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Генераторы</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Бензиновые генераторы</li>
-                                    <li>Дизельные генераторы</li>
-                                    <li>Инверторные генераторы</li>
-                                    <li>Стабилизаторы</li>
-                                    <li>Аксессуары</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Компрессоры</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Поршневые компрессоры</li>
-                                    <li>Винтовые компрессоры</li>
-                                    <li>Осушители воздуха</li>
-                                    <li>Ресиверы</li>
-                                    <li>Масла и фильтры</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Насосы и водоснабжение</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Скважинные насосы</li>
-                                    <li>Поверхностные насосы</li>
-                                    <li>Дренажные насосы</li>
-                                    <li>Насосные станции</li>
-                                    <li>Автоматика</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Садовая техника</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Газонокосилки</li>
-                                    <li>Триммеры</li>
-                                    <li>Культиваторы</li>
-                                    <li>Снегоуборщики</li>
-                                    <li>Садовые пылесосы</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Климатическая техника</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Обогреватели</li>
-                                    <li>Тепловые пушки</li>
-                                    <li>Вентиляторы</li>
-                                    <li>Осушители</li>
-                                    <li>Увлажнители</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Сварочное оборудование</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Сварочные аппараты</li>
-                                    <li>Полуавтоматы</li>
-                                    <li>Аргонодуговая сварка</li>
-                                    <li>Электроды и проволока</li>
-                                    <li>Маски и аксессуары</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Лакокрасочные материалы</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Краски и эмали</li>
-                                    <li>Лаки и грунты</li>
-                                    <li>Шпатлевки</li>
-                                    <li>Растворители</li>
-                                    <li>Инструменты для покраски</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Строительные смеси</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Цемент</li>
-                                    <li>Штукатурки</li>
-                                    <li>Плиточный клей</li>
-                                    <li>Наливные полы</li>
-                                    <li>Шпаклевки</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Освещение и электромонтаж</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Светильники</li>
-                                    <li>Лампы и прожекторы</li>
-                                    <li>Кабель и провод</li>
-                                    <li>Автоматы и щиты</li>
-                                    <li>Розетки и выключатели</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Крепеж и метизы</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Болты и гайки</li>
-                                    <li>Саморезы</li>
-                                    <li>Анкеры</li>
-                                    <li>Дюбели</li>
-                                    <li>Шайбы и шпильки</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Лестницы и подмости</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Стремянки</li>
-                                    <li>Телескопические лестницы</li>
-                                    <li>Вышки-туры</li>
-                                    <li>Подмости</li>
-                                    <li>Аксессуары</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Складское оборудование</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Стеллажи</li>
-                                    <li>Роклы и тележки</li>
-                                    <li>Погрузчики</li>
-                                    <li>Контейнеры</li>
-                                    <li>Упаковка</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Автотовары</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Домкраты</li>
-                                    <li>Пусковые устройства</li>
-                                    <li>Автохимия</li>
-                                    <li>Компрессоры для шин</li>
-                                    <li>Аксессуары</li>
-                                </ul>
-                            </article>
-
-                            <article class="mb-8 break-inside-avoid">
-                                <h3 class="font-semibold">Туризм и отдых</h3>
-                                <ul class="mt-2 space-y-1">
-                                    <li>Палатки</li>
-                                    <li>Спальные мешки</li>
-                                    <li>Кемпинговая мебель</li>
-                                    <li>Газовые горелки</li>
-                                    <li>Фонари</li>
-                                </ul>
-                            </article>
-
-                            <!-- добавляй дальше блоки-группы -->
-                        </div>
+                        class="min-h-0 min-w-0 overflow-y-auto px-3 py-6 overscroll-contain scrollbar-w-0.5 scrollbar scrollbar-thumb-brand-green/70 scrollbar-track-zinc-50">
+                        @forelse ($catalogMenuRoots as $root)
+                            <div x-show="activeCatalogRootId === {{ $root['id'] }}" x-cloak>
+                                <!-- Автоколонки: 1 -> 2 -> 3 -> 4 -->
+                                <div class="columns-1 md:columns-2 xl:columns-3 2xl:columns-4 gap-8 [column-fill:balance]">
+                                    <!-- ВАЖНО: каждый блок не должен рваться между колонками -->
+                                    @forelse ($root['children'] as $group)
+                                        <article class="mb-8 break-inside-avoid">
+                                            <h3 class="font-semibold text-brand-red">
+                                                <a
+                                                    href="{{ route('catalog.leaf', ['path' => $group['menu_path']]) }}"
+                                                    class="hover:underline hover:decoration-brand-red"
+                                                >
+                                                    {{ $group['name'] }}
+                                                </a>
+                                            </h3>
+                                            @if (!empty($group['children']))
+                                                <ul class="mt-2 space-y-1">
+                                                    @foreach ($group['children'] as $leaf)
+                                                        <li>
+                                                            <a
+                                                                href="{{ route('catalog.leaf', ['path' => $leaf['menu_path']]) }}"
+                                                                class="hover:underline hover:decoration-brand-red"
+                                                            >
+                                                                {{ $leaf['name'] }}
+                                                            </a>
+                                                        </li>
+                                                    @endforeach
+                                                </ul>
+                                            @endif
+                                        </article>
+                                    @empty
+                                        <p class="text-sm text-zinc-600">Подкатегорий пока нет.</p>
+                                    @endforelse
+                                </div>
+                            </div>
+                        @empty
+                            <p class="text-sm text-zinc-600">Каталог пуст.</p>
+                        @endforelse
                     </section>
                 </div>
             </div>

@@ -135,4 +135,39 @@ document.addEventListener('alpine:init', () => {
             this.open = false;
         },
     }));
+
+    Alpine.data('catalogMenu', (initialRootId = null) => ({
+        catalogOpen: false,
+        activeCatalogRootId: initialRootId,
+        pendingRootId: null,
+        hoverTimer: null,
+        setActive(id, delay = 140) {
+            if (this.activeCatalogRootId === id) {
+                this.pendingRootId = null;
+                return;
+            }
+            this.pendingRootId = id;
+            clearTimeout(this.hoverTimer);
+            this.hoverTimer = setTimeout(() => {
+                if (this.pendingRootId === id) {
+                    this.activeCatalogRootId = id;
+                }
+            }, delay);
+        },
+        cancelPending(id) {
+            if (this.pendingRootId !== id) {
+                return;
+            }
+            clearTimeout(this.hoverTimer);
+            this.pendingRootId = null;
+        },
+        setActiveInstant(id) {
+            clearTimeout(this.hoverTimer);
+            this.pendingRootId = null;
+            this.activeCatalogRootId = id;
+        },
+        clearTimer() {
+            clearTimeout(this.hoverTimer);
+        },
+    }));
 });
