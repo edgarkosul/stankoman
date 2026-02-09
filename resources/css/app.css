@@ -45,6 +45,11 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@plugin "tailwind-scrollbar" {
+    preferredstrategy: "pseudoelements";
+    nocompatible: true;
+}
+
 @theme {
     --font-sans:
         "Roboto Flex", "Roboto", ui-sans-serif, system-ui, sans-serif,
@@ -407,8 +412,10 @@ select:focus[data-flux-control] {
     background-color: currentColor;
 
     /* heroicons: arrow-top-right-on-square (можешь заменить на любую svg) */
-    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M13.5 6H18m0 0v4.5M18 6l-7.5 7.5M10.5 6H9A3 3 0 006 9v9a3 3 0 003 3h9a3 3 0 003-3v-1.5'/%3E%3C/svg%3E") no-repeat center / contain;
-    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M13.5 6H18m0 0v4.5M18 6l-7.5 7.5M10.5 6H9A3 3 0 006 9v9a3 3 0 003 3h9a3 3 0 003-3v-1.5'/%3E%3C/svg%3E") no-repeat center / contain;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M13.5 6H18m0 0v4.5M18 6l-7.5 7.5M10.5 6H9A3 3 0 006 9v9a3 3 0 003 3h9a3 3 0 003-3v-1.5'/%3E%3C/svg%3E")
+        no-repeat center / contain;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M13.5 6H18m0 0v4.5M18 6l-7.5 7.5M10.5 6H9A3 3 0 006 9v9a3 3 0 003 3h9a3 3 0 003-3v-1.5'/%3E%3C/svg%3E")
+        no-repeat center / contain;
 }
 
 @layer components {

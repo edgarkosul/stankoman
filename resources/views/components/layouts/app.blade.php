@@ -1,7 +1,7 @@
 @props(['title' => null])
 
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scrollbar-w-0.5 scrollbar scrollbar-thumb-brand-green scrollbar-track-zinc-50">
 
 <head>
 <link rel="icon" href="/favicon.ico?v=2" sizes="any">

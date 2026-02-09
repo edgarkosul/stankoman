@@ -7,11 +7,7 @@
         @endif
 
         <div class="mt-8 grid gap-6 md:grid-cols-[280px_1fr]">
-            <x-product.image
-                :src="$product->image_url"
-                :webp-srcset="$product->image_webp_srcset"
-                :alt="$product->name"
-            />
+            <x-product.image :src="$product->image_url" :webp-srcset="$product->image_webp_srcset" :alt="$product->name" />
 
             <div class="grid gap-4">
                 <div>
@@ -84,6 +80,144 @@
                 <h2 class="text-lg font-semibold">Контент вкладок</h2>
                 @include('pages.product.partials.tab-content')
             </section>
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
+        </div>
+        <div>Lorem ipsum dolor sit amet consectetur adipisicing elit. Inventore ab soluta nihil beatae ad rerum, optio
+            voluptatibus. Molestiae fugit maiores provident, consequatur sint eveniet velit quis vero, quae, error quo.
         </div>
     </div>
 </x-layouts.app>
