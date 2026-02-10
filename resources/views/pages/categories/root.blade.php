@@ -14,39 +14,38 @@
         <div class="mt-3 grid gap-4 text-sm xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
             @forelse ($subcategories as $sub)
                 @php
-                    $hasChildren = $sub->children->isNotEmpty();
                     $visibleChildren = $sub->children->take(5);
                     $hiddenChildren = $sub->children->slice(5);
                 @endphp
 
-                @if ($hasChildren)
-                    <article
-                        wire:key="subcategory-{{ $sub->id }}"
-                        class="relative isolate rounded-none bg-brand-gray/20 shadow-sm transition-shadow hover:shadow-lg overflow-hidden min-h-64"
-                    >
-                        @if ($sub->image_url)
-                            <img
-                                src="{{ $sub->image_url }}"
-                                alt="{{ $sub->name }}"
-                                class="pointer-events-none absolute -right-5 -bottom-5 h-48 w-48 object-contain mix-blend-multiply"
-                                loading="lazy"
-                            >
-                        @endif
+                <article
+                    wire:key="subcategory-{{ $sub->id }}"
+                    class="relative isolate rounded-none bg-brand-gray/20 shadow-sm transition-shadow hover:shadow-lg overflow-hidden"
+                >
+                    @if ($sub->image_url)
+                        <img
+                            src="{{ $sub->image_url }}"
+                            alt="{{ $sub->name }}"
+                            class="pointer-events-none absolute -right-8 -bottom-5 h-40 w-40 object-contain mix-blend-multiply"
+                            loading="lazy"
+                        >
+                    @endif
 
-                        <div class="p-4 pr-24">
-                            <a
-                                href="{{ route('catalog.leaf', ['path' => $sub->slug_path]) }}"
-                                class="text-base font-semibold text-zinc-900 hover:underline"
-                            >
-                                {{ $sub->name }}
-                            </a>
+                    <div class="p-4 pb-30">
+                        <a
+                            href="{{ route('catalog.leaf', ['path' => $sub->slug_path]) }}"
+                            class="text-lg font-semibold text-zinc-900 hover:underline drop-shadow-[0_0_4px_rgba(255,255,255,1)]"
+                        >
+                            {{ $sub->name }}
+                        </a>
 
+                        @if ($sub->children->isNotEmpty())
                             <ul class="mt-3 grid gap-1 text-sm text-zinc-900">
                                 @foreach ($visibleChildren as $child)
                                     <li>
                                         <a
                                             href="{{ route('catalog.leaf', ['path' => $sub->slug_path . '/' . $child->slug]) }}"
-                                            class="hover:underline"
+                                            class="hover:underline drop-shadow-[0_0_2px_rgba(255,255,255,1)]"
                                         >
                                             {{ $child->name }}
                                         </a>
@@ -81,35 +80,9 @@
                                     </div>
                                 </details>
                             @endif
-                        </div>
-                    </article>
-                @else
-                    <a
-                        wire:key="subcategory-{{ $sub->id }}"
-                        href="{{ route('catalog.leaf', ['path' => $sub->slug_path]) }}"
-                        class="relative isolate block rounded-none bg-brand-gray/20 shadow-sm transition-shadow hover:shadow-lg overflow-hidden min-h-64"
-                    >
-                        @if ($sub->image_url)
-                            <img
-                                src="{{ $sub->image_url }}"
-                                alt="{{ $sub->name }}"
-                                class="pointer-events-none absolute -right-5 -bottom-5 h-48 w-48 object-contain mix-blend-multiply"
-                                loading="lazy"
-                            >
                         @endif
-
-                        <div class="p-4 pr-24">
-                            <span class="text-base font-semibold text-zinc-900">
-                                {{ $sub->name }}
-                            </span>
-
-                            @php($productsCount = (int) ($sub->products_count ?? 0))
-                            <p class="mt-3 text-sm text-zinc-600">
-                                {{ $productsCount }} {{ $this->productPlural($productsCount) }}
-                            </p>
-                        </div>
-                    </a>
-                @endif
+                    </div>
+                </article>
             @empty
                 <div class="text-zinc-600">Подкатегорий пока нет.</div>
             @endforelse

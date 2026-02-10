@@ -8,9 +8,13 @@ use Faker\Factory as FakerFactory;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class ProductSeeder extends Seeder
 {
+    private ?array $picsPool = null;
+    private bool $picsWarned = false;
+
     public function run(): void
     {
         $leafCategories = Category::query()->leaf()->orderBy('id')->get();
@@ -65,15 +69,13 @@ class ProductSeeder extends Seeder
             '36 мес.',
         ];
 
-        $total = 1000;
-        $leafCount = $leafCategories->count();
-        $perLeaf = intdiv($total, $leafCount);
-        $remainder = $total % $leafCount;
+        $minPerLeaf = 80;
+        $maxPerLeaf = 120;
 
         $globalIndex = 1;
 
-        foreach ($leafCategories as $index => $category) {
-            $count = $perLeaf + ($index < $remainder ? 1 : 0);
+        foreach ($leafCategories as $category) {
+            $count = $faker->numberBetween($minPerLeaf, $maxPerLeaf);
 
             for ($i = 0; $i < $count; $i++) {
                 $brand = $faker->randomElement($brands);
@@ -87,8 +89,6 @@ class ProductSeeder extends Seeder
 
                 $inStock = $faker->boolean(85);
                 $qty = $inStock ? $faker->numberBetween(1, 200) : null;
-
-                $seed = sprintf('p%04d', $globalIndex);
 
                 $product = Product::create([
                     'name' => $name,
@@ -111,13 +111,9 @@ class ProductSeeder extends Seeder
                     'extra_description' => $faker->boolean(40) ? '<p>' . $faker->paragraph(2) . '</p>' : null,
                     'specs' => $faker->boolean(50) ? $faker->paragraph(2) : null,
                     'promo_info' => $faker->boolean(35) ? $faker->randomElement($promoLines) : null,
-                    'image' => $this->productImage($seed, 800, 600),
-                    'thumb' => $this->productImage($seed . '-thumb', 400, 300),
-                    'gallery' => [
-                        $this->productImage($seed . '-1', 800, 600),
-                        $this->productImage($seed . '-2', 800, 600),
-                        $this->productImage($seed . '-3', 800, 600),
-                    ],
+                    'image' => $this->randomPic(),
+                    'thumb' => $this->randomPic(),
+                    'gallery' => $this->randomGallery(3),
                     'meta_title' => $name,
                     'meta_description' => $faker->sentence(12),
                 ]);
@@ -141,15 +137,66 @@ class ProductSeeder extends Seeder
         Schema::enableForeignKeyConstraints();
     }
 
-    private function productImage(string $seed, int $width, int $height): string
-    {
-        return "https://picsum.photos/seed/{$seed}/{$width}/{$height}";
-    }
-
     private function discountFrom(int $price, \Faker\Generator $faker): int
     {
         $discount = (int) round($price * $faker->randomFloat(2, 0.6, 0.95));
 
         return $discount >= $price ? max(1, $price - 1) : $discount;
+    }
+
+    private function randomPic(): ?string
+    {
+        $pool = $this->picPool();
+        if ($pool === []) {
+            if (! $this->picsWarned) {
+                $this->command?->warn('Папка storage/app/public/pics пуста — изображения товаров будут пустыми.');
+                $this->picsWarned = true;
+            }
+
+            return null;
+        }
+
+        return $pool[array_rand($pool)];
+    }
+
+    private function randomGallery(int $count): array
+    {
+        $pool = $this->picPool();
+        if ($pool === []) {
+            return [];
+        }
+
+        if ($count <= 0) {
+            return [];
+        }
+
+        $poolCount = count($pool);
+        if ($count >= $poolCount) {
+            $gallery = [];
+            for ($i = 0; $i < $count; $i++) {
+                $gallery[] = $pool[array_rand($pool)];
+            }
+
+            return $gallery;
+        }
+
+        $keys = array_rand($pool, $count);
+        $keys = is_array($keys) ? $keys : [$keys];
+
+        return array_map(static fn (int $key) => $pool[$key], $keys);
+    }
+
+    private function picPool(): array
+    {
+        if ($this->picsPool !== null) {
+            return $this->picsPool;
+        }
+
+        $files = Storage::disk('public')->files('pics');
+        $files = array_values(array_filter($files, static function (string $path) {
+            return (bool) preg_match('/\\.(jpe?g|png|webp|gif)$/i', $path);
+        }));
+
+        return $this->picsPool = $files;
     }
 }

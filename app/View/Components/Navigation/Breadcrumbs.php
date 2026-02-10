@@ -103,14 +103,28 @@ class Breadcrumbs extends Component
 
         if ($name === 'catalog.leaf') {
             $path = (string) ($params['path'] ?? '');
-            return $path !== '' ? $this->fromCategoryPath($path) : [];
+            if ($path === '') {
+                return [];
+            }
+
+            $items = $this->fromCategoryPath($path);
+            if (empty($items)) {
+                return [];
+            }
+
+            return array_merge([$this->catalogRootItem()], $items);
         }
 
         if ($name === 'product.show') {
             if (isset($params['product']) && $params['product'] instanceof Product) {
                 $category = $params['product']->primaryCategory();
                 if ($category instanceof Category) {
-                    return $this->fromCategory($category, makeLastLink: true);
+                    $items = $this->fromCategory($category, makeLastLink: true);
+                    if (empty($items)) {
+                        return [];
+                    }
+
+                    return array_merge([$this->catalogRootItem()], $items);
                 }
             }
         }
@@ -124,6 +138,15 @@ class Breadcrumbs extends Component
         }
 
         return [];
+    }
+
+    /** Корневая страница каталога (catalog/) */
+    protected function catalogRootItem(): array
+    {
+        return [
+            'title' => 'Каталог',
+            'url' => route('catalog.leaf'),
+        ];
     }
 
     /** Собираем крошки по Category-цепочке */

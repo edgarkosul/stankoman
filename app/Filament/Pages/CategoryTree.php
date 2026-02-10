@@ -3,6 +3,9 @@
 namespace App\Filament\Pages;
 
 use App\Models\Category;
+use Filament\Notifications\Notification;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
@@ -16,6 +19,7 @@ use SolutionForest\FilamentTree\Pages\TreePage;
 use SolutionForest\FilamentTree\Actions\EditAction;
 use SolutionForest\FilamentTree\Actions\ViewAction;
 use SolutionForest\FilamentTree\Actions\DeleteAction;
+use SolutionForest\FilamentTree\Support\Utils;
 use App\Filament\Resources\Categories\CategoryResource;
 
 class CategoryTree extends TreePage
@@ -207,6 +211,101 @@ class CategoryTree extends TreePage
         ];
     }
 
+    public function updateTree(?array $list = null): array
+    {
+        $needReload = false;
+
+        if (! $list) {
+            return ['reload' => $needReload];
+        }
+
+        $records = $this->getRecords()?->keyBy(
+            fn ($record) => $record->getAttributeValue($record->getKeyName())
+        );
+
+        if (! $records) {
+            return ['reload' => $needReload];
+        }
+
+        $unnestedArr = [];
+        $defaultParentId = $this->getTreeRootLevelKey();
+
+        $this->unnestArray($unnestedArr, $list, $defaultParentId);
+
+        $changes = collect($unnestedArr)
+            ->map(fn (array $data, $id) => ['data' => $data, 'model' => $records->get($id)])
+            ->filter(fn (array $arr) => $arr['model'] instanceof Model)
+            ->map(function (array $arr) use ($defaultParentId) {
+                /** @var \Illuminate\Database\Eloquent\Model $model */
+                $model = $arr['model'];
+                $parentColumnName = method_exists($model, 'determineParentColumnName')
+                    ? $model->determineParentColumnName()
+                    : Utils::parentColumnName();
+                $orderColumnName = method_exists($model, 'determineOrderColumnName')
+                    ? $model->determineOrderColumnName()
+                    : Utils::orderColumnName();
+                $newParentId = $arr['data']['parent_id'];
+
+                if ($newParentId === $defaultParentId && method_exists($model, 'defaultParentKey')) {
+                    $newParentId = $model::defaultParentKey();
+                }
+
+                return [
+                    'model' => $model,
+                    'parent_column' => $parentColumnName,
+                    'order_column' => $orderColumnName,
+                    'parent_id' => $newParentId,
+                    'order' => $arr['data']['order'],
+                ];
+            })
+            ->filter(function (array $item) {
+                $model = $item['model'];
+
+                return (int) $model->getAttribute($item['parent_column']) !== (int) $item['parent_id']
+                    || (int) $model->getAttribute($item['order_column']) !== (int) $item['order'];
+            })
+            ->values();
+
+        if ($changes->isEmpty()) {
+            return ['reload' => $needReload];
+        }
+
+        DB::transaction(function () use ($changes): void {
+            foreach ($changes as $item) {
+                $model = $item['model'];
+                $parentColumn = $item['parent_column'];
+                $orderColumn = $item['order_column'];
+
+                $model->forceFill([
+                    $parentColumn => $item['parent_id'],
+                    $orderColumn => $this->temporaryOrderValue($model),
+                ])->saveQuietly();
+            }
+
+            foreach ($changes as $item) {
+                $model = $item['model'];
+                $parentColumn = $item['parent_column'];
+                $orderColumn = $item['order_column'];
+
+                $model->forceFill([
+                    $parentColumn => $item['parent_id'],
+                    $orderColumn => $item['order'],
+                ])->save();
+            }
+        });
+
+        $needReload = true;
+
+        Notification::make()
+            ->success()
+            ->title(__('filament-actions::edit.single.notifications.saved.title'))
+            ->send();
+
+        $this->dispatch('refreshTree');
+
+        return ['reload' => $needReload];
+    }
+
     protected static function categoryOptions(): array
     {
         // Заберём всё дерево и развернём в плоский список с depth
@@ -234,6 +333,25 @@ class CategoryTree extends TreePage
     {
         // [root, ..., current] → depth = count - 1
         return $record->ancestorsAndSelf()->count() - 1;
+    }
+
+    private function temporaryOrderValue(Model $model): int
+    {
+        return -1 * (1_000_000 + (int) $model->getKey());
+    }
+
+    private function unnestArray(array &$result, array $current, $parent): void
+    {
+        foreach ($current as $index => $item) {
+            $key = data_get($item, 'id');
+            $result[$key] = [
+                'parent_id' => $parent,
+                'order' => $index + 1,
+            ];
+            if (isset($item['children']) && count($item['children'])) {
+                $this->unnestArray($result, $item['children'], $key);
+            }
+        }
     }
 
 

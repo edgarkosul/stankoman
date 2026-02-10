@@ -157,7 +157,7 @@
                                     <!-- ВАЖНО: каждый блок не должен рваться между колонками -->
                                     @forelse ($root['children'] as $group)
                                         <article class="mb-8 break-inside-avoid">
-                                            <h3 class="font-semibold text-brand-red">
+                                            <h3 class="text-lg font-semibold ">
                                                 <a
                                                     href="{{ route('catalog.leaf', ['path' => $group['menu_path']]) }}"
                                                     class="hover:underline hover:decoration-brand-red"
@@ -171,7 +171,7 @@
                                                         <li>
                                                             <a
                                                                 href="{{ route('catalog.leaf', ['path' => $leaf['menu_path']]) }}"
-                                                                class="hover:underline hover:decoration-brand-red"
+                                                                class="hover:underline hover:decoration-brand-red ml-1"
                                                             >
                                                                 {{ $leaf['name'] }}
                                                             </a>

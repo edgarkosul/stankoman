@@ -54,7 +54,7 @@ class LeafCategoryPage extends Component
 
     protected function resolveCategoryFromPath(string $path): Category
     {
-        $slugs = array_values(array_filter(explode('/', $path), fn (string $slug) => $slug !== ''));
+        $slugs = array_values(array_filter(explode('/', $path), fn(string $slug) => $slug !== ''));
 
         $parentId = Category::defaultParentKey();
         $category = null;
@@ -71,15 +71,50 @@ class LeafCategoryPage extends Component
         return $category;
     }
 
+    public function categoryPlural(int $count): string
+    {
+        $mod10 = $count % 10;
+        $mod100 = $count % 100;
+
+        if ($mod10 === 1 && $mod100 !== 11) {
+            return 'категория';
+        }
+
+        if ($mod10 >= 2 && $mod10 <= 4 && ($mod100 < 12 || $mod100 > 14)) {
+            return 'категории';
+        }
+
+        return 'категорий';
+    }
+
+    public function productPlural(int $count): string
+    {
+        $mod10 = $count % 10;
+        $mod100 = $count % 100;
+
+        if ($mod10 === 1 && $mod100 !== 11) {
+            return 'товар';
+        }
+
+        if ($mod10 >= 2 && $mod10 <= 4 && ($mod100 < 12 || $mod100 > 14)) {
+            return 'товара';
+        }
+
+        return 'товаров';
+    }
+
     public function render()
     {
         if (! $this->category) {
             $subcategories = Category::query()
                 ->where('parent_id', Category::defaultParentKey())
+                ->with(['children' => fn($q) => $q
+                    ->select(['id', 'name', 'slug', 'parent_id'])
+                    ->orderBy('order')])
                 ->orderBy('order')
                 ->get(['id', 'name', 'slug', 'img', 'parent_id']);
 
-            return view('pages.categories.branch', [
+            return view('pages.categories.root', [
                 'category' => null,
                 'subcategories' => $subcategories,
             ])->layout('layouts.catalog', [
@@ -89,7 +124,13 @@ class LeafCategoryPage extends Component
 
         if ($this->category->children()->exists()) {
             $subcategories = $this->category->children()
+                ->with(['children' => fn($q) => $q
+                    ->select(['id', 'name', 'slug', 'parent_id'])
+                    ->orderBy('order')])
                 ->select(['id', 'name', 'slug', 'img', 'parent_id'])
+                ->withCount([
+                    'products as products_count' => fn($q) => $q->where('is_active', true),
+                ])
                 ->orderBy('order')
                 ->get();
 
@@ -104,7 +145,7 @@ class LeafCategoryPage extends Component
         $query = Product::query()
             ->select(['id', 'name', 'slug', 'price_amount', 'discount_price', 'image', 'thumb', 'popularity', 'sku'])
             ->where('is_active', true)
-            ->whereHas('categories', fn ($q) => $q->whereKey($this->category->getKey()));
+            ->whereHas('categories', fn($q) => $q->whereKey($this->category->getKey()));
 
         if ($this->q) {
             $query->where('name', 'like', '%' . trim($this->q) . '%');

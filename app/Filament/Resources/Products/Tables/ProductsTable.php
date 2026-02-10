@@ -8,7 +8,6 @@ use Filament\Tables\Table;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\EditAction;
-use Filament\Actions\ViewAction;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Filament\Tables\Filters\Filter;
@@ -30,6 +29,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Filament\Infolists\Components\TextEntry;
 use App\Filament\Resources\Products\Pages\CreateProduct;
+use App\Filament\Resources\Products\ProductResource;
 
 class ProductsTable
 {
@@ -42,6 +42,7 @@ class ProductsTable
                 TextColumn::make('name')
                     ->label('Название')
                     ->color('primary')
+                    ->url(fn(Product $record): string => ProductResource::getUrl('edit', ['record' => $record]))
                     ->searchable(),
                 TextColumn::make('slug')
                     ->label('ЧПУ')
@@ -141,8 +142,6 @@ class ProductsTable
 
             ])
             ->recordActions([
-                ViewAction::make()
-                    ->label(''),
                 EditAction::make()
                     ->label(''),
                 Action::make('duplicate')
