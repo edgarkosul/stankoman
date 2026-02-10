@@ -1,73 +1,42 @@
-<div class="mx-auto max-w-7xl px-4 py-10">
-    <h1 class="text-3xl font-semibold">{{ $category->name }}</h1>
+<section class="mx-auto max-w-7xl px-4 my-6 space-y-4">
+    <h1 class="text-3xl font-bold">{{ $category->name }}</h1>
 
-    @if (!empty($category->meta_description))
-        <p class="mt-2 text-sm text-zinc-600">
-            {{ $category->meta_description }}
-        </p>
-    @endif
+    <div class="flex flex-col md:flex-row gap-6">
+        <aside class="md:w-72 shrink-0">
+            <div class="rounded-lg border bg-white p-4 text-sm text-zinc-600">
+                <div class="text-base font-semibold text-zinc-900">Фильтры</div>
+                <p class="mt-2">Скоро появятся.</p>
+            </div>
+        </aside>
 
-    <div class="mt-6 grid gap-4 md:grid-cols-2">
-        <label class="grid gap-2">
-            <span class="text-sm font-medium">Поиск</span>
-            <input
-                type="text"
-                class="w-full rounded border border-zinc-300 px-3 py-2"
-                wire:model.live="q"
-                placeholder="Название товара"
-            />
-        </label>
+        <div class="flex-1 space-y-4">
+            <div class="flex flex-wrap items-center gap-3">
+                <input
+                    type="search"
+                    wire:model.live.debounce.500ms="q"
+                    placeholder="Поиск в разделе..."
+                    class="max-w-full w-64 rounded-md border border-gray-300 pl-3 pr-10 h-10 outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                />
+                <select
+                    wire:model.live="sort"
+                    class="h-10 rounded-md border border-gray-300 bg-white px-3"
+                >
+                    <option value="popular">По популярности</option>
+                    <option value="price_asc">Цена по возрастанию</option>
+                    <option value="price_desc">Цена по убыванию</option>
+                    <option value="new">Новинки</option>
+                </select>
+            </div>
 
-        <label class="grid gap-2">
-            <span class="text-sm font-medium">Сортировка</span>
-            <select
-                class="w-full rounded border border-zinc-300 px-3 py-2"
-                wire:model.live="sort"
-            >
-                <option value="popular">Популярные</option>
-                <option value="price_asc">Цена по возрастанию</option>
-                <option value="price_desc">Цена по убыванию</option>
-                <option value="new">Новые</option>
-            </select>
-        </label>
-    </div>
-
-    <div class="mt-8">
-        <h2 class="text-lg font-semibold">Фильтры (заглушка)</h2>
-        <ul class="mt-2 list-disc pl-5 text-sm text-zinc-600">
-            @forelse ($filtersSchema as $filter)
-                <li wire:key="filter-{{ $filter['key'] }}">
-                    {{ $filter['label'] }} ({{ $filter['type'] }})
-                </li>
-            @empty
-                <li>Фильтры отсутствуют.</li>
-            @endforelse
-        </ul>
-    </div>
-
-    <div class="mt-10">
-        <h2 class="text-lg font-semibold">Товары</h2>
-
-        <div class="mt-4 grid gap-4">
-            @forelse ($products as $product)
-                <div class="rounded border border-zinc-200 p-4" wire:key="product-{{ $product->id }}">
-                    <div class="text-base font-medium">
-                        <a href="{{ route('product.show', $product) }}" class="hover:underline">
-                            {{ $product->name }}
-                        </a>
-                    </div>
-
-                    <div class="mt-1 text-sm text-zinc-600">
-                        Цена: {{ number_format($product->price_amount, 0, ' ', ' ') }} ₽
-                    </div>
+            @if ($products->isEmpty())
+                <p class="text-zinc-600">Товары не найдены.</p>
+            @else
+                <div class="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                    @foreach ($products as $product)
+                        <x-product.card :product="$product" :index="$loop->index" :category="$category" />
+                    @endforeach
                 </div>
-            @empty
-                <p class="text-sm text-zinc-600">В этой категории пока нет товаров.</p>
-            @endforelse
-        </div>
-
-        <div class="mt-6">
-            {{ $products->links() }}
+            @endif
         </div>
     </div>
-</div>
+</section>
