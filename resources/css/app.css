@@ -462,7 +462,12 @@ select:focus[data-flux-control] {
     }
 
     .product-card__swiper {
-        @apply h-48;
+        @apply relative h-48;
+        --swiper-pagination-bullet-size: 6px;
+        --swiper-pagination-bullet-inactive-color: var(--color-brand-gray);
+        --swiper-pagination-bullet-inactive-opacity: 0.6;
+        --swiper-pagination-color: var(--color-brand-red);
+        --swiper-pagination-bottom: 0.5rem;
     }
 
     .product-card__pagination {
@@ -470,7 +475,7 @@ select:focus[data-flux-control] {
     }
 
     .product-card__pagination .swiper-pagination-bullet {
-        @apply w-1.5 h-1.5 rounded-full bg-brand-gray/60 opacity-100;
+        @apply w-1.5 h-1.5 rounded-full;
     }
 
     .product-card__pagination .swiper-pagination-bullet-active {
