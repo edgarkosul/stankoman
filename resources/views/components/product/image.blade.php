@@ -41,9 +41,8 @@
         $webpSrcset = $resolver->buildWebpSrcset($storagePath);
     }
 
-    $imgAttributes = $attributes->merge(['class' => 'h-auto w-full rounded border border-zinc-200']);
+    $imgAttributes = $attributes->merge(['class' => 'w-full ']);
 @endphp
-
 @if ($url)
     @if ($webpSrcset)
         <picture>

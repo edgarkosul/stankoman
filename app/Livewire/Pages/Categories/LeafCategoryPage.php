@@ -143,7 +143,18 @@ class LeafCategoryPage extends Component
         }
 
         $query = Product::query()
-            ->select(['id', 'name', 'slug', 'price_amount', 'discount_price', 'image', 'thumb', 'popularity', 'sku'])
+            ->select([
+                'id',
+                'name',
+                'slug',
+                'price_amount',
+                'discount_price',
+                'image',
+                'thumb',
+                'gallery',
+                'popularity',
+                'sku',
+            ])
             ->where('is_active', true)
             ->whereHas('categories', fn($q) => $q->whereKey($this->category->getKey()));
 

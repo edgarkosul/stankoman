@@ -1,4 +1,4 @@
-<header class="sticky top-0 z-50"
+<header class="sticky top-0 z-50 shadow-md"
     x-data="catalogMenu(@js($catalogMenuActiveRootId))"
     @keydown.escape.window="catalogOpen = false"
 >

@@ -24,14 +24,14 @@
 @endif
 
 @if (! $isHome)
-    <nav class="w-full bg-zinc-100 text-sm text-zinc-700 {{ $class }}">
+    <nav class="w-full text-sm text-zinc-700 {{ $class }}">
         <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3 xs:flex-row xs:items-center xs:justify-between">
             <ol class="flex flex-wrap items-center gap-1 xs:gap-2 lg:gap-3">
                 @if ($home)
                     <li class="flex">
                         <a href="{{ url('/') }}" class="inline-flex items-center gap-2 hover:underline">
                             <x-icon name="home" class="h-4 w-4" />
-                            <span class="text-brand-red">Главная</span>
+                            <span>Главная</span>
                         </a>
                     </li>
                 @endif

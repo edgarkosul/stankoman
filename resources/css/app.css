@@ -5,6 +5,7 @@
 @import "tippy.js/animations/shift-away-subtle.css";
 @import "swiper/css";
 @import "swiper/css/navigation";
+@import "swiper/css/pagination";
 @import "swiper/css/thumbs";
 @import "swiper/css/free-mode";
 
@@ -458,6 +459,22 @@ select:focus[data-flux-control] {
 
     .image-gallery img {
         @apply h-full w-full object-cover;
+    }
+
+    .product-card__swiper {
+        @apply h-48;
+    }
+
+    .product-card__pagination {
+        @apply absolute bottom-2 left-0 right-0 flex items-center justify-center gap-1;
+    }
+
+    .product-card__pagination .swiper-pagination-bullet {
+        @apply w-1.5 h-1.5 rounded-full bg-brand-gray/60 opacity-100;
+    }
+
+    .product-card__pagination .swiper-pagination-bullet-active {
+        @apply bg-brand-red;
     }
 
     .hero-slider {

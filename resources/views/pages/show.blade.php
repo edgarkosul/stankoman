@@ -4,12 +4,6 @@
             {{ $page->title }}
         </h1>
 
-        @if (!empty($page->meta_description))
-            <p class="mt-2 text-sm text-zinc-600">
-                {{ $page->meta_description }}
-            </p>
-        @endif
-
         @php
             $content = blank($page->content) ? '<p></p>' : $page->content;
         @endphp
