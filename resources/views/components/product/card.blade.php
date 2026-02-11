@@ -37,14 +37,16 @@
 
 <div wire:key="product-card-{{ $product->id }}"
     class="relative overflow-hidden bg-white flex flex-col justify-between ring-0 ring-transparent transition-shadow duration-200 ease-out hover:ring-6 hover:ring-white">
-    <a href="{{ route('product.show', $product->slug) }}" target="_blank" rel="noopener noreferrer"
+    <a href="{{ route('product.show', $product->slug) }}" rel="noopener noreferrer"
         class="relative flex h-full flex-col justify-between" aria-label="Открыть товар">
         @if ($pct)
             <div
-                class="absolute right-0 inline-flex items-center justify-center text-lg py-2 px-3 font-medium bg-brand-red/30 text-brand-red z-30">
+                class="absolute left-0 inline-flex items-center justify-center text-lg py-2 px-3 font-medium bg-brand-red/70 text-white z-30">
                 −{{ $pct }}%
             </div>
         @endif
+        <x-icon name="bokmark" class="absolute top-4 right-4 size-7 text-zinc-700/70  z-30" />
+        <x-icon name="compare" class="absolute top-14 right-4 size-7 text-zinc-700/70 z-30" />
 
         <div class="flex flex-col justify-start min-w-0">
             <div class="swiper product-card__swiper h-48 w-full min-w-0" style="height: 12rem;">
@@ -82,11 +84,13 @@
                     @endif
                 </div>
             </div>
+            <div class="text-lg px-4">{{ $product->name }}</div>
             @if ($product->sku)
-                <div class="font-medium text-sm px-4 py-2">Артикул: {{ $product->sku }}</div>
+                <div class="text-sm px-4 py-2 text-brand-gray">Артикул: {{ $product->sku }}</div>
             @endif
+            <button class="text-lg font-bold uppercase bg-brand-green p-3 m-4 hover:bg-brand-green/90 text-white flex items-center gap-2 justify-center"><x-icon name="cart" class="w-6 h-6 -translate-y-0.5 mr-2 " />В корзину</button>
 
-            <div class="font-semibold text-brand-900 px-4">{{ $product->name }}</div>
+
         </div>
     </a>
 </div>

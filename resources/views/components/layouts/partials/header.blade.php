@@ -96,7 +96,7 @@
 
             <div x-data x-tooltip.smart.bottom.offset-10.lt-xl="'Сравнение'"
                 class="flex-1 flex flex-col items-center text-sm cursor-pointer">
-                <x-icon name="compare" class="size-6 xl:size-5 -translate-y-0.5" />
+                <x-icon name="compare" class="size-6 xl:size-5 -translate-y-0.5 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red" />
                 <div>
                     <span class="hidden xl:block">Сравнение</span>
                 </div>
@@ -104,7 +104,7 @@
 
             <div x-data x-tooltip.smart.bottom.offset-10.lt-xl="'Избранное'"
                 class="flex-1 flex flex-col items-center text-sm cursor-pointer">
-                <x-icon name="bokmark" class="size-6 xl:size-5 -translate-y-0.5" />
+                <x-icon name="bokmark" class="size-6 xl:size-5 -translate-y-0.5 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red" />
                 <div>
                     <span class="hidden xl:block">Избранное</span>
                 </div>
@@ -112,7 +112,7 @@
 
             <div x-data x-tooltip.smart.bottom.offset-10.lt-xl="'Корзина'"
                 class="flex-1 flex flex-col items-center text-sm cursor-pointer">
-                <x-icon name="cart" class="size-6 xl:size-5 -translate-y-0.5" />
+                <x-icon name="cart" class="size-6 xl:size-5 -translate-y-0.5 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red" />
                 <div>
                     <span class="hidden xl:block">Корзина</span>
                 </div>
