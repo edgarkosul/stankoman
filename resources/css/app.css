@@ -454,11 +454,11 @@ select:focus[data-flux-control] {
     }
 
     .image-gallery__main {
-        @apply h-96 sm:h-128  shadow border border-brand-green;
+        @apply h-96 xs:h-128;
     }
 
     .image-gallery__thumbs {
-        @apply h-20 sm:h-36;
+        @apply h-20 xs:h-36;
     }
 
     .image-gallery__thumbs .swiper-slide {
@@ -475,6 +475,55 @@ select:focus[data-flux-control] {
 
     .image-gallery img {
         @apply h-full w-full object-cover;
+    }
+
+    .product-image-gallery {
+        @apply max-w-none mx-0;
+    }
+
+    .product-image-gallery .image-gallery__main {
+        @apply h-96 xs:h-128;
+    }
+
+    .product-image-gallery .image-gallery__thumbs {
+        @apply h-24 xs:h-28;
+    }
+
+    .product-image-gallery .image-gallery__thumbs .swiper-slide {
+        @apply opacity-60;
+    }
+
+    .product-image-gallery .image-gallery__thumbs .swiper-slide-thumb-active {
+        @apply opacity-100 ring-2 ring-inset ring-brand-red;
+    }
+
+    .product-image-gallery img {
+        @apply object-contain;
+    }
+
+    @media (min-width: 480px) {
+        .product-image-gallery {
+            grid-template-columns: 5.5rem minmax(0, 1fr);
+            grid-template-areas: "thumbs main";
+            @apply items-stretch;
+        }
+
+        .product-image-gallery [data-image-gallery-main] {
+            grid-area: main;
+        }
+
+        .product-image-gallery [data-image-gallery-thumbs] {
+            grid-area: thumbs;
+            height: 32rem;
+        }
+
+        .product-image-gallery [data-image-gallery-thumbs] .swiper-wrapper {
+            @apply h-full;
+        }
+
+        .product-image-gallery [data-image-gallery-thumbs] .swiper-slide {
+            @apply h-auto;
+        }
     }
 
     .product-card__swiper {
@@ -519,6 +568,13 @@ select:focus[data-flux-control] {
 /* \[:where(&)\]:size-4 {
     @apply size-4;
 } */
+
+/* Swiper vendor CSS is imported as unlayered CSS.
+   Keep disabled button overrides unlayered too, otherwise defaults can win over @layer rules. */
+.product-image-gallery .swiper-button-disabled {
+    pointer-events: auto !important;
+    cursor: default;
+}
 
 /* noUiSlider vendor CSS is imported as unlayered CSS.
    Keep slider overrides unlayered too, otherwise defaults can win over @layer rules. */

@@ -18,13 +18,29 @@ const initImageGalleries = () => {
             return;
         }
 
-        const thumbsSwiper = new Swiper(thumbsEl, {
+        const thumbsDirection = gallery.dataset.imageGalleryThumbsDirection;
+        const thumbsOptions = {
             modules: [FreeMode, Thumbs],
             spaceBetween: 10,
             slidesPerView: 4,
             freeMode: true,
             watchSlidesProgress: true,
-        });
+        };
+
+        if (thumbsDirection === 'vertical') {
+            thumbsOptions.breakpoints = {
+                0: {
+                    direction: 'horizontal',
+                    slidesPerView: 4,
+                },
+                480: {
+                    direction: 'vertical',
+                    slidesPerView: 4,
+                },
+            };
+        }
+
+        const thumbsSwiper = new Swiper(thumbsEl, thumbsOptions);
 
         const nextEl = gallery.querySelector('[data-image-gallery-next]');
         const prevEl = gallery.querySelector('[data-image-gallery-prev]');
