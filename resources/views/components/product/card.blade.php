@@ -36,7 +36,7 @@
 @endphp
 
 <div wire:key="product-card-{{ $product->id }}"
-    class="relative overflow-hidden bg-white flex flex-col justify-between ring-0 ring-transparent transition-shadow duration-200 ease-out hover:ring-6 hover:ring-white">
+    class="relative overflow-hidden bg-white flex flex-col justify-between shadow-sm ring-0 ring-transparent transition-shadow duration-200 ease-out hover:shadow-xl hover:ring-6 hover:ring-white">
     <a href="{{ route('product.show', $product->slug) }}" rel="noopener noreferrer"
         class="relative flex h-full flex-col justify-between" aria-label="Открыть товар">
         @if ($pct)
@@ -45,8 +45,14 @@
                 −{{ $pct }}%
             </div>
         @endif
-        <x-icon name="bokmark" class="absolute top-4 right-4 size-7 text-zinc-700/70  z-30" />
-        <x-icon name="compare" class="absolute top-14 right-4 size-7 text-zinc-700/70 z-30" />
+        <div class="group absolute top-4 right-4 z-30 size-7" data-product-card-swiper-ignore>
+            <x-icon name="bokmark"
+                class="size-full text-zinc-700/70 group-hover:[&_.icon-base]:text-zinc-700 group-hover:[&_.icon-accent]:text-rose-600" />
+        </div>
+        <div class="group absolute top-14 right-4 z-30 size-7" data-product-card-swiper-ignore>
+            <x-icon name="compare"
+                class="size-full text-zinc-700/70 group-hover:[&_.icon-base]:text-zinc-700 group-hover:[&_.icon-accent]:text-rose-600" />
+        </div>
 
         <div class="flex flex-col justify-start min-w-0">
             <div class="swiper product-card__swiper h-48 w-full min-w-0" style="height: 12rem;">

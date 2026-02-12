@@ -122,6 +122,12 @@ const initProductCardSwipers = () => {
         let rafId = 0;
         let lastIndex = swiper.activeIndex;
         const desktopQuery = window.matchMedia('(min-width: 1024px)');
+        const ignoreSelector = '[data-product-card-swiper-ignore]';
+        const isIgnoredZone = (event) => {
+            const topElement = document.elementFromPoint(event.clientX, event.clientY);
+
+            return topElement instanceof Element && Boolean(topElement.closest(ignoreSelector));
+        };
 
         if (paginationEl) {
             paginationEl.addEventListener('click', (event) => {
@@ -136,6 +142,10 @@ const initProductCardSwipers = () => {
 
         const handleMove = (event) => {
             if (!desktopQuery.matches) {
+                return;
+            }
+
+            if (isIgnoredZone(event)) {
                 return;
             }
 
@@ -163,8 +173,13 @@ const initProductCardSwipers = () => {
             rafId = requestAnimationFrame(() => handleMove(event));
         }, { passive: true });
 
-        swiperEl.addEventListener('mouseleave', () => {
+        swiperEl.addEventListener('mouseleave', (event) => {
             if (!desktopQuery.matches || swiper.destroyed) {
+                return;
+            }
+
+            const relatedTarget = event.relatedTarget;
+            if (relatedTarget instanceof Element && relatedTarget.closest(ignoreSelector)) {
                 return;
             }
 
@@ -282,6 +297,9 @@ const initNouisliderOnRange = (root = document) => {
 
         const startMin = minInput?.value !== '' ? parseFloat(minInput.value) : metaMin;
         const startMax = maxInput?.value !== '' ? parseFloat(maxInput.value) : metaMax;
+
+        // Keep custom slider class in case DOM libraries rewrite className during re-init.
+        sliderEl.classList.add('ks-range');
 
         noUiSlider.create(sliderEl, {
             start: [startMin, startMax],

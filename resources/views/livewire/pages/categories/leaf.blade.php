@@ -1,4 +1,4 @@
-<section class="mx-auto max-w-7xl px-4 my-6 space-y-4">
+<section class="mx-auto max-w-7xl px-4 py-6 space-y-4 bg-zinc-100/80">
     <h1 class="text-3xl font-bold">{{ $category->name }}</h1>
 
     <div class="flex flex-col md:flex-row gap-4">
@@ -60,8 +60,8 @@
                 aria-modal="true"
                 tabindex="-1"
                 class="fixed right-0 top-0 z-50 h-dvh w-[min(90vw,24rem)] box-border
-                    bg-white rounded-lg border p-4 shadow-xl overflow-y-auto overscroll-contain
-                    md:sticky md:top-24 md:self-start md:z-auto md:w-auto md:h-auto md:shadow-none md:hover:shadow-lg md:translate-x-0
+                    p-4  overflow-y-auto overscroll-contain
+                    md:sticky md:top-24 md:self-start md:z-auto md:w-auto md:h-auto md:shadow-none md:translate-x-0
                     md:max-h-[calc(100dvh-6rem)]"
             >
                 <div class="md:hidden flex items-center justify-between mb-2">
@@ -113,7 +113,7 @@
                                                 <div class="flex-1 min-w-20">
                                                     <input
                                                         type="number"
-                                                        class="js-range-min w-full rounded border border-brand-green bg-white px-2 py-1 text-sm no-spin focus:ring-2 focus:ring-brand-green"
+                                                        class="js-range-min w-full border border-brand-green bg-white px-2 py-1 text-sm no-spin focus:ring-2 focus:ring-brand-green"
                                                         min="{{ $f['meta']['min'] }}" max="{{ $f['meta']['max'] }}"
                                                         step="{{ $f['meta']['step'] }}"
                                                         inputmode="decimal" autocomplete="off"
@@ -128,7 +128,7 @@
                                                         step="{{ $f['meta']['step'] }}" value="{{ $currMin }}">
 
                                                     <input x-ref="visible" wire:ignore type="text" @input="onInput($event)"
-                                                        class="w-full rounded border border-brand-green bg-white px-2 py-1 text-sm no-spin focus:ring-2 focus:ring-brand-green"
+                                                        class="w-full border border-brand-green bg-white px-2 py-1 text-sm no-spin focus:ring-2 focus:ring-brand-green"
                                                         inputmode="decimal" autocomplete="off"
                                                         placeholder="{{ number_format($f['meta']['min'], 0, ',', ' ') }}"
                                                         value="{{ $formattedMin }}">
@@ -152,7 +152,7 @@
                                                 <div class="flex-1 min-w-20">
                                                     <input
                                                         type="number"
-                                                        class="js-range-max w-full rounded border border-brand-green bg-white px-2 py-1 text-sm no-spin focus:ring-2 focus:ring-brand-green"
+                                                        class="js-range-max w-full border border-brand-green bg-white px-2 py-1 text-sm no-spin focus:ring-2 focus:ring-brand-green"
                                                         min="{{ $f['meta']['min'] }}" max="{{ $f['meta']['max'] }}"
                                                         step="{{ $f['meta']['step'] }}"
                                                         inputmode="decimal" autocomplete="off"
@@ -167,7 +167,7 @@
                                                         step="{{ $f['meta']['step'] }}" value="{{ $currMax }}">
 
                                                     <input x-ref="visible" wire:ignore type="text" @input="onInput($event)"
-                                                        class="w-full rounded border border-brand-green bg-white px-2 py-1 text-sm no-spin focus:ring-2 focus:ring-brand-green"
+                                                        class="w-full border border-brand-green bg-white px-2 py-1 text-sm no-spin focus:ring-2 focus:ring-brand-green"
                                                         inputmode="decimal" autocomplete="off"
                                                         placeholder="{{ number_format($f['meta']['max'], 0, ',', ' ') }}"
                                                         value="{{ $formattedMax }}">
@@ -257,7 +257,7 @@
                                                         name="filters[{{ $key }}][values][]"
                                                         wire:model.live="filters.{{ $key }}.values">
                                                     <span
-                                                        class="select-none text-sm px-3 py-1 rounded border
+                                                        class="select-none text-sm px-3 py-1 border
                                                             transition
                                                             border-zinc-300 bg-white
                                                             hover:border-zinc-400 hover:peer-checked:bg-brand-green/80
