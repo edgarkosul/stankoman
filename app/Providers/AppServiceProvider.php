@@ -10,7 +10,6 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\View;
-use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -36,7 +35,6 @@ class AppServiceProvider extends ServiceProvider
         $this->registerFilamentAssets();
         $this->registerViewComposers();
         FilamentTimezone::set('Europe/Moscow');
-        Blade::directive('price', fn($expr) => "<?php echo e(price($expr)); ?>");
     }
 
     protected function configureDefaults(): void

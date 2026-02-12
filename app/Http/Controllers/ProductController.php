@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Support\ImageDerivativesResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -40,19 +42,21 @@ class ProductController extends Controller
 
     private function buildGallery(Product $product): array
     {
+        $resolver = app(ImageDerivativesResolver::class);
+
         $sources = collect([$product->image, $product->thumb])
             ->merge($this->normalizeGallery($product->gallery))
-            ->map(fn ($value) => is_string($value) ? trim($value) : null)
+            ->map(fn($value) => is_string($value) ? trim($value) : null)
             ->filter()
             ->unique()
             ->values();
 
         $items = $sources
-            ->map(fn (string $src): array => [
+            ->map(fn(string $src): array => array_merge([
                 'src' => $src,
                 'url' => $this->resolveImageUrl($src),
                 'alt' => $product->name,
-            ])
+            ], $this->resolveImageMeta($src, $resolver)))
             ->values();
 
         $main = $items->first() ?: [
@@ -75,12 +79,12 @@ class ProductController extends Controller
 
         $details = collect([
             ['label' => 'Наличие', 'value' => $product->in_stock ? 'В наличии' : 'Нет в наличии'],
-            ['label' => 'Артикул', 'value' => $product->sku],
+            // ['label' => 'Артикул', 'value' => $product->sku],
             ['label' => 'Бренд', 'value' => $product->brand],
             ['label' => 'Производитель', 'value' => $product->country],
             ['label' => 'Гарантия', 'value' => $product->warranty_display],
         ])
-            ->filter(fn (array $item) => filled($item['value']))
+            ->filter(fn(array $item) => filled($item['value']))
             ->values()
             ->all();
 
@@ -91,11 +95,6 @@ class ProductController extends Controller
                 'discount' => $discountPrice,
                 'has_discount' => (bool) $product->has_discount,
                 'discount_percent' => $product->discount_percent,
-                'base_formatted' => number_format($basePrice, 0, ' ', ' ') . ' ₽',
-                'final_formatted' => number_format($finalPrice, 0, ' ', ' ') . ' ₽',
-                'discount_formatted' => $discountPrice !== null
-                    ? number_format((int) $discountPrice, 0, ' ', ' ') . ' ₽'
-                    : null,
             ],
             'details' => $details,
             'promo_info' => $product->promo_info,
@@ -131,14 +130,14 @@ class ProductController extends Controller
     private function buildFeatures(Product $product): array
     {
         $fromValues = $product->attributeValues
-            ->map(fn ($value): array => [
+            ->map(fn($value): array => [
                 'name' => $value->attribute?->name ?? 'Атрибут',
                 'value' => $value->display_value ?? '—',
             ]);
 
         $fromOptions = $product->attributeOptions
-            ->groupBy(fn ($option) => (string) ($option->pivot?->attribute_id ?? ''))
-            ->map(fn (Collection $options): array => [
+            ->groupBy(fn($option) => (string) ($option->pivot?->attribute_id ?? ''))
+            ->map(fn(Collection $options): array => [
                 'name' => $options->first()?->attribute?->name ?? 'Опции',
                 'value' => $options->pluck('value')->filter()->join(', '),
             ])
@@ -146,7 +145,7 @@ class ProductController extends Controller
 
         return $fromValues
             ->concat($fromOptions)
-            ->filter(fn (array $item) => filled($item['value']))
+            ->filter(fn(array $item) => filled($item['value']))
             ->values()
             ->all();
     }
@@ -210,5 +209,45 @@ class ProductController extends Controller
         }
 
         return Storage::disk('public')->url($value);
+    }
+
+    private function resolveImageMeta(string $value, ImageDerivativesResolver $resolver): array
+    {
+        $storagePath = null;
+        $width = null;
+        $height = null;
+        $webpSrcset = null;
+
+        if (Str::startsWith($value, 'storage/')) {
+            $storagePath = Str::after($value, 'storage/');
+        } elseif (Str::startsWith($value, '/storage/')) {
+            $storagePath = Str::after($value, '/storage/');
+        } elseif (! Str::startsWith($value, ['http://', 'https://', '/'])) {
+            $storagePath = $value;
+        }
+
+        if (is_string($storagePath) && $storagePath !== '') {
+            $disk = Storage::disk('public');
+
+            if ($disk->exists($storagePath)) {
+                $absolutePath = $disk->path($storagePath);
+
+                if (is_file($absolutePath)) {
+                    $size = getimagesize($absolutePath);
+
+                    if (is_array($size)) {
+                        [$width, $height] = $size;
+                    }
+                }
+            }
+
+            $webpSrcset = $resolver->buildWebpSrcset($storagePath);
+        }
+
+        return [
+            'width' => $width,
+            'height' => $height,
+            'webp_srcset' => $webpSrcset,
+        ];
     }
 }

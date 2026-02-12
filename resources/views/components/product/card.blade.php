@@ -73,11 +73,11 @@
                     @if ($hasDiscount)
                         <div class="flex items-center gap-2">
                             <span class="text-brand-900">
-                                @price($discount)
+                                {{ price($discount) }}
                             </span>
                             <div class="flex flex-col">
                                 <span class="line-through text-zinc-400 text-base">
-                                    @price($basePrice)
+                                    {{ price($basePrice) }}
                                 </span>
                             </div>
                         </div>
@@ -86,7 +86,7 @@
                             Цена по запросу
                         </div>
                     @else
-                        @price($basePrice)
+                        {{ price($basePrice) }}
                     @endif
                 </div>
             </div>

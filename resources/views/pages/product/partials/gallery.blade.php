@@ -28,18 +28,29 @@
                     @foreach ($items as $image)
                         <div class="swiper-slide">
                             @if (filled(data_get($image, 'url')))
-                                <a href="{{ $image['url'] }}" target="_blank" rel="noopener noreferrer">
+                                <a
+                                    href="{{ $image['url'] }}"
+                                    class="js-pswp block h-full w-full"
+                                    data-pswp-cropped="1"
+                                    @if (filled(data_get($image, 'webp_srcset')))
+                                        data-pswp-srcset="{{ data_get($image, 'webp_srcset') }}"
+                                    @endif
+                                    @if (data_get($image, 'width') && data_get($image, 'height'))
+                                        data-pswp-width="{{ data_get($image, 'width') }}"
+                                        data-pswp-height="{{ data_get($image, 'height') }}"
+                                    @endif
+                                >
                                     <x-product.image
                                         :src="data_get($image, 'src')"
                                         :alt="data_get($image, 'alt')"
-                                        class="h-full w-full object-contain"
+                                        class="block h-full w-full object-cover object-center"
                                     />
                                 </a>
                             @else
                                 <x-product.image
                                     :src="data_get($image, 'src')"
                                     :alt="data_get($image, 'alt')"
-                                    class="h-full w-full object-contain"
+                                    class="block h-full w-full object-cover object-center"
                                 />
                             @endif
                         </div>

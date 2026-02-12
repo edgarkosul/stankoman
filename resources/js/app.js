@@ -5,6 +5,78 @@ import PhotoSwipeLightbox from 'photoswipe/lightbox';
 import 'photoswipe/style.css';
 import noUiSlider from 'nouislider';
 
+const pswpPadding = (viewportSize) => {
+    const pad = viewportSize.x < 768 ? 12 : 24;
+
+    return {
+        top: pad,
+        bottom: pad,
+        left: pad,
+        right: pad,
+    };
+};
+
+const pickLargestSrcsetUrl = (srcset) => {
+    if (!srcset) {
+        return null;
+    }
+
+    let bestUrl = null;
+    let bestWidth = 0;
+
+    srcset.split(',').forEach((entry) => {
+        const [url, size] = entry.trim().split(/\s+/);
+
+        if (!url || !size) {
+            return;
+        }
+
+        const match = size.match(/^(\d+)w$/);
+        if (!match) {
+            return;
+        }
+
+        const width = Number(match[1]);
+        if (width > bestWidth) {
+            bestWidth = width;
+            bestUrl = url;
+        }
+    });
+
+    return bestUrl;
+};
+
+const ensurePswpSizes = (galleryEl, selector = 'a') => {
+    const jobs = [];
+
+    galleryEl.querySelectorAll(selector).forEach((anchor) => {
+        if (anchor.hasAttribute('data-pswp-width')) {
+            return;
+        }
+
+        const srcset = anchor.getAttribute('data-pswp-srcset');
+        const url = pickLargestSrcsetUrl(srcset) || anchor.getAttribute('href');
+
+        if (!url) {
+            return;
+        }
+
+        jobs.push(new Promise((resolve) => {
+            const img = new Image();
+
+            img.onload = () => {
+                anchor.dataset.pswpWidth = img.naturalWidth;
+                anchor.dataset.pswpHeight = img.naturalHeight;
+                resolve();
+            };
+            img.onerror = resolve;
+            img.src = url;
+        }));
+    });
+
+    return Promise.all(jobs);
+};
+
 const initImageGalleries = () => {
     document.querySelectorAll('[data-image-gallery]').forEach((gallery) => {
         if (gallery.dataset.imageGalleryInitialized === 'true') {
@@ -510,25 +582,48 @@ if (typeof window !== 'undefined') {
     window.prettyNumberInput = prettyNumberInputFactory;
 }
 
-let imageGalleryLightbox = null;
+let imageGalleryLightboxes = [];
+let imageGalleryLightboxVersion = 0;
 
 const initImageGalleryLightbox = () => {
-    if (imageGalleryLightbox) {
-        imageGalleryLightbox.destroy();
-        imageGalleryLightbox = null;
-    }
+    imageGalleryLightboxVersion += 1;
+    const currentVersion = imageGalleryLightboxVersion;
 
-    if (!document.querySelector('[data-image-gallery-main] a')) {
+    imageGalleryLightboxes.forEach((lightbox) => lightbox.destroy());
+    imageGalleryLightboxes = [];
+
+    const galleries = Array.from(document.querySelectorAll('[data-image-gallery-main]'))
+        .filter((gallery) => gallery.querySelector('a'));
+
+    if (!galleries.length) {
         return;
     }
 
-    imageGalleryLightbox = new PhotoSwipeLightbox({
-        gallery: '[data-image-gallery-main]',
-        children: 'a',
-        pswpModule: () => import('photoswipe'),
-    });
+    galleries.forEach((gallery) => {
+        const childSelector = gallery.querySelector('a.js-pswp') ? 'a.js-pswp' : 'a';
 
-    imageGalleryLightbox.init();
+        ensurePswpSizes(gallery, childSelector).then(() => {
+            if (currentVersion !== imageGalleryLightboxVersion) {
+                return;
+            }
+
+            const lightbox = new PhotoSwipeLightbox({
+                gallery,
+                children: childSelector,
+                pswpModule: () => import('photoswipe'),
+                initialZoomLevel: 'fit',
+                secondaryZoomLevel: 1,
+                maxZoomLevel: 1,
+                paddingFn: pswpPadding,
+                wheelToZoom: false,
+                closeOnVerticalDrag: true,
+                zoom: false,
+            });
+
+            lightbox.init();
+            imageGalleryLightboxes.push(lightbox);
+        });
+    });
 };
 
 document.addEventListener('DOMContentLoaded', initImageGalleries);
