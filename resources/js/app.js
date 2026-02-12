@@ -3,8 +3,7 @@ import Swiper from 'swiper';
 import { Autoplay, FreeMode, Navigation, Pagination, Thumbs } from 'swiper/modules';
 import PhotoSwipeLightbox from 'photoswipe/lightbox';
 import 'photoswipe/style.css';
-
-Alpine.plugin(tooltip)
+import noUiSlider from 'nouislider';
 
 const initImageGalleries = () => {
     document.querySelectorAll('[data-image-gallery]').forEach((gallery) => {
@@ -177,6 +176,306 @@ const initProductCardSwipers = () => {
     });
 };
 
+// ------------------------------
+// noUiSlider для range-фильтров
+// ------------------------------
+const buildRangeContext = (wrap) => {
+    if (!wrap) return null;
+
+    const sliderEl = wrap.querySelector('.js-range-slider');
+    const minInput = wrap.querySelector('.js-range-min');
+    const maxInput = wrap.querySelector('.js-range-max');
+
+    const metaMin = parseFloat(wrap.dataset.min);
+    const metaMax = parseFloat(wrap.dataset.max);
+    const step = parseFloat(wrap.dataset.step || '1');
+    const key = wrap.dataset.key;
+    let sliderStep = step;
+    if (
+        key === 'price'
+        && Number.isFinite(step)
+        && Number.isInteger(step)
+        && step > 1
+        && Number.isFinite(metaMin)
+        && Number.isInteger(metaMin)
+        && (metaMin % step) !== 0
+    ) {
+        sliderStep = 1;
+    }
+    const decimals = (sliderStep.toString().split('.')[1] || '').length;
+
+    const round = (v) => (decimals ? Number(Number(v).toFixed(decimals)) : Math.round(Number(v)));
+    const atExtremes = (a, b) => a <= metaMin && b >= metaMax;
+
+    return {
+        wrap,
+        sliderEl,
+        slider: sliderEl?.noUiSlider,
+        minInput,
+        maxInput,
+        metaMin,
+        metaMax,
+        step,
+        sliderStep,
+        round,
+        atExtremes,
+    };
+};
+
+const resetRangeSliderState = (ctx) => {
+    if (!ctx?.slider) return;
+
+    const { slider, metaMin, metaMax, minInput, maxInput } = ctx;
+    slider.set([metaMin, metaMax]);
+
+    if (minInput) minInput.value = '';
+    if (maxInput) maxInput.value = '';
+};
+
+const initNouisliderOnRange = (root = document) => {
+    const findLivewireComponent = (el) => {
+        const host = el?.closest?.('[wire\\:id]');
+        if (!host || !window.Livewire?.find) return null;
+        return window.Livewire.find(host.getAttribute('wire:id'));
+    };
+
+    const syncRangeToLivewire = (wrap, minInput, maxInput) => {
+        const key = wrap?.dataset?.key;
+        const comp = findLivewireComponent(wrap);
+        if (!key || !comp) return false;
+
+        const parseVal = (input) => {
+            if (!input) return null;
+            const raw = input.value;
+            if (raw === '' || raw === null || raw === undefined) return null;
+            const num = Number(raw);
+            return Number.isFinite(num) ? num : null;
+        };
+
+        comp.set(`filters.${key}`, {
+            min: parseVal(minInput),
+            max: parseVal(maxInput),
+        });
+
+        return true;
+    };
+
+    root.querySelectorAll('[data-range="slider"]').forEach((wrap) => {
+        const ctx = buildRangeContext(wrap);
+        if (!ctx?.sliderEl) return;
+
+        const {
+            sliderEl,
+            minInput,
+            maxInput,
+            metaMin,
+            metaMax,
+            sliderStep,
+            round,
+            atExtremes,
+        } = ctx;
+
+        if (sliderEl.noUiSlider && typeof sliderEl.noUiSlider.destroy === 'function') {
+            sliderEl.noUiSlider.destroy();
+        }
+        const fireInput = (el) => el && el.dispatchEvent(new Event('input', { bubbles: true }));
+
+        const startMin = minInput?.value !== '' ? parseFloat(minInput.value) : metaMin;
+        const startMax = maxInput?.value !== '' ? parseFloat(maxInput.value) : metaMax;
+
+        noUiSlider.create(sliderEl, {
+            start: [startMin, startMax],
+            connect: true,
+            step: sliderStep,
+            range: { min: metaMin, max: metaMax },
+            behaviour: 'tap-drag',
+        });
+
+        sliderEl.noUiSlider.on('update', (values) => {
+            const [a, b] = values.map(Number).map(round);
+
+            if (minInput) {
+                minInput.value = a;
+                minInput.dispatchEvent(new Event('pretty:update'));
+            }
+
+            if (maxInput) {
+                maxInput.value = b;
+                maxInput.dispatchEvent(new Event('pretty:update'));
+            }
+        });
+
+        sliderEl.noUiSlider.on('change', (values) => {
+            const [a, b] = values.map(Number).map(round);
+            if (atExtremes(a, b)) {
+                if (minInput) minInput.value = '';
+                if (maxInput) maxInput.value = '';
+            } else {
+                if (minInput) minInput.value = a;
+                if (maxInput) maxInput.value = b;
+            }
+            const synced = syncRangeToLivewire(wrap, minInput, maxInput);
+            if (!synced) {
+                fireInput(minInput);
+                fireInput(maxInput);
+            }
+        });
+
+        const commitFromInputs = (source = 'unknown') => {
+            const rawMin = parseFloat(minInput?.value);
+            const rawMax = parseFloat(maxInput?.value);
+            const hasMin = !Number.isNaN(rawMin);
+            const hasMax = !Number.isNaN(rawMax);
+
+            if (!hasMin && !hasMax) {
+                sliderEl.noUiSlider.set([metaMin, metaMax]);
+                if (minInput) minInput.value = '';
+                if (maxInput) maxInput.value = '';
+                fireInput(minInput);
+                fireInput(maxInput);
+                return;
+            }
+
+            const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+            let a = hasMin ? rawMin : metaMin;
+            let b = hasMax ? rawMax : metaMax;
+            a = clamp(a, metaMin, metaMax);
+            b = clamp(b, metaMin, metaMax);
+            if (hasMin && hasMax && a > b) {
+                if (source === 'max') {
+                    b = a;
+                } else if (source === 'min') {
+                    a = b;
+                } else {
+                    a = b;
+                }
+            }
+
+            sliderEl.noUiSlider.set([round(a), round(b)]);
+            if (minInput) minInput.value = atExtremes(a, b) ? '' : round(a);
+            if (maxInput) maxInput.value = atExtremes(a, b) ? '' : round(b);
+            if (!syncRangeToLivewire(wrap, minInput, maxInput)) {
+                fireInput(minInput);
+                fireInput(maxInput);
+            }
+        };
+
+        const getVisibleInput = (input) => {
+            if (!input) return null;
+            if (!input.classList.contains('hidden')) return input;
+            return input.parentElement?.querySelector('[x-ref="visible"]') || null;
+        };
+
+        const bindInputHandlers = (input, side, triggerEl = input) => {
+            if (!triggerEl) return;
+            if (triggerEl.__rangeHandlers) {
+                triggerEl.removeEventListener('blur', triggerEl.__rangeHandlers.blur);
+                triggerEl.removeEventListener('keydown', triggerEl.__rangeHandlers.keydown);
+            }
+            const handlers = {
+                blur: () => commitFromInputs(side),
+                keydown: (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        commitFromInputs(side);
+                    }
+                },
+            };
+            triggerEl.__rangeHandlers = handlers;
+            triggerEl.addEventListener('blur', handlers.blur);
+            triggerEl.addEventListener('keydown', handlers.keydown);
+        };
+
+        const minTrigger = getVisibleInput(minInput) || minInput;
+        const maxTrigger = getVisibleInput(maxInput) || maxInput;
+        bindInputHandlers(minInput, 'min', minTrigger);
+        bindInputHandlers(maxInput, 'max', maxTrigger);
+    });
+};
+
+const resetAllRangeSliders = (root = document) => {
+    root.querySelectorAll('[data-range="slider"]').forEach((wrap) => {
+        const ctx = buildRangeContext(wrap);
+        resetRangeSliderState(ctx);
+    });
+};
+
+const cssEscape = (s) =>
+    (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+
+const resetOneRangeSlider = (wrap) => {
+    const ctx = buildRangeContext(wrap);
+    resetRangeSliderState(ctx);
+};
+
+const prettyNumberInputFactory = (config = {}) => ({
+    decimals: config.decimals ?? 0,
+    init() {
+        const hidden = this.$refs.hidden;
+        if (hidden) {
+            const sync = () => this.syncFromHidden();
+            hidden.addEventListener('input', sync);
+            hidden.addEventListener('change', sync);
+            hidden.addEventListener('pretty:update', sync);
+        }
+
+        this.syncFromHidden();
+    },
+
+    format(value) {
+        if (value === null || value === undefined || value === '') return '';
+
+        const num = Number(value);
+        if (Number.isNaN(num)) return '';
+
+        return num
+            .toLocaleString('ru-RU', {
+                minimumFractionDigits: this.decimals,
+                maximumFractionDigits: this.decimals,
+            })
+            .replace(/\s/g, '\u202f');
+    },
+
+    parse(str) {
+        if (!str) return null;
+
+        const cleaned = String(str)
+            .replace(/\s/g, '')
+            .replace(/\u202f/g, '')
+            .replace(',', '.');
+
+        const num = Number(cleaned);
+        return Number.isNaN(num) ? null : num;
+    },
+
+    syncFromHidden() {
+        const hidden = this.$refs.hidden;
+        const visible = this.$refs.visible;
+        if (!hidden || !visible) return;
+
+        visible.value = this.format(hidden.value);
+    },
+
+    onInput(event) {
+        const visible = event.target;
+        const hidden = this.$refs.hidden;
+        if (!hidden) return;
+
+        const raw = this.parse(visible.value);
+
+        hidden.value = raw ?? '';
+
+        hidden.dispatchEvent(new Event('input', { bubbles: true }));
+        hidden.dispatchEvent(new Event('change', { bubbles: true }));
+
+        visible.value = this.format(raw);
+    },
+});
+
+if (typeof window !== 'undefined') {
+    window.prettyNumberInput = prettyNumberInputFactory;
+}
+
 let imageGalleryLightbox = null;
 
 const initImageGalleryLightbox = () => {
@@ -206,6 +505,8 @@ document.addEventListener('DOMContentLoaded', initImageGalleryLightbox);
 document.addEventListener('livewire:navigated', initImageGalleryLightbox);
 document.addEventListener('DOMContentLoaded', initProductCardSwipers);
 document.addEventListener('livewire:navigated', initProductCardSwipers);
+document.addEventListener('DOMContentLoaded', () => initNouisliderOnRange(document));
+document.addEventListener('livewire:navigated', () => initNouisliderOnRange(document));
 
 let productCardSwiperHooked = false;
 document.addEventListener('livewire:initialized', () => {
@@ -222,61 +523,122 @@ document.addEventListener('livewire:initialized', () => {
     }
 });
 
+document.addEventListener('livewire:init', () => {
+    if (!window.Livewire) return;
 
-document.addEventListener('alpine:init', () => {
-    Alpine.data('navDropdown', () => ({
-        open: false,
-        t: null,
-        show() {
-            clearTimeout(this.t);
-            this.open = true;
-        },
-        hide(delay = 150) {
-            clearTimeout(this.t);
-            this.t = setTimeout(() => this.open = false, delay);
-        },
-        toggle() {
-            clearTimeout(this.t);
-            this.open = !this.open;
-        },
-        close() {
-            clearTimeout(this.t);
-            this.open = false;
-        },
-    }));
+    Livewire.on('filters-cleared', () => {
+        requestAnimationFrame(() => resetAllRangeSliders(document));
+    });
 
-    Alpine.data('catalogMenu', (initialRootId = null) => ({
-        catalogOpen: false,
-        activeCatalogRootId: initialRootId,
-        pendingRootId: null,
-        hoverTimer: null,
-        setActive(id, delay = 140) {
-            if (this.activeCatalogRootId === id) {
-                this.pendingRootId = null;
-                return;
-            }
-            this.pendingRootId = id;
-            clearTimeout(this.hoverTimer);
-            this.hoverTimer = setTimeout(() => {
-                if (this.pendingRootId === id) {
-                    this.activeCatalogRootId = id;
+    Livewire.on('filter-cleared', (payload) => {
+        const key = typeof payload === 'string' ? payload : payload?.key;
+        if (!key) return;
+
+        requestAnimationFrame(() => {
+            const sel = `[data-range="slider"][data-key="${cssEscape(key)}"]`;
+            const wrap = document.querySelector(sel);
+            if (wrap) resetOneRangeSlider(wrap);
+        });
+    });
+
+    Livewire.hook('morph.updated', ({ el }) => {
+        initNouisliderOnRange(el || document);
+    });
+
+    Livewire.on('category:scrollToProducts', () => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const anchor = document.getElementById('category-products-top');
+                if (!anchor) return;
+
+                const header = document.querySelector('header');
+                const headerHeight = header ? header.getBoundingClientRect().height : 0;
+                const targetY = window.scrollY + anchor.getBoundingClientRect().top - headerHeight - 12;
+
+                if (window.scrollY <= targetY + 4) {
+                    return;
                 }
-            }, delay);
-        },
-        cancelPending(id) {
-            if (this.pendingRootId !== id) {
-                return;
-            }
-            clearTimeout(this.hoverTimer);
-            this.pendingRootId = null;
-        },
-        setActiveInstant(id) {
-            clearTimeout(this.hoverTimer);
-            this.pendingRootId = null;
-            this.activeCatalogRootId = id;
-        },
-        clearTimer() {
-            clearTimeout(this.hoverTimer);
-        },
-    }));
+
+                window.scrollTo({
+                    top: Math.max(0, targetY),
+                    behavior: 'smooth',
+                });
+            });
+        });
+    });
 });
+
+
+const navDropdownFactory = () => ({
+    open: false,
+    t: null,
+    show() {
+        clearTimeout(this.t);
+        this.open = true;
+    },
+    hide(delay = 150) {
+        clearTimeout(this.t);
+        this.t = setTimeout(() => this.open = false, delay);
+    },
+    toggle() {
+        clearTimeout(this.t);
+        this.open = !this.open;
+    },
+    close() {
+        clearTimeout(this.t);
+        this.open = false;
+    },
+});
+
+const catalogMenuFactory = (initialRootId = null) => ({
+    catalogOpen: false,
+    activeCatalogRootId: initialRootId,
+    pendingRootId: null,
+    hoverTimer: null,
+    setActive(id, delay = 140) {
+        if (this.activeCatalogRootId === id) {
+            this.pendingRootId = null;
+            return;
+        }
+        this.pendingRootId = id;
+        clearTimeout(this.hoverTimer);
+        this.hoverTimer = setTimeout(() => {
+            if (this.pendingRootId === id) {
+                this.activeCatalogRootId = id;
+            }
+        }, delay);
+    },
+    cancelPending(id) {
+        if (this.pendingRootId !== id) {
+            return;
+        }
+        clearTimeout(this.hoverTimer);
+        this.pendingRootId = null;
+    },
+    setActiveInstant(id) {
+        clearTimeout(this.hoverTimer);
+        this.pendingRootId = null;
+        this.activeCatalogRootId = id;
+    },
+    clearTimer() {
+        clearTimeout(this.hoverTimer);
+    },
+});
+
+const registerAlpineData = () => {
+    if (typeof window === 'undefined') return;
+
+    const alpine = window.Alpine;
+    if (!alpine?.data) return;
+    if (window.__stankomanAlpineDataRegistered) return;
+
+    window.__stankomanAlpineDataRegistered = true;
+
+    alpine.plugin(tooltip);
+    alpine.data('navDropdown', navDropdownFactory);
+    alpine.data('catalogMenu', catalogMenuFactory);
+    alpine.data('prettyNumberInput', prettyNumberInputFactory);
+};
+
+document.addEventListener('alpine:init', registerAlpineData);
+registerAlpineData();

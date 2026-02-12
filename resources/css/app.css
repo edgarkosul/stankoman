@@ -8,6 +8,7 @@
 @import "swiper/css/pagination";
 @import "swiper/css/thumbs";
 @import "swiper/css/free-mode";
+@import "nouislider/dist/nouislider.css";
 
 [x-cloak] {
     display: none !important;
@@ -242,6 +243,18 @@
     }
 }
 
+@layer utilities {
+    .no-spin::-webkit-outer-spin-button,
+    .no-spin::-webkit-inner-spin-button {
+        @apply appearance-none m-0;
+    }
+
+    .no-spin[type="number"] {
+        -moz-appearance: textfield;
+        appearance: textfield;
+    }
+}
+
 [data-flux-field]:not(ui-radio, ui-checkbox) {
     @apply grid gap-2;
 }
@@ -257,6 +270,9 @@ select:focus[data-flux-control] {
 }
 
 :root {
+    --ks-range-track-h: 0.5rem;
+    --ks-range-handle-size: 1.25rem;
+    --ks-range-hitbox: 36px;
     --ks-tooltip-bg: rgba(89, 89, 89, 0.9);
 }
 /* тема */
@@ -420,6 +436,90 @@ select:focus[data-flux-control] {
 }
 
 @layer components {
+    .ks-range {
+        --range-track-height: var(--ks-range-track-h);
+        --range-handle-size: var(--ks-range-handle-size);
+        --range-hitbox: var(--ks-range-hitbox);
+    }
+
+    .ks-range .noUi-target {
+        @apply relative h-2 rounded-full bg-zinc-200 border-0 shadow-none;
+    }
+
+    .ks-range .noUi-connects {
+        @apply rounded-full overflow-hidden;
+    }
+
+    .ks-range .noUi-connect {
+        @apply bg-brand-green;
+    }
+
+    .ks-range.noUi-horizontal {
+        height: var(--range-track-height);
+    }
+
+    .ks-range .noUi-handle {
+        width: var(--range-handle-size);
+        height: var(--range-handle-size);
+        @apply absolute -top-2 rounded-full border border-zinc-300 bg-white shadow;
+    }
+
+    .ks-range .noUi-handle::before,
+    .ks-range .noUi-handle::after {
+        display: none;
+    }
+
+    .ks-range .noUi-handle .noUi-touch-area {
+        position: absolute;
+        left: -10px;
+        top: -10px;
+        width: var(--range-hitbox);
+        height: var(--range-hitbox);
+    }
+
+    .ks-range .noUi-handle:hover {
+        @apply shadow-lg;
+    }
+
+    .ks-range .noUi-active {
+        transform: scale(1.04);
+    }
+
+    .ks-range .noUi-handle:focus-visible {
+        outline: 2px solid color-mix(in oklab, currentColor 50%, transparent);
+        outline-offset: 2px;
+    }
+
+    .ks-range .noUi-tooltip {
+        @apply rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 shadow;
+    }
+
+    .ks-range.noUi-horizontal .noUi-tooltip {
+        transform: translate(-50%, 0);
+        left: 50%;
+        bottom: 130%;
+    }
+
+    .ks-range .noUi-pips {
+        @apply text-xs text-zinc-500;
+    }
+
+    .ks-range .noUi-marker {
+        @apply bg-zinc-400;
+    }
+
+    .ks-range .noUi-marker-large {
+        @apply bg-zinc-500;
+    }
+
+    .ks-range[disabled] .noUi-connect {
+        @apply bg-zinc-300;
+    }
+
+    .ks-range[disabled] .noUi-handle {
+        @apply opacity-60 cursor-not-allowed;
+    }
+
     .image-gallery {
         @apply grid gap-3 max-w-4xl mx-auto;
         --swiper-navigation-color: #ea0005;
