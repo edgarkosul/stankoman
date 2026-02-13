@@ -86,6 +86,16 @@ it('parses product payload from jsonld and inertia', function () {
     expect($parsed['images'])->toContain('https://cdn.example.com/inertia-1.jpg');
     expect($parsed['images'])->toContain('https://cdn.example.com/inertia-2.jpg');
     expect($parsed['specs'])->toHaveCount(2);
+    expect($parsed['specs'])->toContain([
+        'name' => 'Мощность',
+        'value' => '2200 Вт',
+        'source' => 'jsonld',
+    ]);
+    expect($parsed['specs'])->toContain([
+        'name' => 'Объем бака',
+        'value' => '80 л',
+        'source' => 'jsonld',
+    ]);
     expect($parsed['breadcrumbs'])->toContain('Каталог');
     expect($parsed['breadcrumbs'])->toContain('Пылесосы');
 });
@@ -107,7 +117,43 @@ HTML;
     $parsed = (new VactoolProductParser)->parse($html, 'https://vactool.ru/catalog/product-vt-9100');
 
     expect($parsed['specs'])->toBe([
-        ['name' => 'Мощность', 'value' => '2200 Вт'],
-        ['name' => 'Объем бака', 'value' => '80 л'],
+        ['name' => 'Мощность', 'value' => '2200 Вт', 'source' => 'dom'],
+        ['name' => 'Объем бака', 'value' => '80 л', 'source' => 'dom'],
+    ]);
+});
+
+it('merges specs from structured data and dom without replacing jsonld source', function () {
+    $jsonLd = json_encode([
+        '@context' => 'https://schema.org',
+        '@type' => 'Product',
+        'name' => 'Пылесос VT-9200',
+        'additionalProperty' => [
+            ['name' => 'Мощность', 'value' => '2200 Вт'],
+        ],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    $html = '<html><head><script type="application/ld+json">'
+        .$jsonLd
+        .'</script></head><body>'
+        .'<dl>'
+        .'<dt class="list-props__title"><span>Мощность</span></dt>'
+        .'<dd class="list-props__value">2200 Вт</dd>'
+        .'<dt class="list-props__title"><span>Уровень шума</span></dt>'
+        .'<dd class="list-props__value">64 дБ</dd>'
+        .'</dl>'
+        .'</body></html>';
+
+    $parsed = (new VactoolProductParser)->parse($html, 'https://vactool.ru/catalog/product-vt-9200');
+
+    expect($parsed['specs'])->toHaveCount(2);
+    expect($parsed['specs'])->toContain([
+        'name' => 'Мощность',
+        'value' => '2200 Вт',
+        'source' => 'jsonld',
+    ]);
+    expect($parsed['specs'])->toContain([
+        'name' => 'Уровень шума',
+        'value' => '64 дБ',
+        'source' => 'dom',
     ]);
 });

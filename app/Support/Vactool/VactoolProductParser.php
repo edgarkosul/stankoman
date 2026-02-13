@@ -33,10 +33,7 @@ class VactoolProductParser
 
         $this->parseJsonLd($crawler, $result);
         $this->parseInertia($crawler, $result);
-
-        if ($result['specs'] === []) {
-            $result['specs'] = $this->extractSpecsFromHtml($html);
-        }
+        $result['specs'] = array_merge($result['specs'], $this->extractSpecsFromHtml($html));
 
         $result['images'] = $this->uniqueStrings($result['images']);
         $result['specs'] = $this->uniqueSpecs($result['specs']);
@@ -132,6 +129,20 @@ class VactoolProductParser
             $result['images'] = array_merge($result['images'], $this->extractImageCandidates(data_get($product, $imageKey)));
         }
 
+        $specCandidates = [
+            data_get($product, 'specs'),
+            data_get($product, 'attributes'),
+            data_get($product, 'characteristics'),
+            data_get($product, 'properties'),
+            data_get($page, 'props.specs'),
+            data_get($page, 'props.attributes'),
+            data_get($page, 'props.characteristics'),
+        ];
+
+        foreach ($specCandidates as $candidate) {
+            $result['specs'] = array_merge($result['specs'], $this->extractSpecsFromPayload($candidate, 'inertia'));
+        }
+
         $breadcrumbs = data_get($page, 'props.breadcrumbs', []);
 
         if (is_array($breadcrumbs)) {
@@ -162,27 +173,10 @@ class VactoolProductParser
 
         $result['images'] = array_merge($result['images'], $this->extractImageCandidates($item['image'] ?? null));
 
-        $properties = $item['additionalProperty'] ?? [];
-
-        if (is_array($properties)) {
-            foreach ($properties as $property) {
-                if (! is_array($property)) {
-                    continue;
-                }
-
-                $name = $this->sanitizeString($property['name'] ?? null);
-                $value = $this->sanitizeString($property['value'] ?? null);
-
-                if ($name === null || $value === null) {
-                    continue;
-                }
-
-                $result['specs'][] = [
-                    'name' => $name,
-                    'value' => $value,
-                ];
-            }
-        }
+        $result['specs'] = array_merge(
+            $result['specs'],
+            $this->extractSpecsFromPayload($item['additionalProperty'] ?? null, 'jsonld')
+        );
 
         $offer = $item['offers'] ?? null;
 
@@ -385,10 +379,143 @@ class VactoolProductParser
             $specs[] = [
                 'name' => $name,
                 'value' => $value,
+                'source' => 'dom',
             ];
         }
 
         return $specs;
+    }
+
+    private function extractSpecsFromPayload(mixed $payload, string $source): array
+    {
+        if (! is_array($payload)) {
+            return [];
+        }
+
+        $specs = [];
+        $ignoredMapKeys = [
+            'id',
+            'slug',
+            'name',
+            'title',
+            'label',
+            'key',
+            'value',
+            'text',
+            'val',
+            'unit',
+            'url',
+            'href',
+            'image',
+            'icon',
+            'code',
+            'type',
+        ];
+
+        if (! array_is_list($payload)) {
+            $name = $this->sanitizeString($payload['name'] ?? $payload['title'] ?? $payload['label'] ?? $payload['key'] ?? null);
+            $value = $this->normalizeSpecValue(
+                $payload['value'] ?? $payload['text'] ?? $payload['val'] ?? null,
+                $payload['unit'] ?? null
+            );
+
+            if ($name !== null && $value !== null) {
+                $specs[] = [
+                    'name' => $name,
+                    'value' => $value,
+                    'source' => $source,
+                ];
+
+                return $specs;
+            }
+
+            foreach ($payload as $key => $valuePayload) {
+                if (is_array($valuePayload)) {
+                    $specs = array_merge($specs, $this->extractSpecsFromPayload($valuePayload, $source));
+
+                    continue;
+                }
+
+                if (! is_string($key) || in_array(mb_strtolower($key), $ignoredMapKeys, true)) {
+                    continue;
+                }
+
+                $nameFromMap = $this->sanitizeString($key);
+                $valueFromMap = $this->normalizeSpecValue($valuePayload);
+
+                if ($nameFromMap === null || $valueFromMap === null) {
+                    continue;
+                }
+
+                $specs[] = [
+                    'name' => $nameFromMap,
+                    'value' => $valueFromMap,
+                    'source' => $source,
+                ];
+            }
+
+            return $specs;
+        }
+
+        foreach ($payload as $item) {
+            if (is_array($item)) {
+                $specs = array_merge($specs, $this->extractSpecsFromPayload($item, $source));
+            }
+        }
+
+        return $specs;
+    }
+
+    private function normalizeSpecValue(mixed $value, mixed $unit = null): ?string
+    {
+        if (is_bool($value)) {
+            $normalized = $value ? '1' : '0';
+        } elseif (is_int($value) || is_float($value)) {
+            $normalized = (string) $value;
+        } elseif (is_string($value)) {
+            $normalized = $this->sanitizeString($value);
+        } elseif (is_array($value)) {
+            $nested = $this->sanitizeString($value['value'] ?? $value['text'] ?? $value['name'] ?? null);
+
+            if ($nested !== null) {
+                $normalized = $nested;
+            } elseif (array_is_list($value)) {
+                $parts = [];
+
+                foreach ($value as $listItem) {
+                    $itemValue = $this->normalizeSpecValue($listItem);
+
+                    if ($itemValue !== null) {
+                        $parts[] = $itemValue;
+                    }
+                }
+
+                $normalized = $parts === [] ? null : implode(', ', array_unique($parts));
+            } else {
+                $normalized = null;
+            }
+        } else {
+            $normalized = null;
+        }
+
+        if ($normalized === null) {
+            return null;
+        }
+
+        $normalizedUnit = $this->sanitizeString($unit);
+
+        if ($normalizedUnit === null) {
+            return $normalized;
+        }
+
+        $normalizedLower = mb_strtolower($normalized);
+        $unitLower = mb_strtolower($normalizedUnit);
+
+        if (str_ends_with($normalizedLower, $unitLower)) {
+            return $normalized;
+        }
+
+        return $normalized.' '.$normalizedUnit;
     }
 
     private function sanitizeString(mixed $value): ?string
@@ -435,6 +562,7 @@ class VactoolProductParser
 
             $name = $this->sanitizeString($spec['name'] ?? null);
             $value = $this->sanitizeString($spec['value'] ?? null);
+            $source = $this->sanitizeString($spec['source'] ?? null) ?? 'unknown';
 
             if ($name === null || $value === null) {
                 continue;
@@ -442,10 +570,13 @@ class VactoolProductParser
 
             $key = mb_strtolower($name.'::'.$value);
 
-            $unique[$key] = [
-                'name' => $name,
-                'value' => $value,
-            ];
+            if (! isset($unique[$key])) {
+                $unique[$key] = [
+                    'name' => $name,
+                    'value' => $value,
+                    'source' => $source,
+                ];
+            }
         }
 
         return array_values($unique);

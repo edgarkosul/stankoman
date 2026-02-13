@@ -2,21 +2,18 @@
 
 namespace App\Models;
 
-use App\Models\Category;
-use Illuminate\Support\Str;
-use App\Models\AttributeOption;
+use App\Models\Attribute as AttributeDef;
+use App\Models\Pivots\ProductCategory;
+use App\Support\ImageDerivativesResolver;
+use App\Support\NameNormalizer;
+use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use App\Models\ProductAttributeValue;
-use App\Models\Pivots\ProductCategory;
-use App\Models\ProductAttributeOption;
-use Illuminate\Database\Eloquent\Model;
-use App\Models\Attribute as AttributeDef;
-use App\Support\ImageDerivativesResolver;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
+use Illuminate\Support\Str;
 
 /**
  * Модель товара (ядро каталога).
@@ -24,6 +21,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
  * @property int $id
  * @property string $name
  * @property string|null $title
+ * @property string|null $name_normalized
  * @property string $slug
  * @property string|null $sku
  * @property string|null $brand
@@ -41,7 +39,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
  * @property string|null $short
  * @property string|null $description
  * @property string|null $extra_description
- * @property string|null $specs
+ * @property array<array-key, mixed>|null $specs
  * @property string|null $image
  * @property string|null $thumb
  * @property array<array-key, mixed>|null $gallery
@@ -91,14 +89,15 @@ class Product extends Model
     protected $casts = [
         'price_amount' => 'int',
         'discount_price' => 'int',
-        'qty'          => 'int',
-        'popularity'   => 'int',
-        'in_stock'     => 'bool',
-        'is_active'    => 'bool',
-        'with_dns'     => 'bool',
-        'gallery'      => 'array',
-        'created_at'   => 'datetime',
-        'updated_at'   => 'datetime',
+        'qty' => 'int',
+        'popularity' => 'int',
+        'in_stock' => 'bool',
+        'is_active' => 'bool',
+        'with_dns' => 'bool',
+        'gallery' => 'array',
+        'specs' => 'array',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
         'is_in_yml_feed' => 'bool',
     ];
 
@@ -111,11 +110,10 @@ class Product extends Model
         return 'slug';
     }
 
-
     protected function warrantyDisplay(): EloquentAttribute
     {
         return EloquentAttribute::make(
-            get: fn($value, array $attributes) => $attributes['warranty'] ?? null,
+            get: fn ($value, array $attributes) => $attributes['warranty'] ?? null,
         );
     }
 
@@ -159,24 +157,26 @@ class Product extends Model
     protected static function booted(): void
     {
         static::saving(function (self $product) {
+            $product->name_normalized = NameNormalizer::normalize($product->name);
+
             // Аккуратная генерация slug, если он ещё не задан
             if (! $product->slug && $product->name) {
                 // Базовый slug из имени
                 $base = Str::slug($product->name) ?: 'product';
                 $slug = $base;
-                $i    = 2;
+                $i = 2;
 
                 // Обеспечиваем уникальность slug
                 while (
                     static::query()
-                    ->where('slug', $slug)
-                    ->when(
-                        $product->exists,
-                        fn($q) => $q->where('id', '!=', $product->id)
-                    )
-                    ->exists()
+                        ->where('slug', $slug)
+                        ->when(
+                            $product->exists,
+                            fn ($q) => $q->where('id', '!=', $product->id)
+                        )
+                        ->exists()
                 ) {
-                    $slug = $base . '-' . $i;
+                    $slug = $base.'-'.$i;
                     $i++;
                 }
 
@@ -195,8 +195,8 @@ class Product extends Model
     protected function description(): EloquentAttribute
     {
         return EloquentAttribute::make(
-            get: fn($value) => (is_string($value) && trim($value) !== '') ? $value : '<p></p>',
-            set: fn($value) => (is_string($value) && trim($value) !== '') ? trim($value) : '<p></p>',
+            get: fn ($value) => (is_string($value) && trim($value) !== '') ? $value : '<p></p>',
+            set: fn ($value) => (is_string($value) && trim($value) !== '') ? trim($value) : '<p></p>',
         );
     }
 
@@ -206,8 +206,8 @@ class Product extends Model
     protected function extraDescription(): EloquentAttribute
     {
         return EloquentAttribute::make(
-            get: fn($value) => (is_string($value) && trim($value) !== '') ? $value : '<p></p>',
-            set: fn($value) => (is_string($value) && trim($value) !== '') ? trim($value) : '<p></p>',
+            get: fn ($value) => (is_string($value) && trim($value) !== '') ? $value : '<p></p>',
+            set: fn ($value) => (is_string($value) && trim($value) !== '') ? trim($value) : '<p></p>',
         );
     }
 
@@ -235,7 +235,7 @@ class Product extends Model
                 }
 
                 if (Str::startsWith($path, 'storage/')) {
-                    return '/' . $path;
+                    return '/'.$path;
                 }
 
                 return Storage::disk('public')->url($path);
@@ -275,12 +275,11 @@ class Product extends Model
         );
     }
 
-
     // 2) Добавь аксессоры (рядом с твоим getPriceAttribute()):
     protected function priceInt(): EloquentAttribute
     {
         return EloquentAttribute::make(
-            get: fn($value, $attr) => (int) ($attr['price_amount'] ?? 0),
+            get: fn ($value, $attr) => (int) ($attr['price_amount'] ?? 0),
         );
     }
 
@@ -290,8 +289,11 @@ class Product extends Model
         return EloquentAttribute::make(
             get: function ($value, $attr) {
                 $raw = $attr['discount_price'] ?? null;
-                if ($raw === null) return null;
+                if ($raw === null) {
+                    return null;
+                }
                 $v = (int) $raw;
+
                 return $v > 0 ? $v : null;
             },
         );
@@ -302,10 +304,13 @@ class Product extends Model
     {
         return EloquentAttribute::make(
             get: function ($value, $attr) {
-                $price    = (int) ($attr['price_amount'] ?? 0);
-                $discount = $attr['discount_price']  ?? null;
-                if ($discount === null) return false;
+                $price = (int) ($attr['price_amount'] ?? 0);
+                $discount = $attr['discount_price'] ?? null;
+                if ($discount === null) {
+                    return false;
+                }
                 $d = (int) $discount;
+
                 return $price > 0 && $d > 0 && $d < $price;
             },
         );
@@ -316,11 +321,16 @@ class Product extends Model
     {
         return EloquentAttribute::make(
             get: function ($value, $attr) {
-                $price    = (int) ($attr['price_amount'] ?? 0);
-                $discount = $attr['discount_price']  ?? null;
-                if ($discount === null) return null;
+                $price = (int) ($attr['price_amount'] ?? 0);
+                $discount = $attr['discount_price'] ?? null;
+                if ($discount === null) {
+                    return null;
+                }
                 $d = (int) $discount;
-                if ($price <= 0 || $d <= 0 || $d >= $price) return null;
+                if ($price <= 0 || $d <= 0 || $d >= $price) {
+                    return null;
+                }
+
                 return (int) round(100 - ($d / $price) * 100);
             },
         );
@@ -331,10 +341,11 @@ class Product extends Model
     {
         return EloquentAttribute::make(
             get: function ($value, $attr) {
-                $price    = (int) ($attr['price_amount'] ?? 0);
+                $price = (int) ($attr['price_amount'] ?? 0);
                 $discount = $attr['discount_price'] ?? null;
                 $d = $discount === null ? null : (int) $discount;
                 $has = $price > 0 && $d !== null && $d > 0 && $d < $price;
+
                 return $has ? $d : $price;
             },
         );
@@ -403,7 +414,7 @@ class Product extends Model
         }
 
         return $this->attributeValues->first(
-            fn($v) => $v->attribute && $v->attribute->slug === $attributeSlug
+            fn ($v) => $v->attribute && $v->attribute->slug === $attributeSlug
         );
     }
 
@@ -435,9 +446,9 @@ class Product extends Model
                 ->get(['attribute_options.id', 'attribute_options.value']);
 
             return [
-                'type'   => 'options',
+                'type' => 'options',
                 'labels' => $rows->pluck('value')->all(),
-                'ids'    => $rows->pluck('id')->all(),
+                'ids' => $rows->pluck('id')->all(),
             ];
         }
 
@@ -450,7 +461,7 @@ class Product extends Model
                     ->where('attribute_id', $attribute->id)
                     ->whereNotNull('value_text')
                     ->pluck('value_text')
-                    ->map(fn($v) => (string) $v)
+                    ->map(fn ($v) => (string) $v)
                     ->all();
 
                 return ['type' => 'text', 'values' => $values];
@@ -460,8 +471,8 @@ class Product extends Model
                     ->where('attribute_id', $attribute->id)
                     ->whereNotNull('value_number')
                     ->pluck('value_number')
-                    ->map(fn($v) => is_null($v) ? null : (float) $v)
-                    ->filter(fn($v) => $v !== null)
+                    ->map(fn ($v) => is_null($v) ? null : (float) $v)
+                    ->filter(fn ($v) => $v !== null)
                     ->values()
                     ->all();
 
@@ -472,7 +483,7 @@ class Product extends Model
                     ->where('attribute_id', $attribute->id)
                     ->whereNotNull('value_boolean')
                     ->pluck('value_boolean')
-                    ->map(fn($v) => (bool) $v)
+                    ->map(fn ($v) => (bool) $v)
                     ->all();
 
                 return ['type' => 'boolean', 'values' => $values];
@@ -495,7 +506,7 @@ class Product extends Model
                         'max' => $max === null ? null : (float) $max,
                     ];
                 })
-                    ->filter(fn($v) => $v !== null)
+                    ->filter(fn ($v) => $v !== null)
                     ->values()
                     ->all();
 
@@ -511,12 +522,19 @@ class Product extends Model
                     if ($r->value_min !== null || $r->value_max !== null) {
                         return ['min' => $r->value_min, 'max' => $r->value_max];
                     }
-                    if ($r->value_number !== null)  return (float) $r->value_number;
-                    if ($r->value_text !== null)    return (string) $r->value_text;
-                    if ($r->value_boolean !== null) return (bool) $r->value_boolean;
+                    if ($r->value_number !== null) {
+                        return (float) $r->value_number;
+                    }
+                    if ($r->value_text !== null) {
+                        return (string) $r->value_text;
+                    }
+                    if ($r->value_boolean !== null) {
+                        return (bool) $r->value_boolean;
+                    }
+
                     return null;
                 })
-                    ->filter(fn($v) => $v !== null)
+                    ->filter(fn ($v) => $v !== null)
                     ->values()
                     ->all();
 
@@ -530,8 +548,7 @@ class Product extends Model
      * Для select/multiselect — пишется в pivot (таблица product_attribute_option).
      * Для PAV — пишется/обновляется запись в product_attribute_values.
      *
-     * @param  string                    $attributeSlug
-     * @param  mixed                     $value  select: int|null; multiselect: int[]; PAV: см. ProductAttributeValue::setTypedValue()
+     * @param  mixed  $value  select: int|null; multiselect: int[]; PAV: см. ProductAttributeValue::setTypedValue()
      * @return bool|\App\Models\ProductAttributeValue
      */
     public function setAttributeValue(string $attributeSlug, $value)
@@ -556,6 +573,7 @@ class Product extends Model
             }
 
             $this->unsetRelation('attributeOptions');
+
             return true;
         }
 
@@ -574,10 +592,9 @@ class Product extends Model
      * Сформировать текстовую метку значения(й) атрибута с учётом единиц,
      * округления и диапазонов. Удобно для карточки товара/списков.
      *
-     * @param  string|int  $attr       slug или id атрибута
-     * @param  string      $separator  разделитель для мультизначений
+     * @param  string|int  $attr  slug или id атрибута
+     * @param  string  $separator  разделитель для мультизначений
      */
-
     public function attrLabel(
         string|int|Attribute $attr,
         string $separator = ' / ',
@@ -599,7 +616,7 @@ class Product extends Model
         // Единица отображения для конкретной категории
         // Единица отображения для конкретной категории
         $displayUnit = $attribute->uiUnitForCategory($category);
-        $unitSuffix  = $displayUnit?->symbol ? (' ' . $displayUnit->symbol) : '';
+        $unitSuffix = $displayUnit?->symbol ? (' '.$displayUnit->symbol) : '';
 
         // Форматтер числа с учётом категории
         $fmt = function (float $ui) use ($attribute, $category): string {
@@ -614,7 +631,6 @@ class Product extends Model
 
             return $str === '' ? '0' : $str;
         };
-
 
         // === select / multiselect ===
         if ($attribute->usesOptions()) {
@@ -665,15 +681,22 @@ class Product extends Model
                         ? $attribute->fromSiWithUnit((float) $maxSi, $displayUnit)
                         : null;
 
-                    if ($minUi !== null && $maxUi !== null) return $fmt($minUi) . '—' . $fmt($maxUi) . $unitSuffix;
-                    if ($minUi !== null)                    return '≥ ' . $fmt($minUi) . $unitSuffix;
-                    if ($maxUi !== null)                    return '≤ ' . $fmt($maxUi) . $unitSuffix;
+                    if ($minUi !== null && $maxUi !== null) {
+                        return $fmt($minUi).'—'.$fmt($maxUi).$unitSuffix;
+                    }
+                    if ($minUi !== null) {
+                        return '≥ '.$fmt($minUi).$unitSuffix;
+                    }
+                    if ($maxUi !== null) {
+                        return '≤ '.$fmt($maxUi).$unitSuffix;
+                    }
                 }
 
                 if ($r->value_si !== null || $r->value_number !== null) {
                     $si = $r->value_si ?? $attribute->toSi((float) $r->value_number);
                     $ui = $attribute->fromSiWithUnit((float) $si, $displayUnit);
-                    return $fmt($ui) . $unitSuffix;
+
+                    return $fmt($ui).$unitSuffix;
                 }
 
                 return null;
@@ -684,7 +707,8 @@ class Product extends Model
                 if ($r->value_si !== null || $r->value_number !== null) {
                     $si = $r->value_si ?? $attribute->toSi((float) $r->value_number);
                     $ui = $attribute->fromSiWithUnit((float) $si, $displayUnit);
-                    return $fmt($ui) . $unitSuffix;
+
+                    return $fmt($ui).$unitSuffix;
                 }
 
                 $hasRange = ($r->value_min_si !== null || $r->value_max_si !== null)
@@ -699,7 +723,8 @@ class Product extends Model
                     $si = $minSi ?? $maxSi;
                     if ($si !== null) {
                         $ui = $attribute->fromSiWithUnit((float) $si, $displayUnit);
-                        return $fmt($ui) . $unitSuffix;
+
+                        return $fmt($ui).$unitSuffix;
                     }
                 }
 
@@ -711,6 +736,7 @@ class Product extends Model
                 if ($r->value_boolean !== null) {
                     return $r->value_boolean ? 'Да' : 'Нет';
                 }
+
                 return null;
             }
 
@@ -722,7 +748,8 @@ class Product extends Model
             if ($r->value_si !== null || $r->value_number !== null) {
                 $si = $r->value_si ?? (float) $r->value_number;
                 $ui = $attribute->fromSiWithUnit((float) $si, $displayUnit);
-                return $fmt($ui) . $unitSuffix;
+
+                return $fmt($ui).$unitSuffix;
             }
 
             if ($r->value_boolean !== null) {
@@ -734,7 +761,6 @@ class Product extends Model
 
         return $labels ? implode($separator, $labels) : null;
     }
-
 
     /**
      * Проверка: обязателен ли атрибут для товара.
@@ -783,7 +809,7 @@ class Product extends Model
             ->join('attributes as a', 'a.id', '=', 'pao.attribute_id')
             ->where('pao.product_id', $this->id)
             ->whereIn('a.input_type', ['select', 'multiselect'])
-            ->when($limitAttributeIds, fn($q) => $q->whereIn('pao.attribute_id', $limitAttributeIds))
+            ->when($limitAttributeIds, fn ($q) => $q->whereIn('pao.attribute_id', $limitAttributeIds))
             ->groupBy('pao.attribute_id')
             ->pluck('pao.attribute_id')
             ->all();
@@ -792,7 +818,7 @@ class Product extends Model
         $pav = DB::table('product_attribute_values as pav')
             ->join('attributes as a', 'a.id', '=', 'pav.attribute_id')
             ->where('pav.product_id', $this->id)
-            ->when($limitAttributeIds, fn($q) => $q->whereIn('pav.attribute_id', $limitAttributeIds))
+            ->when($limitAttributeIds, fn ($q) => $q->whereIn('pav.attribute_id', $limitAttributeIds))
             ->where(function ($q) {
                 // boolean: 0/1 — валидно, важно только NOT NULL
                 $q->where(function ($q) {
@@ -834,7 +860,6 @@ class Product extends Model
         return $filled;
     }
 
-
     public function requiredAttributeIds(?int $categoryId = null): array
     {
         $q = DB::table('category_attribute as ca')
@@ -846,7 +871,7 @@ class Product extends Model
             $q->where('ca.category_id', $categoryId);
         }
 
-        return $q->pluck('ca.attribute_id')->map(fn($id) => (int) $id)->unique()->values()->all();
+        return $q->pluck('ca.attribute_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
     }
 
     /**
@@ -855,7 +880,7 @@ class Product extends Model
     public function missingRequiredAttributes(?int $categoryId = null): \Illuminate\Support\Collection
     {
         $req = $this->requiredAttributeIds($categoryId);
-        if (!$req) {
+        if (! $req) {
             return collect();
         }
 
@@ -866,5 +891,4 @@ class Product extends Model
             ->whereIn('id', $missingIds)
             ->get(['id', 'name', 'slug', 'input_type', 'data_type']);
     }
-
 }

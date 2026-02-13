@@ -44,6 +44,34 @@ class ProductInfolist
                     ->placeholder('-')
                     ->columnSpanFull(),
                 TextEntry::make('specs')
+                    ->formatStateUsing(static function (mixed $state): ?string {
+                        if (! is_array($state) || $state === []) {
+                            return null;
+                        }
+
+                        $lines = [];
+
+                        foreach ($state as $spec) {
+                            if (! is_array($spec)) {
+                                continue;
+                            }
+
+                            $name = trim((string) ($spec['name'] ?? ''));
+                            $value = trim((string) ($spec['value'] ?? ''));
+
+                            if ($name === '' || $value === '') {
+                                continue;
+                            }
+
+                            $lines[] = $name.': '.$value;
+                        }
+
+                        if ($lines === []) {
+                            return null;
+                        }
+
+                        return implode(PHP_EOL, $lines);
+                    })
                     ->placeholder('-')
                     ->columnSpanFull(),
                 ImageEntry::make('image')
