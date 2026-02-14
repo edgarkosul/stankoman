@@ -30,12 +30,14 @@ class ImportRunsTable
                     ->formatStateUsing(fn ($state): string => match ($state) {
                         'products' => 'Excel товары',
                         'vactool_products' => 'Vactool',
+                        'specs_match' => 'Specs match',
                         default => (string) $state,
                     })
                     ->badge()
                     ->colors([
                         'gray' => 'products',
                         'primary' => 'vactool_products',
+                        'info' => 'specs_match',
                     ])
                     ->sortable(),
 
@@ -56,6 +58,39 @@ class ImportRunsTable
                         'danger' => 'failed',
                     ])
                     ->sortable(),
+
+                TextColumn::make('totals._meta.pav_matched')
+                    ->label('PAV')
+                    ->alignCenter()
+                    ->sortable()
+                    ->default(fn (ImportRun $record): int => (int) (
+                        data_get($record->totals, '_meta.pav_matched')
+                        ?? ($record->type === 'specs_match'
+                            ? (data_get($record->totals, 'create') ?? 0)
+                            : 0)
+                    )),
+
+                TextColumn::make('totals._meta.pao_matched')
+                    ->label('PAO')
+                    ->alignCenter()
+                    ->sortable()
+                    ->default(fn (ImportRun $record): int => (int) (
+                        data_get($record->totals, '_meta.pao_matched')
+                        ?? ($record->type === 'specs_match'
+                            ? (data_get($record->totals, 'update') ?? 0)
+                            : 0)
+                    )),
+
+                TextColumn::make('totals._meta.skipped')
+                    ->label('Пропущено')
+                    ->alignCenter()
+                    ->sortable()
+                    ->default(fn (ImportRun $record): int => (int) (
+                        data_get($record->totals, '_meta.skipped')
+                        ?? ($record->type === 'specs_match'
+                            ? (data_get($record->totals, 'same') ?? 0)
+                            : 0)
+                    )),
 
                 TextColumn::make('totals.create')
                     ->label('Создастся')
