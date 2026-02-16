@@ -63,47 +63,85 @@ class AttributeResource extends Resource
         ];
     }
 
-    public static function applyUiMap(array $data): array
+    public static function dataTypeOptions(): array
     {
-        $ui = $data['filter_ui'] ?? null;
+        return [
+            'text' => 'Текст',
+            'number' => 'Число',
+            'range' => 'Диапазон',
+            'boolean' => 'Да / Нет',
+        ];
+    }
 
-        // По схеме БД input_type не nullable, поэтому всегда проставляем значение.
-        $data['input_type'] = 'text';
+    public static function inputTypeOptions(): array
+    {
+        return [
+            'select' => 'Опция (один вариант)',
+            'multiselect' => 'Опции (несколько)',
+            'number' => 'Число',
+            'range' => 'Диапазон',
+            'boolean' => 'Да / Нет',
+        ];
+    }
 
-        switch ($ui) {
-            case 'select':
-                $data['input_type'] = 'select';
-                $data['data_type'] = 'text';   // семантика не важна, храним в pivot
-                break;
+    public static function inputTypeOptionsForDataType(?string $dataType): array
+    {
+        return match ($dataType) {
+            'number' => [
+                'number' => self::inputTypeOptions()['number'],
+            ],
+            'range' => [
+                'range' => self::inputTypeOptions()['range'],
+            ],
+            'boolean' => [
+                'boolean' => self::inputTypeOptions()['boolean'],
+            ],
+            default => [
+                'select' => self::inputTypeOptions()['select'],
+                'multiselect' => self::inputTypeOptions()['multiselect'],
+            ],
+        };
+    }
 
-            case 'multiselect':
-                $data['input_type'] = 'multiselect';
-                $data['data_type'] = 'text';
-                break;
+    public static function defaultInputTypeForDataType(?string $dataType): string
+    {
+        return array_key_first(self::inputTypeOptionsForDataType($dataType)) ?? 'select';
+    }
 
-            case 'number':
-                $data['input_type'] = 'number';
-                $data['data_type'] = 'number';
-                break;
+    public static function normalizeTypePair(array $data): array
+    {
+        $dataType = (string) ($data['data_type'] ?? 'text');
 
-            case 'range':
-                $data['input_type'] = 'range';
-                $data['data_type'] = 'range';
-                break;
-
-            case 'boolean':
-                $data['input_type'] = 'boolean';
-                $data['data_type'] = 'boolean';
-                break;
-
-            default: // 'text'
-                $data['input_type'] = 'text';
-                $data['data_type'] = 'text';
-                break;
+        if (! array_key_exists($dataType, self::dataTypeOptions())) {
+            $dataType = 'text';
         }
+
+        $inputType = (string) ($data['input_type'] ?? '');
+        if ($dataType === 'text' && $inputType === 'text') {
+            $data['data_type'] = $dataType;
+            $data['input_type'] = $inputType;
+
+            unset($data['filter_ui']);
+
+            return $data;
+        }
+
+        $allowedInputTypes = array_keys(self::inputTypeOptionsForDataType($dataType));
+
+        if (! in_array($inputType, $allowedInputTypes, true)) {
+            $inputType = self::defaultInputTypeForDataType($dataType);
+        }
+
+        $data['data_type'] = $dataType;
+        $data['input_type'] = $inputType;
 
         unset($data['filter_ui']);
 
         return $data;
+    }
+
+    public static function applyUiMap(array $data): array
+    {
+        return self::normalizeTypePair($data);
     }
 }

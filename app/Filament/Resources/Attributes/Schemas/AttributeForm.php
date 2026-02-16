@@ -2,15 +2,18 @@
 
 namespace App\Filament\Resources\Attributes\Schemas;
 
-use App\Models\Unit;
+use App\Filament\Resources\Attributes\AttributeResource;
 use App\Models\Attribute;
-use Filament\Schemas\Schema;
-use Illuminate\Validation\Rule;
+use App\Models\Unit;
+use Closure;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Toggle;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Schema;
+use Illuminate\Validation\Rule;
 
 class AttributeForm
 {
@@ -27,39 +30,60 @@ class AttributeForm
                     ->label('Название фильтра')
                     ->required(),
 
-                Select::make('filter_ui')
-                    ->label('Тип фильтра')
-                    ->options([
-                        'select'      => 'Опция (один вариант)',
-                        'multiselect' => 'Опции (несколько)',
-                        'text'        => 'Произвольный текст',
-                        'number'      => 'Число',
-                        'range'       => 'Диапазон в товаре (min—max)',
-                        'boolean'     => 'Да / Нет',
-                    ])
+                Select::make('data_type')
+                    ->label('Тип данных')
+                    ->options(fn (): array => AttributeResource::dataTypeOptions())
                     ->required()
                     ->native(false)
-                    ->live(),
+                    ->live()
+                    ->default('text')
+                    ->afterStateUpdated(function (Get $get, Set $set, ?string $state): void {
+                        $inputType = (string) ($get('input_type') ?? '');
+                        $availableInputTypes = AttributeResource::inputTypeOptionsForDataType($state);
+
+                        if (! array_key_exists($inputType, $availableInputTypes)) {
+                            $set('input_type', AttributeResource::defaultInputTypeForDataType($state));
+                        }
+                    }),
+
+                Select::make('input_type')
+                    ->label('Тип ввода/фильтрации')
+                    ->options(fn (Get $get): array => AttributeResource::inputTypeOptionsForDataType(
+                        (string) ($get('data_type') ?? 'text')
+                    ))
+                    ->required()
+                    ->native(false)
+                    ->live()
+                    ->default(fn (): string => AttributeResource::defaultInputTypeForDataType('text'))
+                    ->rules([
+                        fn (Get $get): Closure => function (string $attribute, mixed $value, Closure $fail) use ($get): void {
+                            $dataType = (string) ($get('data_type') ?? 'text');
+                            $allowedInputTypes = array_keys(AttributeResource::inputTypeOptionsForDataType(
+                                $dataType
+                            ));
+
+                            if ($dataType === 'text' && (string) $value === 'text') {
+                                return;
+                            }
+
+                            if (! in_array((string) $value, $allowedInputTypes, true)) {
+                                $fail('Недопустимая комбинация типа данных и типа ввода.');
+                            }
+                        },
+                    ]),
 
                 TextEntry::make('info')
                     ->state(<<<'HTML'
-<p><strong>Опция (один вариант)</strong> — У одного товара может быть одно значение выбираемое из заранее сотавленного списка значений. Отображается как плитки выбора.<br> Добавить опции можно в соответствующей вкладке ниже, которая появтся только после сохранения.<br>
-<em>Пример:</em> «Производитель»: Kraton</p>
+<p><strong>Тип данных</strong> определяет, как значение хранится у товара.</p>
+<p><strong>Тип ввода/фильтрации</strong> определяет, как это значение вводится в админке и как используется в фильтрах.</p>
 <br>
-<p><strong>Опции (несколько)</strong> — Аналогично "Опция (один вариант)" но, один товар может иметь несколько значений. Отображается тоже как плитки выбора.<br>  Добавить опции можно в соответствующей вкладке ниже, которая появтся только после сохранения.<br>
-<em>Пример:</em> «Напряжение»: 220 В и 380 В</p>
-<br>
-<p><strong>Произвольный текст</strong> — Любое текстовое значение у каждого товара, не ограниченоое заранее. Присутствует исторически. Желательно перевод в один из предыдуших типов. <br>
-<em>Пример:</em> «Тип двигателя». Отображается тоже как плитки выбора</p>
-<br>
-<p><strong>Число</strong> — произвольлное числовое значение у каждого товара, участвующего в фильтрах. Отображается как ползунок<br>
-<em>Пример:</em> «Мощность, Вт»</p>
-<br>
-<p><strong>Диапазон в товаре (min–max)</strong> — два числа внутри товара<br>
-<em>Пример:</em> «Диапазон давления 1–10 бар»</p>
-<br>
-<p><strong>Да / Нет</strong> — логический признак<br>
-<em>Пример:</em> «Есть защита от перегрева». Отображается как тумблер</p>
+<p><strong>Допустимые комбинации:</strong></p>
+<ul>
+<li><code>text</code> → <code>select</code>, <code>multiselect</code></li>
+<li><code>number</code> → <code>number</code></li>
+<li><code>range</code> → <code>range</code></li>
+<li><code>boolean</code> → <code>boolean</code></li>
+</ul>
 HTML)
                     ->html()
                     ->hiddenLabel()
@@ -90,7 +114,7 @@ HTML)
                             ->all();
 
                         return collect($dims)
-                            ->mapWithKeys(fn(string $dim) => [
+                            ->mapWithKeys(fn (string $dim) => [
                                 $dim => $labels[$dim] ?? $dim,
                             ])
                             ->toArray();
@@ -100,7 +124,7 @@ HTML)
                     ->preload()
                     ->native(false)
                     ->live() // чтобы unit_id / units_pivot реагировали на смену dimension
-                    ->visible(fn(Get $get) => in_array($get('filter_ui'), ['number', 'range'], true))
+                    ->visible(fn (Get $get) => in_array($get('data_type'), ['number', 'range'], true))
                     ->afterStateHydrated(function ($component, $state, Get $get) {
                         // Если dimension уже есть — ничего не делаем
                         if ($state) {
@@ -141,11 +165,11 @@ HTML)
                                 $label = $unit->name;
 
                                 if ($unit->symbol) {
-                                    $label .= ' (' . $unit->symbol . ')';
+                                    $label .= ' ('.$unit->symbol.')';
                                 }
 
                                 if ($unit->dimension) {
-                                    $label .= ' — ' . $unit->dimension;
+                                    $label .= ' — '.$unit->dimension;
                                 }
 
                                 return [$unit->id => $label];
@@ -160,7 +184,7 @@ HTML)
                         'nullable',
                         'exists:units,id',
                     ])
-                    ->visible(fn(Get $get) => in_array($get('filter_ui'), ['number', 'range'], true)),
+                    ->visible(fn (Get $get) => in_array($get('data_type'), ['number', 'range'], true)),
 
                 // Дополнительные единицы измерения (через pivot attribute_unit)
                 Select::make('units_pivot')
@@ -182,11 +206,11 @@ HTML)
                                 $label = $unit->name;
 
                                 if ($unit->symbol) {
-                                    $label .= ' (' . $unit->symbol . ')';
+                                    $label .= ' ('.$unit->symbol.')';
                                 }
 
                                 if ($unit->dimension) {
-                                    $label .= ' — ' . $unit->dimension;
+                                    $label .= ' — '.$unit->dimension;
                                 }
 
                                 return [$unit->id => $label];
@@ -199,16 +223,17 @@ HTML)
                     ->native(false)
                     ->live()
                     ->dehydrated(false)
-                    ->visible(fn(Get $get) => in_array($get('filter_ui'), ['number', 'range'], true))
+                    ->visible(fn (Get $get) => in_array($get('data_type'), ['number', 'range'], true))
                     ->afterStateHydrated(function ($component, ?Attribute $record) {
                         if (! $record || ! $record->exists) {
                             $component->state([]);
+
                             return;
                         }
 
                         $ids = $record->units()
                             ->pluck('units.id')
-                            ->filter(fn($id) => $id !== $record->unit_id)
+                            ->filter(fn ($id) => $id !== $record->unit_id)
                             ->values()
                             ->all();
 
@@ -222,30 +247,30 @@ HTML)
                     ->minValue(0)
                     ->maxValue(6)
                     ->label('Знаков после запятой')
-                    ->visible(fn(Get $get) => in_array($get('filter_ui'), ['number', 'range'], true)),
+                    ->visible(fn (Get $get) => in_array($get('data_type'), ['number', 'range'], true)),
 
                 TextInput::make('number_step')
                     ->numeric()
                     ->label('Шаг значений')
                     ->helperText('Напр. 1, 0.1, 0.01')
-                    ->visible(fn(Get $get) => in_array($get('filter_ui'), ['number', 'range'], true)),
+                    ->visible(fn (Get $get) => in_array($get('data_type'), ['number', 'range'], true)),
 
                 Select::make('number_rounding')
                     ->label('Округление')
                     ->options([
                         'round' => 'Округлять',
                         'floor' => 'Вниз',
-                        'ceil'  => 'Вверх',
+                        'ceil' => 'Вверх',
                     ])
                     ->placeholder('— Не округлять —') // null
                     ->nullable()
                     ->default(null)
                     ->native(false)
-                    ->visible(fn(Get $get) => in_array($get('filter_ui'), ['number', 'range'], true))
+                    ->visible(fn (Get $get) => in_array($get('data_type'), ['number', 'range'], true))
                     ->rules([
                         'nullable',
                         Rule::in(['round', 'floor', 'ceil']),
-                    ])
+                    ]),
             ]);
     }
 }

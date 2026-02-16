@@ -2,11 +2,11 @@
 
 namespace App\Filament\Resources\Attributes\Pages;
 
-use Livewire\Attributes\On;
-use Filament\Actions\DeleteAction;
-use Filament\Resources\Pages\EditRecord;
 use App\Filament\Resources\Attributes\AttributeResource;
 use App\Models\Attribute;
+use Filament\Actions\DeleteAction;
+use Filament\Resources\Pages\EditRecord;
+use Livewire\Attributes\On;
 
 class EditAttribute extends EditRecord
 {
@@ -19,25 +19,17 @@ class EditAttribute extends EditRecord
         ];
     }
 
-    protected function mutateFormDataBeforeFill(array $data): array
-    {
-        // Превращаем текущее (data_type, input_type) -> виртуальный filter_ui
-        $data['filter_ui'] =
-            ($data['input_type'] === 'select')       ? 'select'      : (($data['input_type'] === 'multiselect') ? 'multiselect' : (($data['data_type']  === 'number')      ? 'number'      : (($data['data_type']  === 'range')       ? 'range'       : (($data['data_type']  === 'boolean')     ? 'boolean'     : 'text'))));
-
-        return $data;
-    }
-
     public function mutateFormDataBeforeSave(array $data): array
     {
-        return AttributeResource::applyUiMap($data);
+        return AttributeResource::normalizeTypePair($data);
     }
+
     protected function afterSave(): void
     {
         /** @var Attribute $attribute */
         $attribute = $this->record;
 
-        $state   = $this->form->getRawState();
+        $state = $this->form->getRawState();
         $unitIds = $state['units_pivot'] ?? [];
 
         $attribute->syncUnitsFromIds($unitIds);
