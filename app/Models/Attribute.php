@@ -2,21 +2,20 @@
 
 namespace App\Models;
 
-use App\Models\Unit;
-use App\Models\Category;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
-use App\Models\AttributeProductLink;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * @property int $id
  * @property string $name
  * @property string $slug
  * @property string $data_type
+ * @property string|null $value_source
+ * @property string|null $filter_ui
  * @property string|null $input_type
  * @property int|null $unit_id
  * @property bool $is_filterable
@@ -43,6 +42,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Product> $productsViaValues
  * @property-read int|null $products_via_values_count
  * @property-read \App\Models\Unit|null $unit
+ *
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Attribute newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Attribute newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Attribute query()
@@ -62,6 +62,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Attribute whereSortOrder($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Attribute whereUnitId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Attribute whereUpdatedAt($value)
+ *
  * @mixin \Eloquent
  */
 class Attribute extends Model
@@ -70,6 +71,8 @@ class Attribute extends Model
         'name',
         'slug',
         'data_type',
+        'value_source',
+        'filter_ui',
         'input_type',
         'unit_id',
         'dimension',
@@ -84,11 +87,11 @@ class Attribute extends Model
     ];
 
     protected $casts = [
-        'is_filterable'   => 'bool',
-        'is_comparable'   => 'bool',
-        'sort_order'      => 'int',
+        'is_filterable' => 'bool',
+        'is_comparable' => 'bool',
+        'sort_order' => 'int',
         'number_decimals' => 'int',
-        'number_step'     => 'float',   // важно: использовать как число
+        'number_step' => 'float',   // важно: использовать как число
     ];
 
     // Типы
@@ -96,17 +99,31 @@ class Attribute extends Model
     {
         return $this->data_type === 'text';
     }
+
     public function isNumber(): bool
     {
         return $this->data_type === 'number';
     }
+
     public function isBoolean(): bool
     {
         return $this->data_type === 'boolean';
     }
+
+    public function getValueSourceAttribute(?string $value): string
+    {
+        if (in_array($value, ['free', 'options'], true)) {
+            return $value;
+        }
+
+        return in_array((string) ($this->attributes['input_type'] ?? ''), ['select', 'multiselect'], true)
+            ? 'options'
+            : 'free';
+    }
+
     public function usesOptions(): bool
     {
-        return in_array($this->input_type, ['select', 'multiselect'], true);
+        return $this->value_source === 'options';
     }
 
     public function isRange(): bool
@@ -170,7 +187,6 @@ class Attribute extends Model
         return $this->unit;
     }
 
-
     /** PAV: значения-строки у товаров (число/диапазон/текст/булево) */
     public function pavValues(): HasMany
     {
@@ -225,17 +241,17 @@ class Attribute extends Model
             ->withTimestamps();
     }
 
-    public function getFilterUiAttribute(): string
+    public function getFilterUiAttribute(?string $value): ?string
     {
-        if ($this->input_type === 'select') return 'select';
-        if ($this->input_type === 'multiselect') return 'multiselect';
+        if (! $this->usesOptions()) {
+            return null;
+        }
 
-        return match ($this->data_type) {
-            'number'  => 'number',
-            'range'   => 'range',
-            'boolean' => 'boolean',
-            default   => 'text',
-        };
+        if (in_array($value, ['tiles', 'dropdown'], true)) {
+            return $value;
+        }
+
+        return $this->input_type === 'select' ? 'dropdown' : 'tiles';
     }
 
     // ----- Формат и конвертация -----
@@ -265,9 +281,10 @@ class Attribute extends Model
 
         // Иначе вычисляем шаг из decimals
         $dec = $this->numberDecimals();
+
         return $dec <= 0
             ? '1'
-            : '0.' . str_repeat('0', $dec - 1) . '1';
+            : '0.'.str_repeat('0', $dec - 1).'1';
     }
 
     public function roundingMode(): string
@@ -278,27 +295,35 @@ class Attribute extends Model
     public function factor(): float
     {
         $unit = $this->defaultUnit();
-        return (float)($unit?->si_factor ?? 1.0);
+
+        return (float) ($unit?->si_factor ?? 1.0);
     }
 
     public function offset(): float
     {
         $unit = $this->defaultUnit();
-        return (float)($unit?->si_offset ?? 0.0);
+
+        return (float) ($unit?->si_offset ?? 0.0);
     }
 
     /** UI -> SI */
     public function toSi(?float $ui): ?float
     {
-        if ($ui === null) return null;
+        if ($ui === null) {
+            return null;
+        }
+
         return $ui * $this->factor() + $this->offset();
     }
 
     /** SI -> UI */
     public function fromSi(?float $si): ?float
     {
-        if ($si === null) return null;
+        if ($si === null) {
+            return null;
+        }
         $f = max($this->factor(), 1e-20);
+
         return ($si - $this->offset()) / $f;
     }
 
@@ -357,12 +382,12 @@ class Attribute extends Model
      */
     public function quantize(float $value): float
     {
-        $dec   = $this->numberDecimals();
+        $dec = $this->numberDecimals();
         if ($dec < 0) {
             $dec = 0;
         }
 
-        $mode  = $this->roundingMode();
+        $mode = $this->roundingMode();
         $factor = 10 ** $dec;
 
         switch ($mode) {
@@ -412,9 +437,16 @@ class Attribute extends Model
                 if ($r->value_min !== null || $r->value_max !== null) {
                     return ['min' => $r->value_min, 'max' => $r->value_max];
                 }
-                if ($r->value_number !== null)  return $r->value_number;
-                if ($r->value_text !== null)    return $r->value_text;
-                if ($r->value_boolean !== null) return (bool) $r->value_boolean;
+                if ($r->value_number !== null) {
+                    return $r->value_number;
+                }
+                if ($r->value_text !== null) {
+                    return $r->value_text;
+                }
+                if ($r->value_boolean !== null) {
+                    return (bool) $r->value_boolean;
+                }
+
                 return null;
             })->filter()->values()->all();
     }
@@ -465,13 +497,14 @@ class Attribute extends Model
     {
         return EloquentAttribute::make(
             get: function ($value) {
-                if (!is_string($value) || $value === '') {
+                if (! is_string($value) || $value === '') {
                     return $value;
                 }
 
                 // Если есть кириллица — приводим к "Ход штока"
                 if (preg_match('/\p{Cyrillic}/u', $value)) {
                     $lower = Str::lower($value);      // "ход штока"
+
                     return Str::ucfirst($lower);      // "Ход штока"
                 }
 
@@ -490,7 +523,7 @@ class Attribute extends Model
     {
         $unitIds = collect($unitIds ?? [])
             ->filter()             // убрать null/пустые
-            ->map(fn($id) => (int) $id)
+            ->map(fn ($id) => (int) $id)
             ->unique()
             ->values();
 
@@ -502,18 +535,19 @@ class Attribute extends Model
         // Если вообще нет юнитов — просто детачим всё
         if ($unitIds->isEmpty()) {
             $this->units()->detach();
+
             return;
         }
 
         // Подтягиваем реальные юниты, по возможности фильтруя по dimension
         $units = Unit::query()
             ->whereIn('id', $unitIds->all())
-            ->when($this->dimension, fn($q) => $q->where('dimension', $this->dimension))
+            ->when($this->dimension, fn ($q) => $q->where('dimension', $this->dimension))
             ->get()
             ->keyBy('id');
 
         $pivotData = [];
-        $sort      = 0;
+        $sort = 0;
 
         foreach ($unitIds as $id) {
             if (! isset($units[$id])) {
@@ -539,7 +573,7 @@ class Attribute extends Model
 
         static $cache = [];
 
-        $key = $category->getKey() . ':' . $this->getKey();
+        $key = $category->getKey().':'.$this->getKey();
 
         if (array_key_exists($key, $cache)) {
             return $cache[$key];
@@ -591,7 +625,7 @@ class Attribute extends Model
         // Базовые (глобальные) настройки атрибута
         $base = [
             'decimals' => $this->numberDecimals(),
-            'step'     => $this->numberStep(),
+            'step' => $this->numberStep(),
             'rounding' => $this->roundingMode(),
         ];
 
@@ -601,7 +635,7 @@ class Attribute extends Model
 
         static $cache = [];
 
-        $catId  = $category->getKey();
+        $catId = $category->getKey();
         $attrId = $this->getKey();
 
         if (! isset($cache[$catId])) {
@@ -615,7 +649,7 @@ class Attribute extends Model
                 ->map(function ($row) {
                     return [
                         'decimals' => $row->number_decimals === null ? null : (int) $row->number_decimals,
-                        'step'     => $row->number_step,
+                        'step' => $row->number_step,
                         'rounding' => $row->number_rounding,
                     ];
                 })
@@ -642,14 +676,14 @@ class Attribute extends Model
                 // step <= 0 — трактуем как "нет явного шага"
                 $step = $dec <= 0
                     ? '1'
-                    : '0.' . str_repeat('0', $dec - 1) . '1';
+                    : '0.'.str_repeat('0', $dec - 1).'1';
             }
         } else {
             // Если decimals переопределены — шаг считаем из них; иначе оставляем глобальный
             if ($cfg['decimals'] !== null && $cfg['decimals'] !== $base['decimals']) {
                 $step = $dec <= 0
                     ? '1'
-                    : '0.' . str_repeat('0', $dec - 1) . '1';
+                    : '0.'.str_repeat('0', $dec - 1).'1';
             } else {
                 $step = $base['step'];
             }
@@ -659,7 +693,7 @@ class Attribute extends Model
 
         return [
             'decimals' => $dec,
-            'step'     => $step,
+            'step' => $step,
             'rounding' => $rounding,
         ];
     }
@@ -688,7 +722,7 @@ class Attribute extends Model
             $dec = 0;
         }
 
-        $mode   = $cfg['rounding'];
+        $mode = $cfg['rounding'];
         $factor = 10 ** $dec;
 
         switch ($mode) {

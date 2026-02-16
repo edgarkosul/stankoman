@@ -3,10 +3,10 @@
 namespace App\Support;
 
 use App\DTO\Filter;
-use App\Models\Unit;
+use App\Enums\FilterType;
 use App\Models\Attribute;
 use App\Models\Category;
-use App\Enums\FilterType;
+use App\Models\Unit;
 use App\Support\Filters\FilterInputNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -46,16 +46,16 @@ class ProductFilterService
                         ->pluck('display_unit_id', 'attribute_id'); // [attribute_id => display_unit_id|null]
 
                     $unitIds = $pivotUnits
-                        ->filter(fn($id) => ! is_null($id))
+                        ->filter(fn ($id) => ! is_null($id))
                         ->unique()
                         ->values()
                         ->all();
 
                     $units = $unitIds
                         ? Unit::query()
-                        ->whereIn('id', $unitIds)
-                        ->get(['id', 'symbol', 'si_factor', 'si_offset'])
-                        ->keyBy('id')
+                            ->whereIn('id', $unitIds)
+                            ->get(['id', 'symbol', 'si_factor', 'si_offset'])
+                            ->keyBy('id')
                         : collect();
 
                     foreach ($pivotUnits as $attrId => $unitId) {
@@ -67,12 +67,12 @@ class ProductFilterService
 
                 // --- базовые атрибуты ---
                 $attrs = $attrs->map(function (Attribute $a) use ($category, $displayUnitsByAttrId) {
-                    $key   = $a->slug;
+                    $key = $a->slug;
                     $label = $a->name;
                     $order = (int) $a->pivot->filter_order;
-                    $cast  = self::castFor($a);
+                    $cast = self::castFor($a);
 
-                // единица отображения для данной категории
+                    // единица отображения для данной категории
                     /** @var Unit|null $displayUnit */
                     $displayUnit = $displayUnitsByAttrId[$a->getKey()] ?? $a->unit;
 
@@ -88,9 +88,9 @@ class ProductFilterService
                         return new Filter(
                             key: $key,
                             label: $label,
-                            type: $a->input_type === 'multiselect'
-                                ? FilterType::MULTISELECT
-                                : FilterType::SELECT,
+                            type: $a->filter_ui === 'dropdown'
+                                ? FilterType::SELECT
+                                : FilterType::MULTISELECT,
                             meta: ['options' => $opts],
                             order: $order,
                             value_cast: $cast,
@@ -128,11 +128,11 @@ class ProductFilterService
                             label: $label,
                             type: FilterType::RANGE,
                             meta: [
-                                'min'      => $minUi,
-                                'max'      => $maxUi,
-                                'step'     => (float) $a->filterNumberStepForCategory($category),
+                                'min' => $minUi,
+                                'max' => $maxUi,
+                                'step' => (float) $a->filterNumberStepForCategory($category),
                                 'decimals' => $a->filterNumberDecimalsForCategory($category),
-                                'suffix'   => (string) optional($displayUnit)->symbol,
+                                'suffix' => (string) optional($displayUnit)->symbol,
                             ],
                             order: $order,
                             value_cast: $cast,
@@ -162,45 +162,39 @@ class ProductFilterService
                     ->filter()
                     ->values();
 
-                // --- дальше твои уже существующие системные фильтры (бренд, цена, скидка) ---
+                // Исключаем потенциальные коллизии по ключам системных фильтров.
+                $attrs = $attrs
+                    ->reject(fn (Filter $filter) => in_array($filter->key, ['brand', 'price', 'discount'], true))
+                    ->sortBy('order')
+                    ->values()
+                    ->map(function (Filter $filter, int $index): Filter {
+                        $filter->order = $index + 3;
 
-                // безопасно получаем max order среди уже собранных фильтров:
-                $maxOrder = $attrs
-                    ->filter(fn($f) => isset($f->order))
-                    ->max('order');
+                        return $filter;
+                    })
+                    ->values();
 
-                $nextOrder = is_null($maxOrder) ? 0 : ((int) $maxOrder + 1);
+                // === SYSTEM: BRAND (всегда первый) ===
+                $brandOpt = collect($category->getUniqueBrands()->toArray())
+                    ->filter(fn ($s) => $s !== null && $s !== '')
+                    ->map(fn ($s) => trim((string) $s))
+                    ->filter()
+                    ->unique(fn ($s) => mb_strtolower($s))
+                    ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+                    ->values()
+                    ->map(fn ($s) => ['v' => $s, 'l' => $s])
+                    ->all();
 
-                // === БРЕНДЫ ===
-                $existingKeys = $attrs->map->key->all();
+                $brandFilter = new Filter(
+                    'brand',
+                    'Бренд',
+                    FilterType::MULTISELECT,
+                    meta: ['options' => $brandOpt],
+                    order: 0,
+                    value_cast: 'string',
+                );
 
-                if (! in_array('brand', $existingKeys, true)) {
-                    $brandOpt = collect($category->getUniqueBrands()->toArray())
-                        ->filter(fn($s) => $s !== null && $s !== '')
-                        ->map(fn($s) => trim((string) $s))
-                        ->filter()
-                        ->unique(fn($s) => mb_strtolower($s))
-                        ->sort(SORT_NATURAL | SORT_FLAG_CASE)
-                        ->values()
-                        ->map(fn($s) => ['v' => $s, 'l' => $s])
-                        ->all();
-
-                    if (count($brandOpt) > 1) {
-                        $brandsFilter = new Filter(
-                            'brand',
-                            'Бренд',
-                            FilterType::MULTISELECT,
-                            meta: ['options' => $brandOpt],
-                            order: $nextOrder,
-                            value_cast: 'string',
-                        );
-
-                        $attrs->push($brandsFilter);
-                        $nextOrder++;
-                    }
-                }
-
-                // === ЦЕНА ===
+                // === SYSTEM: PRICE (всегда второй) ===
                 $priceBounds = DB::table('products as p')
                     ->join('product_categories as pc', 'pc.product_id', '=', 'p.id')
                     ->where('pc.category_id', $category->getKey())
@@ -211,70 +205,60 @@ class ProductFilterService
                     ->first();
 
                 $minPrice = (int) ($priceBounds->min_price ?? 0);
-                $maxPrice = (int) ($priceBounds->max_price ?? 0);
-
-                if ($maxPrice > $minPrice) {
-                    $range    = $maxPrice - $minPrice;
-                    $roughStep = max(1, (int) floor($range / 100));
-
-                    $step = $roughStep >= 100
-                        ? ((int) round($roughStep / 100) * 100)
-                        : ($roughStep >= 10
-                            ? ((int) round($roughStep / 10) * 10)
-                            : $roughStep);
-
-                    $priceFilter = new Filter(
-                        'price',
-                        'Цена',
-                        FilterType::RANGE,
-                        meta: [
-                            'min'      => $minPrice,
-                            'max'      => $maxPrice,
-                            'step'     => $step,
-                            'decimals' => 0,
-                            'suffix'   => '₽',
-                        ],
-                        order: $nextOrder,
-                        value_cast: 'float',
-                    );
-
-                    $attrs->push($priceFilter);
-                    $nextOrder++;
+                $maxPrice = (int) ($priceBounds->max_price ?? $minPrice);
+                if ($maxPrice < $minPrice) {
+                    [$minPrice, $maxPrice] = [$maxPrice, $minPrice];
                 }
 
-                // === СО СКИДКОЙ ===
-                $hasDiscounted = DB::table('products as p')
-                    ->join('product_categories as pc', 'pc.product_id', '=', 'p.id')
-                    ->where('pc.category_id', $category->getKey())
-                    ->where('p.is_active', true)
-                    ->whereNotNull('p.discount_price')
-                    ->where('p.discount_price', '>', 0)
-                    ->whereColumn('p.discount_price', '<', 'p.price_amount')
-                    ->exists();
-
-                if ($hasDiscounted) {
-                    $discountFilter = new Filter(
-                        key: 'discount',
-                        label: 'Со скидкой',
-                        type: FilterType::BOOLEAN,
-                        meta: [
-                            'options' => [
-                                ['v' => '1', 'l' => 'Да'],
-                                ['v' => '0', 'l' => 'Нет'],
-                            ],
-                        ],
-                        order: $nextOrder,
-                        value_cast: 'bool',
-                    );
-
-                    $attrs->push($discountFilter);
+                if ($maxPrice <= $minPrice) {
+                    $maxPrice = $minPrice + 1;
                 }
 
-                return $attrs;
+                $range = $maxPrice - $minPrice;
+                $roughStep = max(1, (int) floor($range / 100));
+
+                $priceStep = $roughStep >= 100
+                    ? ((int) round($roughStep / 100) * 100)
+                    : ($roughStep >= 10
+                        ? ((int) round($roughStep / 10) * 10)
+                        : $roughStep);
+
+                $priceFilter = new Filter(
+                    'price',
+                    'Цена',
+                    FilterType::RANGE,
+                    meta: [
+                        'min' => $minPrice,
+                        'max' => $maxPrice,
+                        'step' => max(1, $priceStep),
+                        'decimals' => 0,
+                        'suffix' => '₽',
+                    ],
+                    order: 1,
+                    value_cast: 'float',
+                );
+
+                // === SYSTEM: DISCOUNT (всегда третий) ===
+                $discountFilter = new Filter(
+                    key: 'discount',
+                    label: 'Со скидкой',
+                    type: FilterType::BOOLEAN,
+                    meta: [
+                        'options' => [
+                            ['v' => '1', 'l' => 'Да'],
+                            ['v' => '0', 'l' => 'Нет'],
+                        ],
+                    ],
+                    order: 2,
+                    value_cast: 'bool',
+                );
+
+                return collect([$brandFilter, $priceFilter, $discountFilter])
+                    ->concat($attrs)
+                    ->values();
             }
         );
     }
-
 
     /**
      * Вернуть список опций атрибута, реально встречающихся у продуктов в категории.
@@ -303,7 +287,7 @@ class ProductFilterService
             ->get();
 
         return $rows
-            ->map(fn($r) => ['v' => (string) $r->id, 'l' => $r->value])
+            ->map(fn ($r) => ['v' => (string) $r->id, 'l' => $r->value])
             ->all();
     }
 
@@ -311,12 +295,12 @@ class ProductFilterService
     {
 
         $productsTable = $query->getModel()->getTable();
-        // Подтягиваем мета по атрибутам: id, data_type, input_type + unit
-        $keys  = array_keys($selected);
+        // Подтягиваем мета по атрибутам: id, data_type, value_source/filter_ui + legacy input_type + unit
+        $keys = array_keys($selected);
         $attrs = Attribute::query()
             ->whereIn('slug', $keys)
             ->with('unit:id,symbol,si_factor,si_offset')
-            ->get(['id', 'slug', 'data_type', 'input_type', 'unit_id'])
+            ->get(['id', 'slug', 'data_type', 'value_source', 'filter_ui', 'input_type', 'unit_id'])
             ->keyBy('slug');
 
         // Для конкретной категории — карта attribute_id => Unit|null
@@ -331,16 +315,16 @@ class ProductFilterService
                 ->pluck('display_unit_id', 'attribute_id'); // [attribute_id => unit_id|null]
 
             $unitIds = $pivotUnits
-                ->filter(fn($id) => ! is_null($id))
+                ->filter(fn ($id) => ! is_null($id))
                 ->unique()
                 ->values()
                 ->all();
 
             $units = $unitIds
                 ? Unit::query()
-                ->whereIn('id', $unitIds)
-                ->get(['id', 'symbol', 'si_factor', 'si_offset'])
-                ->keyBy('id')
+                    ->whereIn('id', $unitIds)
+                    ->get(['id', 'symbol', 'si_factor', 'si_offset'])
+                    ->keyBy('id')
                 : collect();
 
             foreach ($pivotUnits as $attrId => $unitId) {
@@ -359,7 +343,7 @@ class ProductFilterService
             // === SYSTEM: BRAND (products.brand) ===
             if (! $attr && $key === 'brand') {
                 if ($input->hasValues()) {
-                    $query->whereIn($productsTable . '.brand', $input->values);
+                    $query->whereIn($productsTable.'.brand', $input->values);
                 }
 
                 continue;
@@ -368,10 +352,10 @@ class ProductFilterService
             // === SYSTEM: PRICE (products.price_amount) ===
             if (! $attr && $key === 'price' && $type === FilterType::RANGE) {
                 if ($input->min !== null) {
-                    $query->where($productsTable . '.price_amount', '>=', (float) $input->min);
+                    $query->where($productsTable.'.price_amount', '>=', (float) $input->min);
                 }
                 if ($input->max !== null) {
-                    $query->where($productsTable . '.price_amount', '<=', (float) $input->max);
+                    $query->where($productsTable.'.price_amount', '<=', (float) $input->max);
                 }
 
                 continue;
@@ -384,9 +368,9 @@ class ProductFilterService
                 }
 
                 $query->where(function ($q) use ($productsTable) {
-                    $q->whereNotNull($productsTable . '.discount_price')
-                        ->where($productsTable . '.discount_price', '>', 0)
-                        ->whereColumn($productsTable . '.discount_price', '<', $productsTable . '.price_amount');
+                    $q->whereNotNull($productsTable.'.discount_price')
+                        ->where($productsTable.'.discount_price', '>', 0)
+                        ->whereColumn($productsTable.'.discount_price', '<', $productsTable.'.price_amount');
                 });
 
                 continue;
@@ -397,191 +381,188 @@ class ProductFilterService
                 continue;
             }
 
-            $attrId      = $attr->id;
+            $attrId = $attr->id;
             /** @var Unit|null $displayUnit */
             $displayUnit = $displayUnitsByAttrId[$attrId] ?? $attr->unit;
 
             switch ($type) {
                 case FilterType::SELECT:
-                case FilterType::MULTISELECT: {
-                        // Опционный атрибут?
-                        $isOptions = in_array($attr->input_type, ['select', 'multiselect'], true);
+                case FilterType::MULTISELECT:
+                    // Опционный атрибут?
+                    $isOptions = $attr->usesOptions();
 
-                        if ($isOptions) {
-                            // === Ветка опций по ID ===
-                            $values = array_values(array_unique(array_filter(
-                                array_map('intval', $input->values)
-                            )));
+                    if ($isOptions) {
+                        // === Ветка опций по ID ===
+                        $values = array_values(array_unique(array_filter(
+                            array_map('intval', $input->values)
+                        )));
 
-                            if (! $values) {
-                                break;
-                            }
-
-                            $query->whereExists(function ($sub) use ($productsTable, $attrId, $values) {
-                                $sub->select(DB::raw(1))
-                                    ->from('product_attribute_option as pao')
-                                    ->join('attribute_options as ao', 'ao.id', '=', 'pao.attribute_option_id')
-                                    ->whereColumn('pao.product_id', $productsTable . '.id')
-                                    ->where('ao.attribute_id', $attrId)
-                                    ->whereIn('ao.id', $values);
-                            });
-                        } else {
-                            // === Текстовый фасет (data_type='text'), матч по value_text ===
-                            $texts = array_values(array_filter(
-                                array_map('strval', $input->values),
-                                static fn($v) => $v !== ''
-                            ));
-
-                            if (! $texts) {
-                                break;
-                            }
-
-                            $query->whereExists(function ($sub) use ($productsTable, $attrId, $texts) {
-                                $sub->select(DB::raw(1))
-                                    ->from('product_attribute_values as pav')
-                                    ->whereColumn('pav.product_id', $productsTable . '.id')
-                                    ->where('pav.attribute_id', $attrId)
-                                    ->whereIn('pav.value_text', $texts);
-                            });
-                        }
-
-                        break;
-                    }
-
-                case FilterType::RANGE: {
-                        if ($input->min === null && $input->max === null) {
+                        if (! $values) {
                             break;
                         }
 
-                        // 2) UI -> SI через единицу отображения категории
-                        $minSi = $input->min !== null
-                            ? $attr->toSiWithUnit((float) $input->min, $displayUnit)
-                            : null;
-
-                        $maxSi = $input->max !== null
-                            ? $attr->toSiWithUnit((float) $input->max, $displayUnit)
-                            : null;
-
-                        // 3) Fallback-выражения для старых value_* (в "базовой" единице атрибута)
-                        $baseUnit = $attr->unit;
-                        $factor   = (float) ($baseUnit?->si_factor ?? 1.0);
-                        $offset   = (float) ($baseUnit?->si_offset ?? 0.0);
-
-                        if ($attr->isRange()) {
-                            $rightExpr = 'COALESCE(
-                    pav.value_max_si,
-                    pav.value_si,
-                    pav.value_min_si,
-                    pav.value_max * ? + ?,
-                    pav.value_number * ? + ?,
-                    pav.value_min * ? + ?
-                )';
-
-                            $leftExpr = 'COALESCE(
-                    pav.value_min_si,
-                    pav.value_si,
-                    pav.value_max_si,
-                    pav.value_min * ? + ?,
-                    pav.value_number * ? + ?,
-                    pav.value_max * ? + ?
-                )';
-
-                            $bindRight = [$factor, $offset, $factor, $offset, $factor, $offset];
-                            $bindLeft  = [$factor, $offset, $factor, $offset, $factor, $offset];
-                        } else {
-                            $rightExpr = 'COALESCE(
-                    pav.value_si,
-                    pav.value_max_si,
-                    pav.value_min_si,
-                    pav.value_number * ? + ?,
-                    pav.value_max * ? + ?,
-                    pav.value_min * ? + ?
-                )';
-
-                            $leftExpr = 'COALESCE(
-                    pav.value_si,
-                    pav.value_min_si,
-                    pav.value_max_si,
-                    pav.value_number * ? + ?,
-                    pav.value_min * ? + ?,
-                    pav.value_max * ? + ?
-                )';
-
-                            $bindRight = [$factor, $offset, $factor, $offset, $factor, $offset];
-                            $bindLeft  = [$factor, $offset, $factor, $offset, $factor, $offset];
-                        }
-
-                        $query->whereExists(function ($sub) use (
-                            $productsTable,
-                            $attrId,
-                            $minSi,
-                            $maxSi,
-                            $rightExpr,
-                            $leftExpr,
-                            $bindRight,
-                            $bindLeft
-                        ) {
+                        $query->whereExists(function ($sub) use ($productsTable, $attrId, $values) {
                             $sub->select(DB::raw(1))
-                                ->from('product_attribute_values as pav')
-                                ->whereColumn('pav.product_id', $productsTable . '.id')
-                                ->where('pav.attribute_id', $attrId);
-
-                            if ($minSi !== null) {
-                                $sub->whereRaw("$rightExpr >= ?", array_merge($bindRight, [$minSi]));
-                            }
-                            if ($maxSi !== null) {
-                                $sub->whereRaw("$leftExpr <= ?", array_merge($bindLeft, [$maxSi]));
-                            }
+                                ->from('product_attribute_option as pao')
+                                ->join('attribute_options as ao', 'ao.id', '=', 'pao.attribute_option_id')
+                                ->whereColumn('pao.product_id', $productsTable.'.id')
+                                ->where('ao.attribute_id', $attrId)
+                                ->whereIn('ao.id', $values);
                         });
-
-                        break;
-                    }
-
-                case FilterType::BOOLEAN: {
-                        if ($input->hasBoolValue) {
-                            $wantTrue = (bool) $input->bool;
-
-                            if ($wantTrue) {
-                                $query->whereExists(function ($sub) use ($productsTable, $attrId) {
-                                    $sub->select(DB::raw(1))
-                                        ->from('product_attribute_values as pav')
-                                        ->whereColumn('pav.product_id', $productsTable . '.id')
-                                        ->where('pav.attribute_id', $attrId)
-                                        ->where('pav.value_boolean', 1);
-                                });
-                            } else {
-                                $query->whereNotExists(function ($sub) use ($productsTable, $attrId) {
-                                    $sub->select(DB::raw(1))
-                                        ->from('product_attribute_values as pav')
-                                        ->whereColumn('pav.product_id', $productsTable . '.id')
-                                        ->where('pav.attribute_id', $attrId)
-                                        ->where('pav.value_boolean', 1);
-                                });
-                            }
-                        }
-
-                        break;
-                    }
-
-                case FilterType::TEXT:
-                case FilterType::MULTITEXT: {
+                    } else {
+                        // === Текстовый фасет (data_type='text'), матч по value_text ===
                         $texts = array_values(array_filter(
                             array_map('strval', $input->values),
-                            static fn($v) => $v !== ''
+                            static fn ($v) => $v !== ''
                         ));
 
-                        if ($texts) {
-                            $query->whereExists(function ($sub) use ($productsTable, $attrId, $texts) {
-                                $sub->select(DB::raw(1))
-                                    ->from('product_attribute_values as pav')
-                                    ->whereColumn('pav.product_id', $productsTable . '.id')
-                                    ->where('pav.attribute_id', $attrId)
-                                    ->whereIn('pav.value_text', $texts);
-                            });
+                        if (! $texts) {
+                            break;
                         }
 
+                        $query->whereExists(function ($sub) use ($productsTable, $attrId, $texts) {
+                            $sub->select(DB::raw(1))
+                                ->from('product_attribute_values as pav')
+                                ->whereColumn('pav.product_id', $productsTable.'.id')
+                                ->where('pav.attribute_id', $attrId)
+                                ->whereIn('pav.value_text', $texts);
+                        });
+                    }
+
+                    break;
+
+                case FilterType::RANGE:
+                    if ($input->min === null && $input->max === null) {
                         break;
                     }
+
+                    // 2) UI -> SI через единицу отображения категории
+                    $minSi = $input->min !== null
+                        ? $attr->toSiWithUnit((float) $input->min, $displayUnit)
+                        : null;
+
+                    $maxSi = $input->max !== null
+                        ? $attr->toSiWithUnit((float) $input->max, $displayUnit)
+                        : null;
+
+                    // 3) Fallback-выражения для старых value_* (в "базовой" единице атрибута)
+                    $baseUnit = $attr->unit;
+                    $factor = (float) ($baseUnit?->si_factor ?? 1.0);
+                    $offset = (float) ($baseUnit?->si_offset ?? 0.0);
+
+                    if ($attr->isRange()) {
+                        $rightExpr = 'COALESCE(
+                    pav.value_max_si,
+                    pav.value_si,
+                    pav.value_min_si,
+                    pav.value_max * ? + ?,
+                    pav.value_number * ? + ?,
+                    pav.value_min * ? + ?
+                )';
+
+                        $leftExpr = 'COALESCE(
+                    pav.value_min_si,
+                    pav.value_si,
+                    pav.value_max_si,
+                    pav.value_min * ? + ?,
+                    pav.value_number * ? + ?,
+                    pav.value_max * ? + ?
+                )';
+
+                        $bindRight = [$factor, $offset, $factor, $offset, $factor, $offset];
+                        $bindLeft = [$factor, $offset, $factor, $offset, $factor, $offset];
+                    } else {
+                        $rightExpr = 'COALESCE(
+                    pav.value_si,
+                    pav.value_max_si,
+                    pav.value_min_si,
+                    pav.value_number * ? + ?,
+                    pav.value_max * ? + ?,
+                    pav.value_min * ? + ?
+                )';
+
+                        $leftExpr = 'COALESCE(
+                    pav.value_si,
+                    pav.value_min_si,
+                    pav.value_max_si,
+                    pav.value_number * ? + ?,
+                    pav.value_min * ? + ?,
+                    pav.value_max * ? + ?
+                )';
+
+                        $bindRight = [$factor, $offset, $factor, $offset, $factor, $offset];
+                        $bindLeft = [$factor, $offset, $factor, $offset, $factor, $offset];
+                    }
+
+                    $query->whereExists(function ($sub) use (
+                        $productsTable,
+                        $attrId,
+                        $minSi,
+                        $maxSi,
+                        $rightExpr,
+                        $leftExpr,
+                        $bindRight,
+                        $bindLeft
+                    ) {
+                        $sub->select(DB::raw(1))
+                            ->from('product_attribute_values as pav')
+                            ->whereColumn('pav.product_id', $productsTable.'.id')
+                            ->where('pav.attribute_id', $attrId);
+
+                        if ($minSi !== null) {
+                            $sub->whereRaw("$rightExpr >= ?", array_merge($bindRight, [$minSi]));
+                        }
+                        if ($maxSi !== null) {
+                            $sub->whereRaw("$leftExpr <= ?", array_merge($bindLeft, [$maxSi]));
+                        }
+                    });
+
+                    break;
+
+                case FilterType::BOOLEAN:
+                    if ($input->hasBoolValue) {
+                        $wantTrue = (bool) $input->bool;
+
+                        if ($wantTrue) {
+                            $query->whereExists(function ($sub) use ($productsTable, $attrId) {
+                                $sub->select(DB::raw(1))
+                                    ->from('product_attribute_values as pav')
+                                    ->whereColumn('pav.product_id', $productsTable.'.id')
+                                    ->where('pav.attribute_id', $attrId)
+                                    ->where('pav.value_boolean', 1);
+                            });
+                        } else {
+                            $query->whereNotExists(function ($sub) use ($productsTable, $attrId) {
+                                $sub->select(DB::raw(1))
+                                    ->from('product_attribute_values as pav')
+                                    ->whereColumn('pav.product_id', $productsTable.'.id')
+                                    ->where('pav.attribute_id', $attrId)
+                                    ->where('pav.value_boolean', 1);
+                            });
+                        }
+                    }
+
+                    break;
+
+                case FilterType::TEXT:
+                case FilterType::MULTITEXT:
+                    $texts = array_values(array_filter(
+                        array_map('strval', $input->values),
+                        static fn ($v) => $v !== ''
+                    ));
+
+                    if ($texts) {
+                        $query->whereExists(function ($sub) use ($productsTable, $attrId, $texts) {
+                            $sub->select(DB::raw(1))
+                                ->from('product_attribute_values as pav')
+                                ->whereColumn('pav.product_id', $productsTable.'.id')
+                                ->where('pav.attribute_id', $attrId)
+                                ->whereIn('pav.value_text', $texts);
+                        });
+                    }
+
+                    break;
+
             }
         }
 
@@ -699,7 +680,6 @@ class ProductFilterService
         return [$minUi, $maxUi];
     }
 
-
     /** Фасет для текстовых значений (топ-100 значений) */
     protected static function facetTextOptions(int $attributeId, int $categoryId): array
     {
@@ -714,7 +694,7 @@ class ProductFilterService
             ->limit(100)
             ->get();
 
-        return $rows->map(fn($r) => ['v' => (string) $r->v, 'l' => (string) $r->v])->all();
+        return $rows->map(fn ($r) => ['v' => (string) $r->v, 'l' => (string) $r->v])->all();
     }
 
     public function invalidateSchemasForAttribute(int $attributeId): void
@@ -739,12 +719,12 @@ class ProductFilterService
     private static function castFor(Attribute $a): string
     {
         return match (true) {
-            $a->usesOptions()           => 'int',
-            $a->isText()                => 'string',
-            $a->isBoolean()             => 'bool',
+            $a->usesOptions() => 'int',
+            $a->isText() => 'string',
+            $a->isBoolean() => 'bool',
             $a->isNumber(),
-            $a->isRange()               => 'float',
-            default                     => 'string',
+            $a->isRange() => 'float',
+            default => 'string',
         };
     }
 }

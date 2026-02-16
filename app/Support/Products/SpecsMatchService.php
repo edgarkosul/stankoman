@@ -1009,7 +1009,7 @@ class SpecsMatchService
             'number' => ['number'],
             'range' => ['range'],
             'boolean' => ['boolean'],
-            default => ['text', 'select', 'multiselect'],
+            default => ['multiselect', 'select'],
         };
 
         if (! in_array($inputType, $allowedInputTypes, true)) {

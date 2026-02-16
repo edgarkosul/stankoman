@@ -954,6 +954,8 @@ class ProductsTable
         $suggestions = app(SpecsMatchService::class)->buildAttributeCreationSuggestions($productIds, $targetCategoryId);
 
         return array_map(function (array $suggestion): array {
+            $createDataType = (string) $suggestion['suggested_data_type'];
+
             return [
                 'spec_name' => (string) $suggestion['spec_name'],
                 'frequency' => (int) $suggestion['frequency'],
@@ -973,8 +975,8 @@ class ProductsTable
                     (int) ($suggestion['existing_attribute_id'] ?? 0) > 0,
                 ),
                 'link_attribute_id' => ($suggestion['existing_attribute_id'] ?? null) ? (int) $suggestion['existing_attribute_id'] : null,
-                'create_data_type' => (string) $suggestion['suggested_data_type'],
-                'create_input_type' => (string) $suggestion['suggested_input_type'],
+                'create_data_type' => $createDataType,
+                'create_input_type' => self::defaultInputTypeForDataType($createDataType),
                 'create_unit_id' => ($suggestion['suggested_unit_id'] ?? null) ? (int) $suggestion['suggested_unit_id'] : null,
                 'create_additional_unit_ids' => [],
             ];
@@ -1002,9 +1004,8 @@ class ProductsTable
             'range' => ['range' => 'range'],
             'boolean' => ['boolean' => 'boolean'],
             default => [
-                'text' => 'text',
-                'select' => 'select',
                 'multiselect' => 'multiselect',
+                'select' => 'select',
             ],
         };
     }
@@ -1013,7 +1014,19 @@ class ProductsTable
     {
         $options = self::inputTypesForDataType((string) $dataType);
 
-        return array_key_first($options) ?? 'text';
+        return array_key_first($options) ?? 'multiselect';
+    }
+
+    private static function normalizeInputTypeForDataType(mixed $inputType, string $dataType): string
+    {
+        $normalizedInputType = is_string($inputType) ? trim($inputType) : '';
+        $options = self::inputTypesForDataType($dataType);
+
+        if (! array_key_exists($normalizedInputType, $options)) {
+            return self::defaultInputTypeForDataType($dataType);
+        }
+
+        return $normalizedInputType;
     }
 
     /**
@@ -1122,6 +1135,7 @@ class ProductsTable
             ->filter(fn ($row): bool => is_array($row) && ($row['spec_name'] ?? null) !== null)
             ->map(function (array $row): array {
                 $linkAttributeId = $row['link_attribute_id'] ?? null;
+                $createDataType = (string) ($row['create_data_type'] ?? 'text');
 
                 if ((int) $linkAttributeId <= 0 && (int) ($row['existing_attribute_id'] ?? 0) > 0) {
                     $linkAttributeId = (int) $row['existing_attribute_id'];
@@ -1131,8 +1145,11 @@ class ProductsTable
                     'spec_name' => (string) ($row['spec_name'] ?? ''),
                     'decision' => (string) ($row['decision'] ?? 'ignore'),
                     'link_attribute_id' => $linkAttributeId,
-                    'create_data_type' => (string) ($row['create_data_type'] ?? 'text'),
-                    'create_input_type' => (string) ($row['create_input_type'] ?? 'text'),
+                    'create_data_type' => $createDataType,
+                    'create_input_type' => self::normalizeInputTypeForDataType(
+                        $row['create_input_type'] ?? null,
+                        $createDataType,
+                    ),
                     'create_unit_id' => $row['create_unit_id'] ?? null,
                     'create_additional_unit_ids' => is_array($row['create_additional_unit_ids'] ?? null)
                         ? $row['create_additional_unit_ids']

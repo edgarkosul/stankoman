@@ -612,6 +612,35 @@ it('resolves attribute decisions and creates or links attributes in apply mode',
         ->toContain('attribute_creation_skipped');
 });
 
+it('normalizes legacy text input type to multiselect when creating text attributes', function () {
+    $targetCategory = Category::query()->create([
+        'name' => 'Фильтры',
+        'slug' => 'filters',
+        'parent_id' => -1,
+        'order' => 44,
+        'is_active' => true,
+    ]);
+
+    $service = new SpecsMatchService;
+    $result = $service->resolveAttributeDecisions(
+        targetCategoryId: $targetCategory->id,
+        decisionRows: [[
+            'spec_name' => 'Материал корпуса',
+            'decision' => 'create_attribute',
+            'create_data_type' => 'text',
+            'create_input_type' => 'text',
+        ]],
+        applyChanges: true,
+    );
+
+    $createdAttributeId = (int) ($result['name_map'][NameNormalizer::normalize('Материал корпуса')] ?? 0);
+    $createdAttribute = Attribute::query()->find($createdAttributeId);
+
+    expect($createdAttribute)->not->toBeNull()
+        ->and($createdAttribute->data_type)->toBe('text')
+        ->and($createdAttribute->input_type)->toBe('multiselect');
+});
+
 it('skips numeric attribute creation when unit is missing', function () {
     $targetCategory = Category::query()->create([
         'name' => 'Насосы',

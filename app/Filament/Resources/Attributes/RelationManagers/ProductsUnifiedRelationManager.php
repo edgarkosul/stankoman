@@ -2,41 +2,26 @@
 
 namespace App\Filament\Resources\Attributes\RelationManagers;
 
-use App\Models\Product;
-use Filament\Tables\Table;
-use Livewire\Attributes\On;
-use Filament\Schemas\Schema;
-use Filament\Actions\EditAction;
-use Filament\Actions\AttachAction;
-use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DetachAction;
-use Filament\Actions\BulkActionGroup;
-use Filament\Forms\Components\Toggle;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\DetachBulkAction;
-use Filament\Forms\Components\Textarea;
-use Filament\Tables\Columns\IconColumn;
-use Filament\Tables\Columns\TextColumn;
-use Filament\Forms\Components\TextInput;
-use Filament\Tables\Columns\ImageColumn;
-use Filament\Forms\Components\FileUpload;
-use Illuminate\Database\Eloquent\Builder;
-use App\Filament\Resources\Products\ProductResource;
-use Filament\Resources\RelationManagers\RelationManager;
-use App\Models\ProductAttributeValue;
-use App\Models\ProductAttributeOption;
 use App\Models\AttributeOption;
-use Illuminate\Support\Facades\DB;
+use App\Models\ProductAttributeOption;
+use App\Models\ProductAttributeValue;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
+use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
-
+use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\On;
 
 class ProductsUnifiedRelationManager extends RelationManager
 {
     protected static string $relationship = 'productLinks';
+
     protected static ?string $title = 'Товары использующие этот фильтр';
 
     public static function canViewForRecord(Model $ownerRecord, string $page): bool
@@ -59,14 +44,19 @@ class ProductsUnifiedRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         $attr = $this->getOwnerRecord();
-        $type = $attr?->filter_ui ?? 'text';
+        $type = $attr?->usesOptions()
+            ? 'options'
+            : ($attr?->data_type ?? 'text');
         $unit = $this->getOwnerRecord()->unit?->symbol;
         $fmt = static function (?float $n): ?string {
-            if ($n === null) return null;
+            if ($n === null) {
+                return null;
+            }
             // всегда получаем десятичную строку
             $s = number_format((float) $n, 12, '.', '');
             // убираем только хвостовые нули после точки и саму точку, если она последняя
             $s = rtrim(rtrim($s, '0'), '.');
+
             // защита от "-0"
             return $s === '-0' ? '0' : $s;
         };
@@ -77,7 +67,7 @@ class ProductsUnifiedRelationManager extends RelationManager
             ->columns([
                 TextColumn::make('product.id')->label('ID')->sortable(),
                 TextColumn::make('product.name')
-                    ->url(fn($record) => \App\Filament\Resources\Products\ProductResource::getUrl('edit', [
+                    ->url(fn ($record) => \App\Filament\Resources\Products\ProductResource::getUrl('edit', [
                         'record' => $record->product?->slug,
                     ]))
                     ->openUrlInNewTab()
@@ -89,47 +79,47 @@ class ProductsUnifiedRelationManager extends RelationManager
                 TextColumn::make('value_text')
                     ->label('Текст')
                     ->toggleable()
-                    ->visible(fn() => $type === 'text'),
+                    ->visible(fn () => $type === 'text'),
                 TextColumn::make('value_number')
                     ->label('Число')
                     ->formatStateUsing(
-                        fn($state) => $state === null
+                        fn ($state) => $state === null
                             ? null
-                            : ($fmt((float)$state) . ($unit ? " {$unit}" : ''))
+                            : ($fmt((float) $state).($unit ? " {$unit}" : ''))
                     )
 
                     ->sortable()
-                    ->visible(fn() => $type === 'number')
+                    ->visible(fn () => $type === 'number')
                     ->toggleable(),
                 IconColumn::make('value_boolean')
-                    ->label('Нет / Да')->visible(fn() => $type === 'boolean')
+                    ->label('Нет / Да')->visible(fn () => $type === 'boolean')
                     ->boolean()
-                    ->visible(fn() => $type === 'boolean')
+                    ->visible(fn () => $type === 'boolean')
                     ->toggleable(),
                 TextColumn::make('pao_values')
                     ->label('Используемые опции')
                     ->wrap()
-                    ->visible(fn() => in_array($type, ['select', 'multiselect'], true))
+                    ->visible(fn () => $type === 'options')
                     ->toggleable(),
                 TextColumn::make('value_min')
                     ->label('Min')
                     ->formatStateUsing(
-                        fn($state) => $state === null
+                        fn ($state) => $state === null
                             ? null
-                            : ($fmt((float)$state) . ($unit ? " {$unit}" : ''))
+                            : ($fmt((float) $state).($unit ? " {$unit}" : ''))
                     )
                     ->wrap()
-                    ->visible(fn() => $type === 'range')
+                    ->visible(fn () => $type === 'range')
                     ->toggleable(),
                 TextColumn::make('value_max')
                     ->label('Max')
                     ->formatStateUsing(
-                        fn($state) => $state === null
+                        fn ($state) => $state === null
                             ? null
-                            : ($fmt((float)$state) . ($unit ? " {$unit}" : ''))
+                            : ($fmt((float) $state).($unit ? " {$unit}" : ''))
                     )
                     ->wrap()
-                    ->visible(fn() => $type === 'range')
+                    ->visible(fn () => $type === 'range')
                     ->toggleable(),
 
                 // (по желанию) индикатор источника:
@@ -143,7 +133,7 @@ class ProductsUnifiedRelationManager extends RelationManager
                     ->modalSubmitActionLabel('Сохранить')
                     ->schema(function () {
                         $attr = $this->getOwnerRecord();
-                        $type = $attr->filter_ui;
+                        $type = $attr->usesOptions() ? 'options' : $attr->data_type;
 
                         $fields = [
                             // 1) Выбор товара (поиск по названию)
@@ -154,7 +144,7 @@ class ProductsUnifiedRelationManager extends RelationManager
                                 // Что показать сразу при открытии модалки:
                                 ->options(function () {
                                     /** @var \App\Models\Attribute $attribute */
-                                    $attribute   = $this->getOwnerRecord();
+                                    $attribute = $this->getOwnerRecord();
                                     $attributeId = $attribute->getKey();
                                     $categoryIds = $attribute->categories()->pluck('id')->all();
 
@@ -165,7 +155,7 @@ class ProductsUnifiedRelationManager extends RelationManager
                                     $query = \App\Models\Product::query()
                                         // если нужно — раскомментируй:
                                         // ->where('is_active', true)
-                                        ->whereHas('categories', fn($q) => $q->whereIn('categories.id', $categoryIds));
+                                        ->whereHas('categories', fn ($q) => $q->whereIn('categories.id', $categoryIds));
 
                                     // --- ВАЖНО: исключаем товары, где атрибут уже заполнен ---
 
@@ -209,6 +199,7 @@ class ProductsUnifiedRelationManager extends RelationManager
                                                 });
                                         });
                                     }
+
                                     return $query
                                         ->orderBy('name')
                                         ->limit(50)
@@ -219,7 +210,7 @@ class ProductsUnifiedRelationManager extends RelationManager
                                 // Поиск по тем же допустимым товарам:
                                 ->getSearchResultsUsing(function (string $queryString) {
                                     /** @var \App\Models\Attribute $attribute */
-                                    $attribute   = $this->getOwnerRecord();
+                                    $attribute = $this->getOwnerRecord();
                                     $attributeId = $attribute->getKey();
                                     $categoryIds = $attribute->categories()->pluck('id')->all();
 
@@ -229,7 +220,7 @@ class ProductsUnifiedRelationManager extends RelationManager
 
                                     $query = \App\Models\Product::query()
                                         // ->where('is_active', true)
-                                        ->whereHas('categories', fn($q) => $q->whereIn('categories.id', $categoryIds))
+                                        ->whereHas('categories', fn ($q) => $q->whereIn('categories.id', $categoryIds))
                                         ->where('name', 'like', "%{$queryString}%");
 
                                     if ($attribute->usesOptions()) {
@@ -274,18 +265,18 @@ class ProductsUnifiedRelationManager extends RelationManager
                                 })
 
                                 ->noSearchResultsMessage('Ничего не найдено в привязанных категориях')
-                                ->getOptionLabelUsing(fn($value) => \App\Models\Product::find($value)?->name)
+                                ->getOptionLabelUsing(fn ($value) => \App\Models\Product::find($value)?->name)
                                 ->required(),
 
                         ];
 
                         // 2) Поля значения в зависимости от типа
-                        if (in_array($type, ['select', 'multiselect'], true)) {
+                        if ($type === 'options') {
                             $fields[] = Select::make('option_ids')
                                 ->label('Опции')
                                 ->searchable()
                                 ->preload()
-                                ->multiple($type === 'multiselect')
+                                ->multiple()
                                 ->options(
                                     AttributeOption::query()
                                         ->where('attribute_id', $attr->getKey())
@@ -304,7 +295,7 @@ class ProductsUnifiedRelationManager extends RelationManager
 
                         if ($type === 'number') {
                             $fields[] = TextInput::make('value_number')
-                                ->label('Значение (число' . ($attr->unit?->symbol ? ', ' . $attr->unit->symbol : '') . ')')
+                                ->label('Значение (число'.($attr->unit?->symbol ? ', '.$attr->unit->symbol : '').')')
                                 ->numeric()
                                 ->required();
                         }
@@ -332,13 +323,13 @@ class ProductsUnifiedRelationManager extends RelationManager
                     })
                     ->action(function (array $data) {
                         $attr = $this->getOwnerRecord();
-                        $type = $attr->filter_ui;
+                        $type = $attr->usesOptions() ? 'options' : $attr->data_type;
                         $attributeId = $attr->getKey();
                         $productId = (int) $data['product_id'];
                         $allowedCategoryIds = $attr->categories()->pluck('id')->all();
                         $belongs = \App\Models\Product::query()
                             ->whereKey($productId)
-                            ->whereHas('categories', fn($q) => $q->whereIn('categories.id', $allowedCategoryIds))
+                            ->whereHas('categories', fn ($q) => $q->whereIn('categories.id', $allowedCategoryIds))
                             ->exists();
 
                         if (! $belongs) {
@@ -347,6 +338,7 @@ class ProductsUnifiedRelationManager extends RelationManager
                                 ->title('Товар не относится к категориям этого фильтра')
                                 ->body('Выберите товар из привязанных к фильтру категорий.')
                                 ->send();
+
                             return;
                         }
 
@@ -364,13 +356,12 @@ class ProductsUnifiedRelationManager extends RelationManager
 
                             // Пишем новое значение в нужную таблицу
                             switch ($type) {
-                                case 'select':
-                                case 'multiselect':
+                                case 'options':
                                     $ids = (array) ($data['option_ids'] ?? []);
                                     if (! empty($ids)) {
-                                        $rows = array_map(fn($oid) => [
-                                            'product_id'          => $productId,
-                                            'attribute_id'        => $attributeId,
+                                        $rows = array_map(fn ($oid) => [
+                                            'product_id' => $productId,
+                                            'attribute_id' => $attributeId,
                                             'attribute_option_id' => (int) $oid,
                                         ], $ids);
 
@@ -381,24 +372,24 @@ class ProductsUnifiedRelationManager extends RelationManager
 
                                 case 'text':
                                     ProductAttributeValue::create([
-                                        'product_id'    => $productId,
-                                        'attribute_id'  => $attributeId,
-                                        'value_text'    => (string) $data['value_text'],
+                                        'product_id' => $productId,
+                                        'attribute_id' => $attributeId,
+                                        'value_text' => (string) $data['value_text'],
                                     ]);
                                     break;
 
                                 case 'number':
                                     ProductAttributeValue::create([
-                                        'product_id'    => $productId,
-                                        'attribute_id'  => $attributeId,
-                                        'value_number'  => $data['value_number'] !== '' ? (float) $data['value_number'] : null,
+                                        'product_id' => $productId,
+                                        'attribute_id' => $attributeId,
+                                        'value_number' => $data['value_number'] !== '' ? (float) $data['value_number'] : null,
                                     ]);
                                     break;
 
                                 case 'boolean':
                                     ProductAttributeValue::create([
-                                        'product_id'    => $productId,
-                                        'attribute_id'  => $attributeId,
+                                        'product_id' => $productId,
+                                        'attribute_id' => $attributeId,
                                         'value_boolean' => (bool) ($data['value_boolean'] ?? false),
                                     ]);
                                     break;
@@ -407,10 +398,10 @@ class ProductsUnifiedRelationManager extends RelationManager
                                     $min = $data['value_min'] !== '' ? (float) $data['value_min'] : null;
                                     $max = $data['value_max'] !== '' ? (float) $data['value_max'] : null;
                                     ProductAttributeValue::create([
-                                        'product_id'    => $productId,
-                                        'attribute_id'  => $attributeId,
-                                        'value_min'     => $min,
-                                        'value_max'     => $max,
+                                        'product_id' => $productId,
+                                        'attribute_id' => $attributeId,
+                                        'value_min' => $min,
+                                        'value_max' => $max,
                                     ]);
                                     break;
                             }
@@ -435,7 +426,7 @@ class ProductsUnifiedRelationManager extends RelationManager
                     ->modalHeading('Удалить связь атрибут ↔ товар?')
                     ->action(function ($record) {
                         $attributeId = (int) $record->attribute_id;
-                        $productId   = (int) $record->product_id;
+                        $productId = (int) $record->product_id;
 
                         DB::transaction(function () use ($attributeId, $productId) {
                             ProductAttributeValue::where('attribute_id', $attributeId)->where('product_id', $productId)->delete();

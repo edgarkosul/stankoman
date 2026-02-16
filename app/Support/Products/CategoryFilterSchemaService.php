@@ -186,6 +186,8 @@ class CategoryFilterSchemaService
             'filter_order' => (int) ($attribute->pivot?->filter_order ?? 0),
             'template_type' => $templateType,
             'data_type' => (string) $attribute->data_type,
+            'value_source' => (string) $attribute->value_source,
+            'filter_ui' => $attribute->filter_ui ? (string) $attribute->filter_ui : null,
             'input_type' => (string) ($attribute->input_type ?? ''),
             'display_unit' => $this->unitPayload($displayUnit),
             'base_unit' => $this->unitPayload($baseUnit),
@@ -202,12 +204,10 @@ class CategoryFilterSchemaService
 
     protected function resolveTemplateType(ProductAttribute $attribute): string
     {
-        if ($attribute->input_type === 'select') {
-            return 'select';
-        }
-
-        if ($attribute->input_type === 'multiselect') {
-            return 'multiselect';
+        if ($attribute->usesOptions()) {
+            return $attribute->filter_ui === 'dropdown'
+                ? 'select'
+                : 'multiselect';
         }
 
         return match ($attribute->data_type) {
@@ -274,6 +274,8 @@ class CategoryFilterSchemaService
                 'slug' => (string) ($attribute['slug'] ?? ''),
                 'template_type' => (string) ($attribute['template_type'] ?? ''),
                 'data_type' => (string) ($attribute['data_type'] ?? ''),
+                'value_source' => (string) ($attribute['value_source'] ?? ''),
+                'filter_ui' => (string) ($attribute['filter_ui'] ?? ''),
                 'input_type' => (string) ($attribute['input_type'] ?? ''),
                 'display_unit' => [
                     'id' => (int) (($attribute['display_unit']['id'] ?? 0)),

@@ -110,6 +110,8 @@ beforeEach(function () {
         $table->string('name');
         $table->string('slug')->unique();
         $table->enum('data_type', ['text', 'number', 'boolean', 'range']);
+        $table->enum('value_source', ['free', 'options'])->nullable();
+        $table->enum('filter_ui', ['tiles', 'dropdown'])->nullable();
         $table->enum('input_type', ['text', 'number', 'boolean', 'select', 'multiselect', 'range'])->default('text');
         $table->unsignedBigInteger('unit_id')->nullable();
         $table->string('dimension')->nullable();
@@ -238,6 +240,7 @@ function buildCategoryFixture(): array
         'name' => 'Давление',
         'slug' => 'pressure',
         'data_type' => 'number',
+        'value_source' => 'free',
         'input_type' => 'number',
         'unit_id' => $pa->id,
         'is_filterable' => true,
@@ -247,6 +250,8 @@ function buildCategoryFixture(): array
         'name' => 'Цвет',
         'slug' => 'color',
         'data_type' => 'text',
+        'value_source' => 'options',
+        'filter_ui' => 'tiles',
         'input_type' => 'multiselect',
         'is_filterable' => true,
     ]);
@@ -255,6 +260,7 @@ function buildCategoryFixture(): array
         'name' => 'Автозапуск',
         'slug' => 'auto_start',
         'data_type' => 'boolean',
+        'value_source' => 'free',
         'input_type' => 'boolean',
         'is_filterable' => true,
     ]);

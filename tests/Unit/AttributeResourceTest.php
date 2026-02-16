@@ -3,69 +3,99 @@
 use App\Filament\Resources\Attributes\AttributeResource;
 
 dataset('attribute_type_pairs', [
-    'text + text' => [
-        ['data_type' => 'text', 'input_type' => 'text'],
+    'text + free source' => [
+        ['data_type' => 'text', 'value_source' => 'free'],
         'text',
+        'free',
+        null,
         'text',
     ],
-    'text + select' => [
-        ['data_type' => 'text', 'input_type' => 'select'],
+    'text + options + tiles' => [
+        ['data_type' => 'text', 'value_source' => 'options', 'filter_ui' => 'tiles'],
         'text',
-        'select',
-    ],
-    'text + multiselect' => [
-        ['data_type' => 'text', 'input_type' => 'multiselect'],
-        'text',
+        'options',
+        'tiles',
         'multiselect',
     ],
-    'number + number' => [
-        ['data_type' => 'number', 'input_type' => 'number'],
-        'number',
-        'number',
-    ],
-    'range + range' => [
-        ['data_type' => 'range', 'input_type' => 'range'],
-        'range',
-        'range',
-    ],
-    'boolean + boolean' => [
-        ['data_type' => 'boolean', 'input_type' => 'boolean'],
-        'boolean',
-        'boolean',
-    ],
-    'number + invalid input type' => [
-        ['data_type' => 'number', 'input_type' => 'select'],
-        'number',
-        'number',
-    ],
-    'missing input type' => [
-        ['data_type' => 'text'],
+    'text + options + dropdown' => [
+        ['data_type' => 'text', 'value_source' => 'options', 'filter_ui' => 'dropdown'],
         'text',
-        'select',
+        'options',
+        'dropdown',
+        'multiselect',
     ],
-    'unknown data type with valid text input type' => [
+    'number + free source' => [
+        ['data_type' => 'number', 'value_source' => 'free'],
+        'number',
+        'free',
+        null,
+        'number',
+    ],
+    'range + free source' => [
+        ['data_type' => 'range', 'value_source' => 'free'],
+        'range',
+        'free',
+        null,
+        'range',
+    ],
+    'boolean + free source' => [
+        ['data_type' => 'boolean', 'value_source' => 'free'],
+        'boolean',
+        'free',
+        null,
+        'boolean',
+    ],
+    'number + invalid source' => [
+        ['data_type' => 'number', 'value_source' => 'options'],
+        'number',
+        'free',
+        null,
+        'number',
+    ],
+    'text + options without ui' => [
+        ['data_type' => 'text', 'value_source' => 'options'],
+        'text',
+        'options',
+        'tiles',
+        'multiselect',
+    ],
+    'unknown data type with legacy select input' => [
         ['data_type' => 'unknown', 'input_type' => 'select'],
         'text',
-        'select',
+        'options',
+        'dropdown',
+        'multiselect',
     ],
-    'unknown data type with invalid input type' => [
-        ['data_type' => 'unknown', 'input_type' => 'unknown'],
+    'missing source and ui for text' => [
+        ['data_type' => 'text'],
         'text',
-        'select',
+        'options',
+        'tiles',
+        'multiselect',
     ],
-    'missing data and input types' => [
+    'missing data and source' => [
         [],
         'text',
-        'select',
+        'options',
+        'tiles',
+        'multiselect',
     ],
 ]);
 
-test('normalize type pair allows only valid combinations', function (array $data, string $expectedDataType, string $expectedInputType): void {
+test('normalize type pair allows only valid combinations', function (
+    array $data,
+    string $expectedDataType,
+    string $expectedValueSource,
+    ?string $expectedFilterUi,
+    string $expectedInputType,
+): void {
     $mapped = AttributeResource::normalizeTypePair($data);
 
     expect($mapped['data_type'])->toBe($expectedDataType)
+        ->and($mapped['value_source'])->toBe($expectedValueSource)
+        ->and($mapped['filter_ui'])->toBe($expectedFilterUi)
         ->and($mapped['input_type'])->toBe($expectedInputType)
-        ->and($mapped)->not->toHaveKey('filter_ui');
+        ->and($mapped)->toHaveKeys(['data_type', 'value_source', 'input_type']);
 })->with('attribute_type_pairs');
 
 test('input type options for text data type do not include text', function (): void {
@@ -74,4 +104,9 @@ test('input type options for text data type do not include text', function (): v
     expect(array_keys($options))
         ->toBe(['select', 'multiselect'])
         ->and($options)->not->toHaveKey('text');
+});
+
+test('value source options for number data type only allow free source', function (): void {
+    expect(AttributeResource::valueSourceOptionsForDataType('number'))
+        ->toBe(['free' => 'Свободный ввод']);
 });

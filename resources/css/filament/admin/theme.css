@@ -46,4 +46,8 @@
   .fi-panel-admin.builder-menu-page .fi-fo-repeater-item-has-header .fi-fo-repeater-item-content .fi-fo-repeater .fi-fo-repeater-item-header .fi-fo-repeater-item-header-label {
     @apply leading-tight font-semibold;
   }
+
+  .fi-panel-admin .fi-resource-products .fi-modal .fi-fo-repeater-items > .fi-fo-repeater-item.fi-fo-repeater-item-has-header {
+    @apply border border-sky-500 dark:border-sky-400;
+  }
 }

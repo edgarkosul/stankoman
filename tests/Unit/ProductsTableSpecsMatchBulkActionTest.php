@@ -1,6 +1,7 @@
 <?php
 
 use App\Filament\Resources\Products\Pages\ListProducts;
+use App\Filament\Resources\Products\Tables\ProductsTable;
 use App\Jobs\RunSpecsMatchJob;
 use App\Models\Attribute;
 use App\Models\Category;
@@ -242,6 +243,21 @@ it('applies attribute decisions from specs match confirmation wizard', function 
             && (bool) ($job->options['dry_run'] ?? true) === false
             && count((array) ($job->options['attribute_name_map'] ?? [])) === 2;
     });
+});
+
+it('uses multiselect as default input type for text and excludes text option in wizard', function () {
+    $optionsMethod = new ReflectionMethod(ProductsTable::class, 'inputTypesForDataType');
+    $defaultMethod = new ReflectionMethod(ProductsTable::class, 'defaultInputTypeForDataType');
+
+    $optionsMethod->setAccessible(true);
+    $defaultMethod->setAccessible(true);
+
+    $textInputOptions = $optionsMethod->invoke(null, 'text');
+
+    expect($textInputOptions)->toBe([
+        'multiselect' => 'multiselect',
+        'select' => 'select',
+    ])->and($defaultMethod->invoke(null, 'text'))->toBe('multiselect');
 });
 
 function rebuildProductsTableSpecsMatchSchemas(): void

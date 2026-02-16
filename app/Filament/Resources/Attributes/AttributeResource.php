@@ -73,6 +73,58 @@ class AttributeResource extends Resource
         ];
     }
 
+    public static function valueSourceOptions(): array
+    {
+        return [
+            'free' => 'Свободный ввод',
+            'options' => 'Выбор из опций',
+        ];
+    }
+
+    public static function valueSourceOptionsForDataType(?string $dataType): array
+    {
+        if ($dataType === 'text') {
+            return self::valueSourceOptions();
+        }
+
+        return [
+            'free' => self::valueSourceOptions()['free'],
+        ];
+    }
+
+    public static function defaultValueSourceForDataType(?string $dataType): string
+    {
+        return $dataType === 'text' ? 'options' : 'free';
+    }
+
+    public static function filterUiOptions(): array
+    {
+        return [
+            'tiles' => 'Плитки',
+            'dropdown' => 'Выпадающий список',
+        ];
+    }
+
+    public static function filterUiOptionsFor(?string $dataType, ?string $valueSource): array
+    {
+        if ($dataType !== 'text' || $valueSource !== 'options') {
+            return [];
+        }
+
+        return self::filterUiOptions();
+    }
+
+    public static function defaultFilterUiFor(?string $dataType, ?string $valueSource): ?string
+    {
+        $options = self::filterUiOptionsFor($dataType, $valueSource);
+
+        if ($options === []) {
+            return null;
+        }
+
+        return array_key_first($options) ?? 'tiles';
+    }
+
     public static function inputTypeOptions(): array
     {
         return [
@@ -108,6 +160,46 @@ class AttributeResource extends Resource
         return array_key_first(self::inputTypeOptionsForDataType($dataType)) ?? 'select';
     }
 
+    public static function valueSourceFromLegacyInputType(string $inputType, string $dataType): string
+    {
+        if ($dataType !== 'text') {
+            return 'free';
+        }
+
+        if (in_array($inputType, ['select', 'multiselect'], true)) {
+            return 'options';
+        }
+
+        if ($inputType === 'text') {
+            return 'free';
+        }
+
+        return self::defaultValueSourceForDataType($dataType);
+    }
+
+    public static function filterUiFromLegacyInputType(string $inputType): ?string
+    {
+        if ($inputType === 'select') {
+            return 'dropdown';
+        }
+
+        if ($inputType === 'multiselect') {
+            return 'tiles';
+        }
+
+        return null;
+    }
+
+    public static function legacyInputTypeFor(string $dataType, string $valueSource): string
+    {
+        return match ($dataType) {
+            'number' => 'number',
+            'range' => 'range',
+            'boolean' => 'boolean',
+            default => $valueSource === 'options' ? 'multiselect' : 'text',
+        };
+    }
+
     public static function normalizeTypePair(array $data): array
     {
         $dataType = (string) ($data['data_type'] ?? 'text');
@@ -116,26 +208,37 @@ class AttributeResource extends Resource
             $dataType = 'text';
         }
 
-        $inputType = (string) ($data['input_type'] ?? '');
-        if ($dataType === 'text' && $inputType === 'text') {
-            $data['data_type'] = $dataType;
-            $data['input_type'] = $inputType;
+        $legacyInputType = (string) ($data['input_type'] ?? '');
+        $valueSource = (string) ($data['value_source'] ?? '');
+        $allowedValueSources = array_keys(self::valueSourceOptionsForDataType($dataType));
 
-            unset($data['filter_ui']);
-
-            return $data;
+        if (! in_array($valueSource, $allowedValueSources, true)) {
+            $valueSource = self::valueSourceFromLegacyInputType($legacyInputType, $dataType);
         }
 
-        $allowedInputTypes = array_keys(self::inputTypeOptionsForDataType($dataType));
+        if (! in_array($valueSource, $allowedValueSources, true)) {
+            $valueSource = self::defaultValueSourceForDataType($dataType);
+        }
 
-        if (! in_array($inputType, $allowedInputTypes, true)) {
-            $inputType = self::defaultInputTypeForDataType($dataType);
+        $filterUi = (string) ($data['filter_ui'] ?? '');
+        $allowedFilterUis = array_keys(self::filterUiOptionsFor($dataType, $valueSource));
+
+        if ($allowedFilterUis === []) {
+            $filterUi = null;
+        } else {
+            if (! in_array($filterUi, $allowedFilterUis, true)) {
+                $filterUi = self::filterUiFromLegacyInputType($legacyInputType);
+            }
+
+            if (! in_array((string) $filterUi, $allowedFilterUis, true)) {
+                $filterUi = self::defaultFilterUiFor($dataType, $valueSource);
+            }
         }
 
         $data['data_type'] = $dataType;
-        $data['input_type'] = $inputType;
-
-        unset($data['filter_ui']);
+        $data['value_source'] = $valueSource;
+        $data['filter_ui'] = $filterUi;
+        $data['input_type'] = self::legacyInputTypeFor($dataType, $valueSource);
 
         return $data;
     }
