@@ -551,7 +551,8 @@ class ProductsTable
                                 TextInput::make('attribute_match_status')
                                     ->label('Статус совпадения атрибута')
                                     ->disabled()
-                                    ->dehydrated(false),
+                                    ->dehydrated(false)
+                                    ->columnSpanFull(),
 
                                 TextInput::make('suggested_unit_label')
                                     ->label('Предложенная единица')
@@ -567,15 +568,21 @@ class ProductsTable
 
                                 Select::make('decision')
                                     ->label('Действие')
-                                    ->options([
-                                        'link_existing' => 'Связать существующий атрибут с категорией',
-                                        'create_attribute' => 'Создать новый глобальный атрибут и привязать',
-                                        'ignore' => 'Игнорировать',
-                                    ])
+                                    ->options(fn (Get $get): array => self::decisionOptionsForProposal(
+                                        hasExactMatch: (int) ($get('existing_attribute_id') ?? 0) > 0,
+                                    ))
                                     ->default('ignore')
                                     ->required()
                                     ->native(false)
                                     ->live()
+                                    ->afterStateHydrated(function (mixed $state, Get $get, Set $set): void {
+                                        $hasExactMatch = (int) ($get('existing_attribute_id') ?? 0) > 0;
+                                        $options = self::decisionOptionsForProposal($hasExactMatch);
+
+                                        if (! array_key_exists((string) $state, $options)) {
+                                            $set('decision', self::defaultDecisionForProposal($hasExactMatch));
+                                        }
+                                    })
                                     ->afterStateUpdated(function (?string $state, Get $get, Set $set): void {
                                         if ($state !== 'link_existing') {
                                             return;
@@ -960,9 +967,11 @@ class ProductsTable
                 'existing_attribute_id' => ($suggestion['existing_attribute_id'] ?? null) ? (int) $suggestion['existing_attribute_id'] : null,
                 'existing_attribute_name' => (string) ($suggestion['existing_attribute_name'] ?? ''),
                 'attribute_match_status' => ($suggestion['existing_attribute_id'] ?? null)
-                    ? 'Найден точный глобальный атрибут. Рекомендуется связать с целевой категорией.'
-                    : 'Точный глобальный атрибут не найден. Можно выбрать существующий вручную или создать новый.',
-                'decision' => ($suggestion['suggested_decision'] ?? null) === 'link_existing' ? 'link_existing' : 'ignore',
+                    ? 'Точный глобальный атрибут найден. Рекомендуем связать его с целевой категорией.'
+                    : 'Точный глобальный атрибут не найден.',
+                'decision' => self::defaultDecisionForProposal(
+                    (int) ($suggestion['existing_attribute_id'] ?? 0) > 0,
+                ),
                 'link_attribute_id' => ($suggestion['existing_attribute_id'] ?? null) ? (int) $suggestion['existing_attribute_id'] : null,
                 'create_data_type' => (string) $suggestion['suggested_data_type'],
                 'create_input_type' => (string) $suggestion['suggested_input_type'],
@@ -1005,6 +1014,29 @@ class ProductsTable
         $options = self::inputTypesForDataType((string) $dataType);
 
         return array_key_first($options) ?? 'text';
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function decisionOptionsForProposal(bool $hasExactMatch): array
+    {
+        if ($hasExactMatch) {
+            return [
+                'link_existing' => 'Связать существующий атрибут с категорией',
+                'ignore' => 'Игнорировать',
+            ];
+        }
+
+        return [
+            'create_attribute' => 'Создать новый глобальный атрибут и привязать',
+            'ignore' => 'Игнорировать',
+        ];
+    }
+
+    private static function defaultDecisionForProposal(bool $hasExactMatch): string
+    {
+        return $hasExactMatch ? 'link_existing' : 'ignore';
     }
 
     /**

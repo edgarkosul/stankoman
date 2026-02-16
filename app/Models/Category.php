@@ -2,19 +2,18 @@
 
 namespace App\Models;
 
-use App\Models\CategoryAttribute;
-use Illuminate\Support\Collection;
-use App\Models\Pivots\ProductCategory;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Storage;
 use App\Models\Attribute as AttributeDef;
+use App\Models\Pivots\ProductCategory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
-use SolutionForest\FilamentTree\Concern\ModelTree;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
+use SolutionForest\FilamentTree\Concern\ModelTree;
 
 /**
  * @property int $id
@@ -38,6 +37,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Product> $products
  * @property-read int|null $products_count
  * @property-read mixed $slug_path
+ *
+ * @method static Builder<static>|Category availableAsParent()
  * @method static Builder<static>|Category isRoot()
  * @method static Builder<static>|Category leaf()
  * @method static Builder<static>|Category newModelQuery()
@@ -55,6 +56,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * @method static Builder<static>|Category whereParentId($value)
  * @method static Builder<static>|Category whereSlug($value)
  * @method static Builder<static>|Category whereUpdatedAt($value)
+ *
  * @mixin \Eloquent
  */
 class Category extends Model
@@ -125,7 +127,7 @@ class Category extends Model
 
     public function isLeaf(): bool
     {
-        return !$this->children()->exists();
+        return ! $this->children()->exists();
     }
 
     // ===== Скоупы =====
@@ -138,6 +140,15 @@ class Category extends Model
     public function scopeLeaf(Builder $q): Builder
     {
         return $q->whereDoesntHave('children');
+    }
+
+    public function scopeAvailableAsParent(Builder $q): Builder
+    {
+        return $q->where(function (Builder $query): void {
+            $query
+                ->whereHas('children')
+                ->orWhereDoesntHave('products');
+        });
     }
 
     // ===== Навигация =====
@@ -185,13 +196,16 @@ class Category extends Model
     public function getImageUrlAttribute(): ?string
     {
         $path = $this->img;
-        if (! $path) return null;
+        if (! $path) {
+            return null;
+        }
 
         if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
             return $path;
         }
         /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
         $disk = Storage::disk('public');
+
         return $disk->url($path);
     }
 
@@ -240,6 +254,7 @@ class Category extends Model
             }
             $node = $node->parent;
         }
+
         return false;
     }
 
@@ -253,6 +268,7 @@ class Category extends Model
     public function ui(?string $key = null, $default = null)
     {
         $ui = data_get($this->meta_json, 'ui', []);
+
         return $key ? data_get($ui, $key, $default) : $ui;
     }
 }

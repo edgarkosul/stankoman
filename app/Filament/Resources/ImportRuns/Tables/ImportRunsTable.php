@@ -29,6 +29,7 @@ class ImportRunsTable
                     ->label('Тип')
                     ->formatStateUsing(fn ($state): string => match ($state) {
                         'products' => 'Excel товары',
+                        'category_filters' => 'Категорийные фильтры',
                         'vactool_products' => 'Vactool',
                         'specs_match' => 'Specs match',
                         default => (string) $state,
@@ -36,6 +37,7 @@ class ImportRunsTable
                     ->badge()
                     ->colors([
                         'gray' => 'products',
+                        'warning' => 'category_filters',
                         'primary' => 'vactool_products',
                         'info' => 'specs_match',
                     ])

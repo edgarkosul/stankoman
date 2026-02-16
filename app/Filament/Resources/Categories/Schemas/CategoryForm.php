@@ -3,16 +3,16 @@
 namespace App\Filament\Resources\Categories\Schemas;
 
 use App\Models\Category;
-use Illuminate\Support\Str;
-use Filament\Schemas\Schema;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Toggle;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Schema;
+use Illuminate\Support\Str;
 
 class CategoryForm
 {
@@ -88,10 +88,11 @@ class CategoryForm
                     ->default(true),
             ]);
     }
+
     protected static function categoryOptions(): array
     {
-        // Заберём всё дерево и развернём в плоский список с depth
         $all = Category::query()
+            ->availableAsParent()
             ->orderBy('parent_id')
             ->orderBy('order')
             ->get()
@@ -101,7 +102,7 @@ class CategoryForm
 
         $walk = function (int $parentId, int $depth) use (&$walk, &$out, $all) {
             foreach ($all[$parentId] ?? [] as $cat) {
-                $out[$cat->id] = str_repeat('— ', $depth) . $cat->name;
+                $out[$cat->id] = str_repeat('— ', $depth).$cat->name;
                 $walk($cat->id, $depth + 1);
             }
         };
