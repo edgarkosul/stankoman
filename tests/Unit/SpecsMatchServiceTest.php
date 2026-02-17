@@ -287,6 +287,69 @@ it('sets target category as primary for every product in apply mode', function (
     )->toBeTrue();
 });
 
+it('skips existing values when only empty attributes mode is enabled even with overwrite flag', function () {
+    $targetCategory = Category::query()->create([
+        'name' => 'Двигатели',
+        'slug' => 'engines',
+        'parent_id' => -1,
+        'order' => 17,
+        'is_active' => true,
+    ]);
+
+    $commentAttribute = Attribute::query()->create([
+        'name' => 'Комментарий',
+        'slug' => 'comment',
+        'data_type' => 'text',
+        'input_type' => 'text',
+        'is_filterable' => true,
+    ]);
+
+    $targetCategory->attributeDefs()->attach($commentAttribute->id);
+
+    $product = Product::query()->create([
+        'name' => 'Двигатель Y',
+        'slug' => 'engine-y',
+        'price_amount' => 78000,
+        'specs' => [
+            ['name' => 'Комментарий', 'value' => 'Новое значение', 'source' => 'dom'],
+        ],
+    ]);
+
+    ProductAttributeValue::query()->create([
+        'product_id' => $product->id,
+        'attribute_id' => $commentAttribute->id,
+        'value_text' => 'Уже заполнено',
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'specs_match',
+        'status' => 'pending',
+    ]);
+
+    $service = new SpecsMatchService;
+
+    $result = $service->run($run, [$product->id], [
+        'target_category_id' => $targetCategory->id,
+        'dry_run' => false,
+        'only_empty_attributes' => true,
+        'overwrite_existing' => true,
+        'auto_create_options' => false,
+        'detach_staging_after_success' => false,
+    ]);
+
+    expect($result['matched_pav'])->toBe(0)
+        ->and($result['matched_pao'])->toBe(0)
+        ->and($result['skipped'])->toBe(1);
+
+    $persistedValue = ProductAttributeValue::query()
+        ->where('product_id', $product->id)
+        ->where('attribute_id', $commentAttribute->id)
+        ->value('value_text');
+
+    expect($persistedValue)->toBe('Уже заполнено');
+    expect($run->issues()->pluck('code')->all())->toContain('skipped_existing_value');
+});
+
 it('does not write values in dry-run mode', function () {
     $targetCategory = Category::query()->create([
         'name' => 'Станки',

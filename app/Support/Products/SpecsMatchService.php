@@ -1470,12 +1470,12 @@ class SpecsMatchService
             return false;
         }
 
-        if ((bool) $options['overwrite_existing']) {
-            return false;
-        }
-
         if ((bool) $options['only_empty_attributes']) {
             return true;
+        }
+
+        if ((bool) $options['overwrite_existing']) {
+            return false;
         }
 
         return true;

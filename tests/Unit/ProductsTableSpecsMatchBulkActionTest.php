@@ -273,6 +273,32 @@ it('configures dry-run toggle as live for immediate staging checkbox visibility 
         ->assertFormFieldVisible('detach_staging_after_success');
 });
 
+it('disables overwrite toggle when only empty attributes mode is enabled', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $product = Product::query()->create([
+        'name' => 'Товар для проверки переключателей',
+        'slug' => 'toggle-check-product',
+        'price_amount' => 9900,
+        'specs' => [],
+    ]);
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$product])
+        ->mountTableBulkAction('massEdit', [$product])
+        ->setTableBulkActionData([
+            'mode' => 'specs_match',
+            'only_empty_attributes' => true,
+        ])
+        ->assertFormFieldDisabled('overwrite_existing')
+        ->setTableBulkActionData([
+            'mode' => 'specs_match',
+            'only_empty_attributes' => false,
+        ])
+        ->assertFormFieldEnabled('overwrite_existing');
+});
+
 it('uses multiselect as default input type for text and excludes text option in wizard', function () {
     $optionsMethod = new ReflectionMethod(ProductsTable::class, 'inputTypesForDataType');
     $defaultMethod = new ReflectionMethod(ProductsTable::class, 'defaultInputTypeForDataType');

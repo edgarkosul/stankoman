@@ -472,14 +472,21 @@ class ProductsTable
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
 
                         Toggle::make('only_empty_attributes')
-                            ->label('Обрабатывать только пустые атрибуты')
+                            ->label('Обрабатывать только незаполненные фильры')
                             ->default(true)
+                            ->live()
+                            ->afterStateUpdated(function (mixed $state, Set $set): void {
+                                if ((bool) $state) {
+                                    $set('overwrite_existing', false);
+                                }
+                            })
                             ->visible(fn ($get) => $get('mode') === 'specs_match')
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
 
                         Toggle::make('overwrite_existing')
                             ->label('Перезаписывать существующие значения')
                             ->default(false)
+                            ->disabled(fn (Get $get): bool => (bool) $get('only_empty_attributes'))
                             ->visible(fn ($get) => $get('mode') === 'specs_match')
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
 
