@@ -2,13 +2,11 @@
 
 namespace App\Filament\Resources\Attributes\RelationManagers;
 
-use Filament\Actions\AssociateAction;
+use App\Support\FilterSchemaCache;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\DissociateAction;
-use Filament\Actions\DissociateBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -20,6 +18,7 @@ use Illuminate\Database\Eloquent\Model;
 class OptionsRelationManager extends RelationManager
 {
     protected static string $relationship = 'options';
+
     protected static ?string $title = 'Опции доступные для использования';
 
     public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
@@ -40,6 +39,9 @@ class OptionsRelationManager extends RelationManager
     {
         return $table
             ->reorderable('sort_order')
+            ->afterReordering(function (): void {
+                $this->invalidateOwnerAttributeSchemaCache();
+            })
             ->recordTitleAttribute('value')
             ->columns([
                 TextColumn::make('value')
@@ -53,16 +55,37 @@ class OptionsRelationManager extends RelationManager
                 //
             ])
             ->headerActions([
-                CreateAction::make(),
+                CreateAction::make()
+                    ->after(function (): void {
+                        $this->invalidateOwnerAttributeSchemaCache();
+                    }),
             ])
             ->recordActions([
-                EditAction::make(),
-                DeleteAction::make(),
+                EditAction::make()
+                    ->after(function (): void {
+                        $this->invalidateOwnerAttributeSchemaCache();
+                    }),
+                DeleteAction::make()
+                    ->after(function (): void {
+                        $this->invalidateOwnerAttributeSchemaCache();
+                    }),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    DeleteBulkAction::make()
+                        ->after(function (): void {
+                            $this->invalidateOwnerAttributeSchemaCache();
+                        }),
                 ]),
             ]);
+    }
+
+    private function invalidateOwnerAttributeSchemaCache(): void
+    {
+        $attributeId = (int) ($this->getOwnerRecord()?->getKey() ?? 0);
+
+        if ($attributeId > 0) {
+            FilterSchemaCache::forgetByAttribute($attributeId);
+        }
     }
 }

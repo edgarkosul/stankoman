@@ -2,8 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Relations\Pivot;
+use App\Support\FilterSchemaCache;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 
 /**
  * @property int $product_id
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property-read \App\Models\AttributeOption $option
  * @property-read \App\Models\Product $product
  * @property-write mixed $for_product
+ *
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeOption forAttribute(int $attributeId)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeOption forProduct(int $productId)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeOption newModelQuery()
@@ -25,6 +27,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeOption whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeOption whereProductId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeOption whereUpdatedAt($value)
+ *
  * @mixin \Eloquent
  */
 class ProductAttributeOption extends Pivot
@@ -101,14 +104,18 @@ class ProductAttributeOption extends Pivot
         if ($toInsert) {
             $now = now();
             $rows = array_map(fn ($id) => [
-                'product_id'          => $productId,
-                'attribute_id'        => $attributeId,
+                'product_id' => $productId,
+                'attribute_id' => $attributeId,
                 'attribute_option_id' => $id,
-                'created_at'          => $now,
-                'updated_at'          => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
             ], $toInsert);
 
             static::query()->insert($rows);
+        }
+
+        if ($toDelete || $toInsert) {
+            FilterSchemaCache::forgetByProductAttribute($productId, $attributeId);
         }
     }
 
@@ -118,16 +125,34 @@ class ProductAttributeOption extends Pivot
      */
     public static function setSingle(int $productId, int $attributeId, ?int $optionId): void
     {
+        $current = static::query()
+            ->forProduct($productId)
+            ->forAttribute($attributeId)
+            ->pluck('attribute_option_id')
+            ->map(fn ($id): int => (int) $id)
+            ->sort()
+            ->values()
+            ->all();
+
+        $next = $optionId ? [(int) $optionId] : [];
+        sort($next);
+
+        if ($current === $next) {
+            return;
+        }
+
         static::query()->forProduct($productId)->forAttribute($attributeId)->delete();
 
         if ($optionId) {
             static::query()->insert([
-                'product_id'          => $productId,
-                'attribute_id'        => $attributeId,
+                'product_id' => $productId,
+                'attribute_id' => $attributeId,
                 'attribute_option_id' => (int) $optionId,
-                'created_at'          => now(),
-                'updated_at'          => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
         }
+
+        FilterSchemaCache::forgetByProductAttribute($productId, $attributeId);
     }
 }

@@ -27,7 +27,9 @@ class LeafCategoryPage extends Component
     public array $filtersSchema = [];
 
     public int $perPage = 24;
+
     public int $limit = 24;
+
     public bool $hasMoreProducts = true;
 
     public function mount(?string $path = null): void
@@ -176,91 +178,92 @@ class LeafCategoryPage extends Component
 
             if (is_array($payload) && isset($payload['type'])) {
                 $out[$key] = $payload;
+
                 continue;
             }
 
             switch ($type) {
                 case 'text':
-                case 'number': {
-                        $val = is_array($payload) ? ($payload['value'] ?? null) : $payload;
-                        if ($val === null || $val === '') {
-                            break;
-                        }
-                        $out[$key] = [
-                            'type' => $type,
-                            'value' => $type === 'number' ? (float) $val : (string) $val,
-                        ];
+                case 'number':
+                    $val = is_array($payload) ? ($payload['value'] ?? null) : $payload;
+                    if ($val === null || $val === '') {
                         break;
                     }
-                case 'select': {
-                        $val = is_array($payload) ? ($payload['value'] ?? null) : $payload;
-                        if ($val === null || $val === '') {
-                            break;
-                        }
-                        $val = ($cast === 'int') ? (int) $val : (string) $val;
-                        $out[$key] = ['type' => 'select', 'value' => $val];
+                    $out[$key] = [
+                        'type' => $type,
+                        'value' => $type === 'number' ? (float) $val : (string) $val,
+                    ];
+                    break;
+
+                case 'select':
+                    $val = is_array($payload) ? ($payload['value'] ?? null) : $payload;
+                    if ($val === null || $val === '') {
                         break;
                     }
-                case 'multiselect': {
-                        if (is_array($payload)) {
-                            $vals = $payload['values'] ?? $payload;
-                            if (! is_array($vals)) {
-                                $vals = is_string($vals) ? explode(',', $vals) : (array) $vals;
-                            }
-                        } elseif (is_string($payload)) {
-                            $vals = ($cast === 'int' && str_contains($payload, ','))
-                                ? explode(',', $payload)
-                                : [$payload];
-                        } else {
-                            $vals = [];
+                    $val = ($cast === 'int') ? (int) $val : (string) $val;
+                    $out[$key] = ['type' => 'select', 'value' => $val];
+                    break;
+
+                case 'multiselect':
+                    if (is_array($payload)) {
+                        $vals = $payload['values'] ?? $payload;
+                        if (! is_array($vals)) {
+                            $vals = is_string($vals) ? explode(',', $vals) : (array) $vals;
                         }
+                    } elseif (is_string($payload)) {
+                        $vals = ($cast === 'int' && str_contains($payload, ','))
+                            ? explode(',', $payload)
+                            : [$payload];
+                    } else {
+                        $vals = [];
+                    }
 
-                        $vals = array_map(fn ($v) => is_string($v) ? trim($v) : $v, $vals);
-                        $vals = array_filter($vals, fn ($v) => $v !== null && $v !== '');
+                    $vals = array_map(fn ($v) => is_string($v) ? trim($v) : $v, $vals);
+                    $vals = array_filter($vals, fn ($v) => $v !== null && $v !== '');
 
-                        if ($cast === 'int') {
-                            $vals = array_map('intval', $vals);
-                        } else {
-                            $vals = array_map('strval', $vals);
-                        }
+                    if ($cast === 'int') {
+                        $vals = array_map('intval', $vals);
+                    } else {
+                        $vals = array_map('strval', $vals);
+                    }
 
-                        $vals = array_values(array_unique($vals));
+                    $vals = array_values(array_unique($vals));
 
-                        if ($vals) {
-                            $out[$key] = ['type' => 'multiselect', 'values' => $vals];
-                        }
+                    if ($vals) {
+                        $out[$key] = ['type' => 'multiselect', 'values' => $vals];
+                    }
+                    break;
+
+                case 'boolean':
+                    $val = is_array($payload) ? ($payload['value'] ?? null) : $payload;
+                    if ($val === null || $val === '') {
                         break;
                     }
-                case 'boolean': {
-                        $val = is_array($payload) ? ($payload['value'] ?? null) : $payload;
-                        if ($val === null || $val === '') {
-                            break;
-                        }
-                        $bool = in_array(strtolower((string) $val), ['1', 'true', 'on', 'yes', 'да'], true);
-                        $out[$key] = ['type' => 'boolean', 'value' => $bool];
+                    $bool = in_array(strtolower((string) $val), ['1', 'true', 'on', 'yes', 'да'], true);
+                    $out[$key] = ['type' => 'boolean', 'value' => $bool];
+                    break;
+
+                case 'range':
+                    if (is_string($payload) && str_contains($payload, ';')) {
+                        [$min, $max] = explode(';', $payload, 2);
+                    } else {
+                        $min = is_array($payload) ? ($payload['min'] ?? null) : null;
+                        $max = is_array($payload) ? ($payload['max'] ?? null) : null;
+                    }
+
+                    $min = ($min === '' ? null : ($min !== null ? (float) $min : null));
+                    $max = ($max === '' ? null : ($max !== null ? (float) $max : null));
+
+                    if ($min === null && $max === null) {
                         break;
                     }
-                case 'range': {
-                        if (is_string($payload) && str_contains($payload, ';')) {
-                            [$min, $max] = explode(';', $payload, 2);
-                        } else {
-                            $min = is_array($payload) ? ($payload['min'] ?? null) : null;
-                            $max = is_array($payload) ? ($payload['max'] ?? null) : null;
-                        }
-
-                        $min = ($min === '' ? null : ($min !== null ? (float) $min : null));
-                        $max = ($max === '' ? null : ($max !== null ? (float) $max : null));
-
-                        if ($min === null && $max === null) {
-                            break;
-                        }
-                        if ($min !== null && $max !== null && $min > $max) {
-                            [$min, $max] = [$max, $min];
-                        }
-
-                        $out[$key] = ['type' => 'range', 'min' => $min, 'max' => $max];
-                        break;
+                    if ($min !== null && $max !== null && $min > $max) {
+                        [$min, $max] = [$max, $min];
                     }
+
+                    $out[$key] = ['type' => 'range', 'min' => $min, 'max' => $max];
+                    break;
+
                 default:
                     break;
             }
@@ -322,8 +325,8 @@ class LeafCategoryPage extends Component
 
                 $minTxt = $min !== null ? $this->formatNumberForChip((float) $min, $f) : '...';
                 $maxTxt = $max !== null ? $this->formatNumberForChip((float) $max, $f) : '...';
-                $spaceSuffix = $suffix ? ' ' . $suffix : '';
-                $display = trim($minTxt . ' - ' . $maxTxt . $spaceSuffix);
+                $spaceSuffix = $suffix ? ' '.$suffix : '';
+                $display = trim($minTxt.' - '.$maxTxt.$spaceSuffix);
 
                 $chips[] = [
                     'key' => $key,
@@ -351,7 +354,7 @@ class LeafCategoryPage extends Component
                 if ($val === null || $val === '') {
                     continue;
                 }
-                $display = trim((string) $val . ($suffix ? ' ' . $suffix : ''));
+                $display = trim((string) $val.($suffix ? ' '.$suffix : ''));
                 $chips[] = [
                     'key' => $key,
                     'label' => $label,
@@ -366,11 +369,11 @@ class LeafCategoryPage extends Component
                     continue;
                 }
                 $numStr = $this->formatNumberForChip((float) $val, $f);
-                $spaceSuffix = $suffix ? ' ' . $suffix : '';
+                $spaceSuffix = $suffix ? ' '.$suffix : '';
                 $chips[] = [
                     'key' => $key,
                     'label' => $label,
-                    'display' => $numStr . $spaceSuffix,
+                    'display' => $numStr.$spaceSuffix,
                     'action' => 'all',
                 ];
             }
@@ -380,6 +383,7 @@ class LeafCategoryPage extends Component
     }
 
     protected array $optionLabelMap = [];
+
     protected function optionLabel(string $key, string $id): ?string
     {
         if (! isset($this->optionLabelMap[$key])) {
@@ -499,6 +503,8 @@ class LeafCategoryPage extends Component
             ]);
         }
 
+        $this->category->loadMissing('attributeDefs.unit');
+
         $baseQuery = Product::query()
             ->select([
                 'id',
@@ -512,11 +518,15 @@ class LeafCategoryPage extends Component
                 'popularity',
                 'sku',
             ])
+            ->with([
+                'attributeValues.attribute.unit',
+                'attributeOptions.attribute.unit',
+            ])
             ->where('is_active', true)
             ->whereHas('categories', fn ($q) => $q->whereKey($this->category->getKey()));
 
         if ($this->q) {
-            $baseQuery->where('name', 'like', '%' . trim($this->q) . '%');
+            $baseQuery->where('name', 'like', '%'.trim($this->q).'%');
         }
 
         $selected = $this->selected;

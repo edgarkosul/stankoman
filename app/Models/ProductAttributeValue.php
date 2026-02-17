@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\FilterSchemaCache;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -23,6 +24,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property-read string|null $display_value_si
  * @property-read mixed $raw_value
  * @property-read \App\Models\Product $product
+ *
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeValue newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeValue newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeValue query()
@@ -39,6 +41,7 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeValue whereValueNumber($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeValue whereValueSi($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeValue whereValueText($value)
+ *
  * @mixin \Eloquent
  */
 class ProductAttributeValue extends Model
@@ -58,13 +61,24 @@ class ProductAttributeValue extends Model
 
     protected $casts = [
         'value_boolean' => 'bool',
-        'value_number'  => 'float',
-        'value_min'     => 'float',
-        'value_max'     => 'float',
-        'value_si'      => 'float',
-        'value_min_si'  => 'float',
-        'value_max_si'  => 'float',
+        'value_number' => 'float',
+        'value_min' => 'float',
+        'value_max' => 'float',
+        'value_si' => 'float',
+        'value_min_si' => 'float',
+        'value_max_si' => 'float',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(function (self $model): void {
+            self::invalidateFilterSchemaCache($model);
+        });
+
+        static::deleted(function (self $model): void {
+            self::invalidateFilterSchemaCache($model);
+        });
+    }
 
     /* -------------------- Связи -------------------- */
 
@@ -84,7 +98,9 @@ class ProductAttributeValue extends Model
     public function numberUi(): ?float
     {
         $attr = $this->attribute;
-        if (! $attr) return null;
+        if (! $attr) {
+            return null;
+        }
 
         // 1) Если есть «пользовательское» значение — используем его
         if ($this->value_number !== null) {
@@ -102,7 +118,9 @@ class ProductAttributeValue extends Model
     public function rangeUi(): array
     {
         $attr = $this->attribute;
-        if (! $attr) return [null, null];
+        if (! $attr) {
+            return [null, null];
+        }
 
         $minUi = $this->value_min !== null
             ? (float) $this->value_min
@@ -118,10 +136,12 @@ class ProductAttributeValue extends Model
     /** Отформатировать число по правилам атрибута */
     protected function formatNumber(?float $ui): ?string
     {
-        if ($ui === null) return null;
+        if ($ui === null) {
+            return null;
+        }
 
-        $attr  = $this->attribute;
-        $dec   = $attr->number_decimals;      // int|null
+        $attr = $this->attribute;
+        $dec = $attr->number_decimals;      // int|null
         $round = $attr->number_rounding;      // 'round'|'floor'|'ceil'|null
 
         $x = (float) $ui;
@@ -132,7 +152,7 @@ class ProductAttributeValue extends Model
             $x = match ($round) {
                 'round' => round($x * $m) / $m,
                 'floor' => floor($x * $m) / $m,
-                'ceil'  => ceil($x * $m) / $m,
+                'ceil' => ceil($x * $m) / $m,
                 default => $x,
             };
         }
@@ -145,7 +165,6 @@ class ProductAttributeValue extends Model
         // Иначе — «красиво» без хвостов
         return rtrim(rtrim(number_format($x, 6, '.', ''), '0'), '.') ?: '0';
     }
-
 
     /* -------------------- Аксессоры -------------------- */
 
@@ -161,7 +180,9 @@ class ProductAttributeValue extends Model
     public function getRawValueAttribute()
     {
         $attr = $this->attribute;
-        if (! $attr) return null;
+        if (! $attr) {
+            return null;
+        }
 
         if ($attr->usesOptions()) {
             return null; // PAV больше не хранит опции
@@ -169,6 +190,7 @@ class ProductAttributeValue extends Model
 
         if ($attr->data_type === 'range') {
             [$min, $max] = $this->rangeUi();
+
             return ['min' => $min, 'max' => $max];
         }
 
@@ -193,7 +215,9 @@ class ProductAttributeValue extends Model
     public function getDisplayValueAttribute(): ?string
     {
         $attr = $this->attribute;
-        if (! $attr) return null;
+        if (! $attr) {
+            return null;
+        }
 
         // Опции — не тут
         if ($attr->usesOptions()) {
@@ -204,7 +228,7 @@ class ProductAttributeValue extends Model
             ? $attr->defaultUnit()
             : $attr->unit;
 
-        $unitSuffix = $unit?->symbol ? (' ' . $unit->symbol) : '';
+        $unitSuffix = $unit?->symbol ? (' '.$unit->symbol) : '';
 
         if ($attr->data_type === 'range') {
             [$minUi, $maxUi] = $this->rangeUi();
@@ -212,30 +236,35 @@ class ProductAttributeValue extends Model
             $max = $this->formatNumber($maxUi);
 
             if ($min !== null && $max !== null) {
-                return $min . '—' . $max . $unitSuffix;
+                return $min.'—'.$max.$unitSuffix;
             }
             if ($min !== null) {
-                return '≥ ' . $min . $unitSuffix;
+                return '≥ '.$min.$unitSuffix;
             }
             if ($max !== null) {
-                return '≤ ' . $max . $unitSuffix;
+                return '≤ '.$max.$unitSuffix;
             }
+
             return null;
         }
 
         if ($attr->isNumber()) {
             $num = $this->formatNumber($this->numberUi());
-            if ($num === null) return null;
+            if ($num === null) {
+                return null;
+            }
 
-            $valuePart = $num . $unitSuffix;
+            $valuePart = $num.$unitSuffix;
             if ($attr->display_format) {
                 $symbol = $unit?->symbol ?? '';
+
                 return str_replace(
                     ['{value}', '{unit}'],
                     [$num, $symbol],
                     $attr->display_format
                 );
             }
+
             return $valuePart;
         }
 
@@ -249,10 +278,14 @@ class ProductAttributeValue extends Model
     public function getDisplayValueSiAttribute(): ?string
     {
         $attr = $this->attribute;
-        if (! $attr || $attr->usesOptions()) return null;
+        if (! $attr || $attr->usesOptions()) {
+            return null;
+        }
 
         $ui = $this->display_value;
-        if ($ui === null) return null;
+        if ($ui === null) {
+            return null;
+        }
 
         // Для number/range добавим хвост с SI, если есть base_symbol
         $unit = method_exists($attr, 'defaultUnit')
@@ -260,17 +293,21 @@ class ProductAttributeValue extends Model
             : $attr->unit;
 
         $base = $unit?->base_symbol;
-        if (! $base) return $ui;
+        if (! $base) {
+            return $ui;
+        }
 
         if ($attr->data_type === 'number' && $this->value_si !== null) {
             $siStr = rtrim(rtrim(number_format((float) $this->value_si, 6, '.', ''), '0'), '.');
-            return $ui . ' (' . $siStr . ' ' . $base . ')';
+
+            return $ui.' ('.$siStr.' '.$base.')';
         }
 
         if ($attr->data_type === 'range' && ($this->value_min_si !== null || $this->value_max_si !== null)) {
-            $min = $this->value_min_si !== null ? rtrim(rtrim(number_format((float)$this->value_min_si, 6, '.', ''), '0'), '.') : '…';
-            $max = $this->value_max_si !== null ? rtrim(rtrim(number_format((float)$this->value_max_si, 6, '.', ''), '0'), '.') : '…';
-            return $ui . ' (' . $min . '—' . $max . ' ' . $base . ')';
+            $min = $this->value_min_si !== null ? rtrim(rtrim(number_format((float) $this->value_min_si, 6, '.', ''), '0'), '.') : '…';
+            $max = $this->value_max_si !== null ? rtrim(rtrim(number_format((float) $this->value_max_si, 6, '.', ''), '0'), '.') : '…';
+
+            return $ui.' ('.$min.'—'.$max.' '.$base.')';
         }
 
         return $ui;
@@ -302,22 +339,43 @@ class ProductAttributeValue extends Model
 
         if ($attr->data_type === 'range') {
             if (is_array($value)) {
-                if (array_key_exists('min', $value)) $this->value_min = $value['min'] !== null ? (float)$value['min'] : null;
-                if (array_key_exists('max', $value)) $this->value_max = $value['max'] !== null ? (float)$value['max'] : null;
+                if (array_key_exists('min', $value)) {
+                    $this->value_min = $value['min'] !== null ? (float) $value['min'] : null;
+                }
+                if (array_key_exists('max', $value)) {
+                    $this->value_max = $value['max'] !== null ? (float) $value['max'] : null;
+                }
             }
+
             return;
         }
 
         if ($attr->isNumber()) {
-            $this->value_number = $value !== null ? (float)$value : null;
+            $this->value_number = $value !== null ? (float) $value : null;
+
             return;
         }
 
         if ($attr->isBoolean()) {
-            $this->value_boolean = $value !== null ? (bool)$value : null;
+            $this->value_boolean = $value !== null ? (bool) $value : null;
+
             return;
         }
 
-        $this->value_text = $value !== null ? (string)$value : null;
+        $this->value_text = $value !== null ? (string) $value : null;
+    }
+
+    private static function invalidateFilterSchemaCache(self $model): void
+    {
+        $pairs = [
+            [(int) $model->product_id, (int) $model->attribute_id],
+            [(int) ($model->getOriginal('product_id') ?? 0), (int) ($model->getOriginal('attribute_id') ?? 0)],
+        ];
+
+        foreach ($pairs as [$productId, $attributeId]) {
+            if ($productId > 0 && $attributeId > 0) {
+                FilterSchemaCache::forgetByProductAttribute($productId, $attributeId);
+            }
+        }
     }
 }

@@ -2,34 +2,21 @@
 
 namespace App\Filament\Resources\Attributes\RelationManagers;
 
-use App\Models\Category;
-use Filament\Tables\Table;
-use Filament\Actions\Action;
-
-use Filament\Schemas\Schema;
-use Illuminate\Support\Facades\Schema as DBSchema;
-use Filament\Actions\EditAction;
-use Filament\Actions\AttachAction;
-use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DetachAction;
-use Filament\Actions\AssociateAction;
-use Filament\Actions\BulkActionGroup;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Toggle;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\DetachBulkAction;
-use Filament\Forms\Components\Textarea;
-use Filament\Tables\Columns\IconColumn;
-use Filament\Tables\Columns\TextColumn;
-use Filament\Forms\Components\TextInput;
-use Illuminate\Database\Eloquent\Builder;
 use App\Filament\Resources\Categories\CategoryResource;
+use App\Models\Category;
+use App\Support\FilterSchemaCache;
+use Filament\Actions\Action;
+use Filament\Forms\Components\Select;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Schema as DBSchema;
 
 class CategoriesRelationManager extends RelationManager
 {
     protected static string $relationship = 'categories';
+
     protected static ?string $title = 'Категории (использование)';
 
     public function table(Table $table): Table
@@ -38,7 +25,7 @@ class CategoriesRelationManager extends RelationManager
             ->columns([
                 TextColumn::make('id')
                     ->searchable(),
-                TextColumn::make('name')->label('Категория')->searchable()->url(fn($record) => CategoryResource::getUrl('edit', ['record' => $record])),
+                TextColumn::make('name')->label('Категория')->searchable()->url(fn ($record) => CategoryResource::getUrl('edit', ['record' => $record])),
                 TextColumn::make('slug')
                     ->searchable()
                     ->toggleable(isToggledHiddenByDefault: false),
@@ -57,19 +44,26 @@ class CategoriesRelationManager extends RelationManager
                             ->preload()
                             ->options(function () {
                                 $attributeId = $this->getOwnerRecord()->getKey();
+
                                 return Category::query()
                                     ->when(
                                         DBSchema::hasColumn('categories', 'is_leaf'),
-                                        fn(Builder $q) => $q->where('is_leaf', true)
+                                        fn (Builder $q) => $q->where('is_leaf', true)
                                     )
-                                    ->whereDoesntHave('attributeDefs', fn(Builder $q) => $q->whereKey($attributeId))
+                                    ->whereDoesntHave('attributeDefs', fn (Builder $q) => $q->whereKey($attributeId))
                                     ->orderBy('name')
                                     ->pluck('name', 'id');
                             })
                             ->required(),
                     ])
                     ->action(function (array $data): void {
-                        $this->getRelationship()->attach($data['recordId']);
+                        $categoryId = (int) ($data['recordId'] ?? 0);
+                        if ($categoryId <= 0) {
+                            return;
+                        }
+
+                        $this->getRelationship()->attach($categoryId);
+                        FilterSchemaCache::forgetCategory($categoryId);
                         $this->dispatch('attribute-updated');
 
                     })
@@ -83,7 +77,10 @@ class CategoriesRelationManager extends RelationManager
                     ->requiresConfirmation()
                     ->modalHeading('Отвязать эту категорию от атрибута?')
                     ->action(function (\App\Models\Category $record): void {
-                        $this->getRelationship()->detach($record->getKey());
+                        $categoryId = (int) $record->getKey();
+
+                        $this->getRelationship()->detach($categoryId);
+                        FilterSchemaCache::forgetCategory($categoryId);
                         $this->dispatch('attribute-updated');
 
                     })

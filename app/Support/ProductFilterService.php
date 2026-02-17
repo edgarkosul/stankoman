@@ -699,21 +699,7 @@ class ProductFilterService
 
     public function invalidateSchemasForAttribute(int $attributeId): void
     {
-        // Найдём ID категорий, где этот атрибут привязан
-        $categoryIds = DB::table('category_attribute')
-            ->where('attribute_id', $attributeId)
-            ->pluck('category_id')
-            ->all();
-
-        if (empty($categoryIds)) {
-            return;
-        }
-
-        // Очистим кэш для каждой категории
-        foreach ($categoryIds as $catId) {
-            $key = "filters:schema:cat:{$catId}";
-            Cache::forget($key);
-        }
+        FilterSchemaCache::forgetByAttribute($attributeId);
     }
 
     private static function castFor(Attribute $a): string

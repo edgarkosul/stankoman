@@ -2,30 +2,27 @@
 
 namespace App\Filament\Resources\Categories\RelationManagers;
 
-use App\Models\Unit;
-use App\Models\Category;
+use App\Filament\Resources\Attributes\AttributeResource;
 use App\Models\Attribute;
-use Filament\Tables\Table;
-use Filament\Schemas\Schema;
-// важно: импортируем ресурс атрибутов
-use Filament\Actions\EditAction;
-use App\Models\CategoryAttribute;
+use App\Models\Unit;
+use App\Support\FilterSchemaCache;
 use Filament\Actions\AttachAction;
-use Filament\Actions\DeleteAction;
 use Filament\Actions\DetachAction;
+use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
-use Filament\Forms\Components\TextInput;
-use Illuminate\Database\Eloquent\Builder;
-use App\Filament\Resources\Attributes\AttributeResource;
-use Filament\Resources\RelationManagers\RelationManager;
 
 class AttributeDefsRelationManager extends RelationManager
 {
     protected static string $relationship = 'attributeDefs';
+
     protected static ?string $title = 'Фильтры используемые в категории';
 
     public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
@@ -62,11 +59,11 @@ class AttributeDefsRelationManager extends RelationManager
                             $label = $unit->name;
 
                             if ($unit->symbol) {
-                                $label .= ' (' . $unit->symbol . ')';
+                                $label .= ' ('.$unit->symbol.')';
                             }
 
                             if ($unit->dimension) {
-                                $label .= ' — ' . $unit->dimension;
+                                $label .= ' — '.$unit->dimension;
                             }
 
                             return [$unit->id => $label];
@@ -85,25 +82,25 @@ class AttributeDefsRelationManager extends RelationManager
                 ->label('Знаков после запятой (для категории)')
                 ->helperText('Если пусто — используется настройка атрибута.')
                 ->nullable()
-                ->visible(fn(?Attribute $record) => in_array($record?->data_type, ['number', 'range'], true)),
+                ->visible(fn (?Attribute $record) => in_array($record?->data_type, ['number', 'range'], true)),
 
             TextInput::make('number_step')
                 ->numeric()
                 ->label('Шаг значений (фильтр)')
                 ->helperText('Если пусто — шаг вычисляется из глобальных настороек фильтра.')
                 ->nullable()
-                ->visible(fn(?Attribute $record) => in_array($record?->data_type, ['number', 'range'], true)),
+                ->visible(fn (?Attribute $record) => in_array($record?->data_type, ['number', 'range'], true)),
             Select::make('number_rounding')
                 ->label('Округление (для категории)')
                 ->options([
                     'round' => 'Округлять',
                     'floor' => 'Вниз',
-                    'ceil'  => 'Вверх',
+                    'ceil' => 'Вверх',
                 ])
                 ->placeholder('— Использовать настройку атрибута —')
                 ->nullable()
                 ->native(false)
-                ->visible(fn(?Attribute $record) => in_array($record?->data_type, ['number', 'range'], true)),
+                ->visible(fn (?Attribute $record) => in_array($record?->data_type, ['number', 'range'], true)),
 
             Toggle::make('visible_in_specs')->label('Показывать в карточке товара'),
             Toggle::make('visible_in_compare')->label('Показывать в сравнении'),
@@ -111,19 +108,20 @@ class AttributeDefsRelationManager extends RelationManager
         ]);
     }
 
-
-
     public function table(Table $table): Table
     {
         return $table
             ->reorderable('filter_order')
+            ->afterReordering(function (): void {
+                $this->invalidateCategoryFiltersCache();
+            })
             ->recordTitleAttribute('name')
             ->columns([
                 TextColumn::make('id')->searchable(),
                 TextColumn::make('name')
                     ->label('Фильтр')
                     ->searchable()
-                    ->url(fn($record) => AttributeResource::getUrl('edit', ['record' => $record]))
+                    ->url(fn ($record) => AttributeResource::getUrl('edit', ['record' => $record]))
                     ->openUrlInNewTab() // если нужно открывать в новой вкладке
                 ,
                 TextColumn::make('pivot.display_unit_id')
@@ -142,6 +140,7 @@ class AttributeDefsRelationManager extends RelationManager
                         // Если в pivot явно выбран юнит отображения — используем его
                         if ($state && isset($units[$state])) {
                             $symbol = (string) $units[$state]->symbol;
+
                             return $symbol !== '' ? $symbol : '—';
                         }
 
@@ -162,7 +161,7 @@ class AttributeDefsRelationManager extends RelationManager
                     ->numeric()
                     ->label('Шаг значений'),
                 TextColumn::make('filter_order')->numeric()->label('Порядок отображения'),
-                IconColumn::make('visible_in_specs')->boolean()->label('Видимость')
+                IconColumn::make('visible_in_specs')->boolean()->label('Видимость'),
 
             ])
             ->paginated(false)
@@ -170,19 +169,28 @@ class AttributeDefsRelationManager extends RelationManager
             ->headerActions([
                 AttachAction::make()->label('Добавить')
                     ->modalHeading('Добавить фильтр')
-                    ->recordTitle(fn(Attribute $record) => $this->attributeLabel($record))
-                    ->schema(fn(AttachAction $action): array => [
+                    ->recordTitle(fn (Attribute $record) => $this->attributeLabel($record))
+                    ->schema(fn (AttachAction $action): array => [
                         $action->getRecordSelect()
-                            ->getOptionLabelFromRecordUsing(fn(Attribute $record) => $this->attributeLabel($record)),
+                            ->getOptionLabelFromRecordUsing(fn (Attribute $record) => $this->attributeLabel($record)),
                         Toggle::make('visible_in_specs')->label('Показывать в карточке товара')->default(true),
                         Toggle::make('visible_in_compare')->label('Показывать в сравнении')->default(false),
                         Toggle::make('is_required')->label('Обязательный для категории')->default(false),
                     ])
+                    ->after(function (): void {
+                        $this->invalidateCategoryFiltersCache();
+                    }),
 
             ])
             ->recordActions([
-                DetachAction::make(),
+                DetachAction::make()
+                    ->after(function (): void {
+                        $this->invalidateCategoryFiltersCache();
+                    }),
                 EditAction::make()
+                    ->after(function (): void {
+                        $this->invalidateCategoryFiltersCache();
+                    }),
             ])
             ->toolbarActions([]);
     }
@@ -190,5 +198,14 @@ class AttributeDefsRelationManager extends RelationManager
     private function attributeLabel(Attribute $attribute): string
     {
         return "{$attribute->name} [ID: {$attribute->id}]";
+    }
+
+    private function invalidateCategoryFiltersCache(): void
+    {
+        $categoryId = (int) ($this->getOwnerRecord()?->getKey() ?? 0);
+
+        if ($categoryId > 0) {
+            FilterSchemaCache::forgetCategory($categoryId);
+        }
     }
 }

@@ -2,8 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Relations\Pivot;
+use App\Support\FilterSchemaCache;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 
 /**
  * @property int $category_id
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $group_override
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
+ *
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CategoryAttribute newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CategoryAttribute newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CategoryAttribute query()
@@ -29,12 +31,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CategoryAttribute whereUpdatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CategoryAttribute whereVisibleInCompare($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CategoryAttribute whereVisibleInSpecs($value)
+ *
  * @mixin \Eloquent
  */
 class CategoryAttribute extends Pivot
 {
     protected $table = 'category_attribute';
+
     public $timestamps = true; // у тебя withTimestamps() в связи — оставь true
+
     protected $fillable = [
         'is_required',
         'filter_order',
@@ -48,16 +53,27 @@ class CategoryAttribute extends Pivot
     ];
 
     protected $casts = [
-        'is_required'        => 'bool',
-        'visible_in_specs'   => 'bool',
+        'is_required' => 'bool',
+        'visible_in_specs' => 'bool',
         'visible_in_compare' => 'bool',
-        'filter_order'       => 'int',
-        'compare_order'      => 'int',
-        'display_unit_id'    => 'int',
-        'number_decimals'    => 'int',
-        'number_step'        => 'float',
-        'number_rounding'    => 'string',
+        'filter_order' => 'int',
+        'compare_order' => 'int',
+        'display_unit_id' => 'int',
+        'number_decimals' => 'int',
+        'number_step' => 'float',
+        'number_rounding' => 'string',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(function (self $model): void {
+            self::invalidateFilterSchemaCache($model);
+        });
+
+        static::deleted(function (self $model): void {
+            self::invalidateFilterSchemaCache($model);
+        });
+    }
 
     public function category(): BelongsTo
     {
@@ -89,5 +105,19 @@ class CategoryAttribute extends Pivot
         }
 
         return $this->attribute?->defaultUnit();
+    }
+
+    private static function invalidateFilterSchemaCache(self $model): void
+    {
+        $categoryIds = [
+            (int) $model->category_id,
+            (int) ($model->getOriginal('category_id') ?? 0),
+        ];
+
+        foreach ($categoryIds as $categoryId) {
+            if ($categoryId > 0) {
+                FilterSchemaCache::forgetCategory($categoryId);
+            }
+        }
     }
 }

@@ -2,20 +2,20 @@
 
 namespace App\Filament\Resources\Products\RelationManagers;
 
-use Filament\Tables;
-use Filament\Actions;
-use App\Models\Product;
 use App\Models\Attribute;
-use Filament\Tables\Table;
-use Filament\Schemas\Schema;
 use App\Models\AttributeOption;
-use Filament\Forms\Components\Select;
+use App\Models\Product;
 use App\Models\ProductAttributeOption;
+use App\Support\FilterSchemaCache;
+use Filament\Actions;
+use Filament\Forms\Components\Select;
+use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Filament\Schemas\Components\Utilities\Get;
-use Filament\Resources\RelationManagers\RelationManager;
 
 class AttributeOptionsRelationManager extends RelationManager
 {
@@ -69,14 +69,14 @@ class AttributeOptionsRelationManager extends RelationManager
             ->emptyStateHeading('Нет заданных вариантов')
             ->emptyStateDescription('Выбор из списка (select/multiselect) редактируется здесь.')
             ->modifyQueryUsing(function (Builder $query) {
-                $query->whereHas('attribute', fn(Builder $attrQuery) => $attrQuery->whereIn('input_type', self::OPTION_INPUT_TYPES));
+                $query->whereHas('attribute', fn (Builder $attrQuery) => $attrQuery->whereIn('input_type', self::OPTION_INPUT_TYPES));
             })
             ->headerActions([
                 // Показать кнопку только если есть что добавлять
                 Actions\Action::make('attachOption')
                     ->label('Добавить вариант')
                     ->icon('heroicon-o-plus')
-                    ->visible(fn() => ! empty($this->getAttachableAttributeOptions()))
+                    ->visible(fn () => ! empty($this->getAttachableAttributeOptions()))
                     ->schema(function (): array {
                         return [
                             Select::make('attribute_id')
@@ -86,12 +86,13 @@ class AttributeOptionsRelationManager extends RelationManager
                                 ->preload()
                                 ->required()
                                 ->live()
-                                ->hint(fn() => empty($this->getAttachableAttributeOptions()) ? 'Все варианты уже выбраны.' : null),
+                                ->hint(fn () => empty($this->getAttachableAttributeOptions()) ? 'Все варианты уже выбраны.' : null),
 
                             Select::make('attribute_option_id')
                                 ->label('Вариант')
                                 ->options(function (Get $get) {
                                     $attrId = (int) $get('attribute_id');
+
                                     return $attrId
                                         ? $this->getAvailableOptionsForAttribute($attrId)
                                         : [];
@@ -99,26 +100,31 @@ class AttributeOptionsRelationManager extends RelationManager
                                 ->searchable()
                                 ->preload()
                                 ->required()
-                                ->disabled(fn(Get $get) => $get('attribute_id') ? empty($this->getAvailableOptionsForAttribute((int) $get('attribute_id'))) : true)
-                                ->hint(fn(Get $get) => $get('attribute_id') && empty($this->getAvailableOptionsForAttribute((int) $get('attribute_id')))
+                                ->disabled(fn (Get $get) => $get('attribute_id') ? empty($this->getAvailableOptionsForAttribute((int) $get('attribute_id'))) : true)
+                                ->hint(fn (Get $get) => $get('attribute_id') && empty($this->getAvailableOptionsForAttribute((int) $get('attribute_id')))
                                     ? 'Для этого атрибута все варианты уже выбраны.'
                                     : null),
                         ];
                     })
                     ->action(function (array $data): void {
                         /** @var Product $product */
-                        $product     = $this->getOwnerRecord();
+                        $product = $this->getOwnerRecord();
                         $attributeId = (int) ($data['attribute_id'] ?? 0);
-                        $optionId    = (int) ($data['attribute_option_id'] ?? 0);
-                        if (! $attributeId || ! $optionId) return;
+                        $optionId = (int) ($data['attribute_option_id'] ?? 0);
+                        if (! $attributeId || ! $optionId) {
+                            return;
+                        }
 
                         $attr = Attribute::find($attributeId);
-                        if (! $attr) return;
+                        if (! $attr) {
+                            return;
+                        }
 
                         if ($attr->input_type === 'multiselect') {
                             // ➕ добавляем, не трогая уже выбранные (дубли БД не допустит)
                             $product->attributeOptions()
                                 ->syncWithoutDetaching([$optionId => ['attribute_id' => $attributeId]]);
+                            FilterSchemaCache::forgetByProductAttribute((int) $product->getKey(), $attributeId);
                         } else {
                             // select: заменить выбор (если уже был)
                             ProductAttributeOption::setSingle($product->getKey(), $attributeId, $optionId);
@@ -149,27 +155,44 @@ class AttributeOptionsRelationManager extends RelationManager
                         /** @var AttributeOption $record */
                         /** @var Product $product */
                         $product = $this->getOwnerRecord();
-                        $oldId   = (int) $record->getKey();
-                        $attrId  = (int) $record->attribute_id;
-                        $newId   = (int) ($data['attribute_option_id'] ?? 0);
+                        $oldId = (int) $record->getKey();
+                        $attrId = (int) $record->attribute_id;
+                        $newId = (int) ($data['attribute_option_id'] ?? 0);
 
-                        if (! $newId || $newId === $oldId) return;
+                        if (! $newId || $newId === $oldId) {
+                            return;
+                        }
 
                         // заменить конкретный вариант: убрать старый → добавить новый
                         $product->attributeOptions()->detach($oldId);
                         $product->attributeOptions()
                             ->syncWithoutDetaching([$newId => ['attribute_id' => $attrId]]);
+                        FilterSchemaCache::forgetByProductAttribute((int) $product->getKey(), $attrId);
                     })
                     ->successNotificationTitle('Вариант обновлён'),
 
                 Actions\DetachAction::make()
                     ->label('Убрать')
-                    ->requiresConfirmation(),
+                    ->requiresConfirmation()
+                    ->after(function (AttributeOption $record): void {
+                        /** @var Product $product */
+                        $product = $this->getOwnerRecord();
+
+                        FilterSchemaCache::forgetByProductAttribute(
+                            (int) $product->getKey(),
+                            (int) $record->attribute_id,
+                        );
+                    }),
             ])
             ->toolbarActions([
                 Actions\BulkActionGroup::make([
                     Actions\DetachBulkAction::make()
-                        ->label('Убрать выбранные'),
+                        ->label('Убрать выбранные')
+                        ->after(function (): void {
+                            /** @var Product $product */
+                            $product = $this->getOwnerRecord();
+                            FilterSchemaCache::forgetByProduct((int) $product->getKey());
+                        }),
                 ]),
             ]);
     }
@@ -211,9 +234,9 @@ class AttributeOptionsRelationManager extends RelationManager
 
         return $attributeQuery->get()
             ->filter(function (Attribute $attr) use ($selectedCounts, $totalCounts) {
-                $attrId   = $attr->getKey();
+                $attrId = $attr->getKey();
                 $selected = (int) ($selectedCounts[$attrId] ?? 0);
-                $total    = (int) ($totalCounts[$attrId] ?? 0);
+                $total = (int) ($totalCounts[$attrId] ?? 0);
 
                 if ($total === 0) {
                     return false;
@@ -227,7 +250,7 @@ class AttributeOptionsRelationManager extends RelationManager
                 // multiselect — если выбрали не все
                 return $selected < $total;
             })
-            ->mapWithKeys(fn(Attribute $attr) => [$attr->id => $this->attributeLabel($attr)])
+            ->mapWithKeys(fn (Attribute $attr) => [$attr->id => $this->attributeLabel($attr)])
             ->all();
     }
 
@@ -252,7 +275,7 @@ class AttributeOptionsRelationManager extends RelationManager
 
         return AttributeOption::query()
             ->where('attribute_id', $attrId)
-            ->when($selectedIds, fn($q) => $q->whereNotIn('id', $selectedIds))
+            ->when($selectedIds, fn ($q) => $q->whereNotIn('id', $selectedIds))
             ->orderBy('sort_order')
             ->orderBy('value')
             ->pluck('value', 'id')

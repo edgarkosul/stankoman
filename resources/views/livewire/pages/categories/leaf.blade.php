@@ -359,7 +359,7 @@
                 <div class="relative">
                     <div class="grid grid-cols-2 xl:grid-cols-3 gap-4">
                         @foreach ($products as $product)
-                            <x-product.card :product="$product" />
+                            <x-product.card :product="$product" :category="$category" />
                         @endforeach
                     </div>
 

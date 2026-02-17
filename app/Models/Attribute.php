@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\FilterSchemaCache;
 use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -472,6 +473,14 @@ class Attribute extends Model
             if (blank($m->slug)) {
                 $m->slug = static::makeUniqueSlug($m->name);
             }
+        });
+
+        static::saved(function (self $model): void {
+            FilterSchemaCache::forgetByAttribute((int) $model->getKey());
+        });
+
+        static::deleted(function (self $model): void {
+            FilterSchemaCache::forgetByAttribute((int) $model->getKey());
         });
     }
 
