@@ -1,11 +1,13 @@
 <?php
 
+use App\Filament\Pages\CategoryFiltersImportExport;
 use App\Filament\Pages\ImportExportHelp;
 use App\Filament\Pages\ProductImportExport;
 use App\Filament\Pages\VactoolProductImport;
 use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Jobs\RunVactoolProductImportJob;
 use App\Models\ImportRun;
+use App\Support\Products\CategoryFilterSchemaService;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -16,6 +18,9 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema as DatabaseSchema;
+use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Tests\TestCase;
 
 pest()->extend(TestCase::class);
@@ -29,6 +34,18 @@ test('product import export page metadata is configured', function () {
 
     expect($defaults['view'])->toBe('filament.pages.product-import-export');
     expect($defaults['title'])->toBe('Импорт/Экспорт товаров в Excel');
+});
+
+test('category filters import export page metadata and route are configured', function () {
+    expect(CategoryFiltersImportExport::getNavigationGroup())->toBe('Импорт/Экспорт');
+    expect(CategoryFiltersImportExport::getNavigationLabel())->toBe('Фильтры (экспорт и импорт)');
+    expect(CategoryFiltersImportExport::getNavigationIcon())->toBe('heroicon-o-funnel');
+
+    $defaults = (new ReflectionClass(CategoryFiltersImportExport::class))->getDefaultProperties();
+
+    expect($defaults['view'])->toBe('filament.pages.category-filters-import-export');
+    expect($defaults['title'])->toBe('Фильтры (экспорт и импорт)');
+    expect(Route::has('filament.admin.pages.category-filters-import-export'))->toBeTrue();
 });
 
 test('import export help page metadata and route are configured', function () {
@@ -101,26 +118,10 @@ test('download routes for import export tools are registered with auth middlewar
     expect($importRoute->gatherMiddleware())->toContain('auth');
 });
 
-test('product import export form has inline hint icon tooltips for key fields', function () {
-    if (! DatabaseSchema::hasTable('categories')) {
-        DatabaseSchema::create('categories', function (Blueprint $table): void {
-            $table->id();
-            $table->string('name');
-        });
-    }
-
+test('product import export form has inline hint icon tooltips for excel fields', function () {
     $page = new ProductImportExport;
     $schema = $page->form(Schema::make($page));
 
-    $categoryField = $schema->getComponent(
-        fn ($component) => $component instanceof Select && $component->getName() === 'filter_category_ids',
-    );
-    $activeOnlyField = $schema->getComponent(
-        fn ($component) => $component instanceof Toggle && $component->getName() === 'filter_only_active',
-    );
-    $inStockOnlyField = $schema->getComponent(
-        fn ($component) => $component instanceof Toggle && $component->getName() === 'filter_only_stock',
-    );
     $exportColumnsField = $schema->getComponent(
         fn ($component) => $component instanceof Select && $component->getName() === 'export_columns',
     );
@@ -128,26 +129,106 @@ test('product import export form has inline hint icon tooltips for key fields', 
         fn ($component) => $component instanceof FileUpload && $component->getName() === 'import_file',
     );
 
-    expect($categoryField)->not->toBeNull();
-    expect($activeOnlyField)->not->toBeNull();
-    expect($inStockOnlyField)->not->toBeNull();
     expect($exportColumnsField)->not->toBeNull();
     expect($importFileField)->not->toBeNull();
-
-    expect($categoryField->getHintIcon())->toBe(Heroicon::InformationCircle);
-    expect($categoryField->getHintIconTooltip())->toContain('Ограничивает экспорт');
-
-    expect($activeOnlyField->getHintIcon())->toBe(Heroicon::InformationCircle);
-    expect($activeOnlyField->getHintIconTooltip())->toContain('только товары с пометкой');
-
-    expect($inStockOnlyField->getHintIcon())->toBe(Heroicon::InformationCircle);
-    expect($inStockOnlyField->getHintIconTooltip())->toContain('пометкой В наличии');
 
     expect($exportColumnsField->getHintIcon())->toBe(Heroicon::InformationCircle);
     expect($exportColumnsField->getHintIconTooltip())->toContain('Обязательные служебные колонки');
 
     expect($importFileField->getHintIcon())->toBe(Heroicon::InformationCircle);
     expect($importFileField->getHintIconTooltip())->toContain('Поддерживается только формат XLSX');
+});
+
+test('category filters import export form has expected fields and hint icons', function () {
+    if (! DatabaseSchema::hasTable('categories')) {
+        DatabaseSchema::create('categories', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->integer('parent_id')->default(-1);
+        });
+    }
+
+    if (! DatabaseSchema::hasColumn('categories', 'parent_id')) {
+        DatabaseSchema::table('categories', function (Blueprint $table): void {
+            $table->integer('parent_id')->default(-1);
+        });
+    }
+
+    $page = new CategoryFiltersImportExport;
+    $schema = $page->form(Schema::make($page));
+
+    $categoryField = $schema->getComponent(
+        fn ($component) => $component instanceof Select && $component->getName() === 'category_id',
+    );
+    $importFileField = $schema->getComponent(
+        fn ($component) => $component instanceof FileUpload && $component->getName() === 'import_file',
+    );
+
+    expect($categoryField)->not->toBeNull();
+    expect($importFileField)->not->toBeNull();
+
+    expect($categoryField->getHintIcon())->toBe(Heroicon::InformationCircle);
+    expect($categoryField->getHintIconTooltip())->toContain('только для листовой категории');
+
+    expect($importFileField->getHintIcon())->toBe(Heroicon::InformationCircle);
+    expect($importFileField->getHintIconTooltip())->toContain('Сначала запустите dry-run');
+});
+
+test('category filters import export resolves stored path from nested file upload state', function () {
+    $page = new CategoryFiltersImportExport;
+
+    $method = new ReflectionMethod(CategoryFiltersImportExport::class, 'resolveStoredImportPath');
+    $method->setAccessible(true);
+
+    $resolved = $method->invoke(
+        $page,
+        [
+            [
+                'name' => 'template.xlsx',
+                'size' => 12345,
+                'path' => 'imports/template.xlsx',
+            ],
+        ],
+    );
+
+    expect($resolved)->toBe('imports/template.xlsx');
+});
+
+test('category filters import export detects category id from template meta sheet', function () {
+    $spreadsheet = new Spreadsheet;
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle(CategoryFilterSchemaService::META_SHEET);
+
+    $sheet->setCellValue('A1', 'key');
+    $sheet->setCellValue('B1', 'value');
+    $sheet->setCellValue('A2', 'template_type');
+    $sheet->setCellValue('B2', CategoryFilterSchemaService::TEMPLATE_TYPE);
+    $sheet->setCellValue('A3', 'category_id');
+    $sheet->setCellValue('B3', '168');
+    $sheet->setCellValue('A4', 'schema_hash');
+    $sheet->setCellValue('B4', 'test-hash');
+
+    $relativePath = 'imports/test-filter-template-meta-'.uniqid('', true).'.xlsx';
+    $absolutePath = Storage::disk('local')->path($relativePath);
+    $directory = dirname($absolutePath);
+
+    if (! is_dir($directory)) {
+        mkdir($directory, 0775, true);
+    }
+
+    (new Xlsx($spreadsheet))->save($absolutePath);
+    $spreadsheet->disconnectWorksheets();
+
+    $page = new CategoryFiltersImportExport;
+
+    $method = new ReflectionMethod(CategoryFiltersImportExport::class, 'detectCategoryIdFromTemplatePath');
+    $method->setAccessible(true);
+
+    $detectedCategoryId = $method->invoke($page, $relativePath);
+
+    Storage::disk('local')->delete($relativePath);
+
+    expect($detectedCategoryId)->toBe(168);
 });
 
 test('vactool product import form has default fields and hint icons', function () {

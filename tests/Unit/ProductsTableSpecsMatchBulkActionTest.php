@@ -246,6 +246,93 @@ it('applies attribute decisions from specs match confirmation wizard', function 
     });
 });
 
+it('updates discount price for selected products in fields mass edit mode', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $firstProduct = Product::query()->create([
+        'name' => 'Товар 1',
+        'slug' => 'bulk-discount-product-1',
+        'price_amount' => 1000,
+    ]);
+
+    $secondProduct = Product::query()->create([
+        'name' => 'Товар 2',
+        'slug' => 'bulk-discount-product-2',
+        'price_amount' => 3333,
+    ]);
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$firstProduct, $secondProduct])
+        ->callTableBulkAction('massEdit', [$firstProduct, $secondProduct], [
+            'mode' => 'fields',
+            'field' => 'discount_price',
+            'discount_price_percent' => 10,
+        ]);
+
+    $firstProduct->refresh();
+    $secondProduct->refresh();
+
+    expect($firstProduct->discount_price)->toBe(900)
+        ->and($secondProduct->discount_price)->toBe(3000);
+});
+
+it('sets selected category as primary in categories mass edit mode', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $oldCategory = Category::query()->create([
+        'name' => 'Старая категория',
+        'slug' => 'old-category',
+        'parent_id' => -1,
+        'order' => 201,
+        'is_active' => true,
+    ]);
+
+    $newCategory = Category::query()->create([
+        'name' => 'Новая категория',
+        'slug' => 'new-category',
+        'parent_id' => -1,
+        'order' => 202,
+        'is_active' => true,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Товар для смены категории',
+        'slug' => 'primary-category-switch-product',
+        'price_amount' => 1500,
+    ]);
+
+    $product->categories()->attach($oldCategory->id, ['is_primary' => true]);
+    $product->categories()->attach($newCategory->id, ['is_primary' => false]);
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$product])
+        ->callTableBulkAction('massEdit', [$product], [
+            'mode' => 'categories',
+            'cat_op' => 'set_primary',
+            'primary_category_id' => $newCategory->id,
+        ]);
+
+    $product->refresh();
+
+    expect($product->primaryCategory()?->id)->toBe($newCategory->id);
+
+    expect(
+        DB::table('product_categories')
+            ->where('product_id', $product->id)
+            ->where('category_id', $newCategory->id)
+            ->value('is_primary')
+    )->toBe(1);
+
+    expect(
+        DB::table('product_categories')
+            ->where('product_id', $product->id)
+            ->where('category_id', $oldCategory->id)
+            ->value('is_primary')
+    )->toBe(0);
+});
+
 it('configures dry-run toggle as live for immediate staging checkbox visibility update', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

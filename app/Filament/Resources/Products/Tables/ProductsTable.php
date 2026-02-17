@@ -35,12 +35,18 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class ProductsTable
 {
     public static function configure(Table $table): Table
+    {
+        return self::configureTable($table);
+    }
+
+    private static function configureTable(Table $table): Table
     {
         return $table
             ->reorderable('popularity')
@@ -282,7 +288,7 @@ class ProductsTable
                         Select::make('primary_category_id')
                             ->label('Основная категория')
                             ->searchable()
-                            ->options(fn () => \App\Models\Category::query()
+                            ->options(fn () => Category::query()
                                 ->leaf()
                                 ->whereHas('products')
                                 ->orderBy('name')
@@ -295,7 +301,7 @@ class ProductsTable
                             ->multiple()
                             ->searchable()
                             ->options(function ($get, $livewire) {
-                                $baseQuery = \App\Models\Category::query()->orderBy('name');
+                                $baseQuery = Category::query()->orderBy('name');
 
                                 if ($get('cat_op') === 'detach_extra') {
                                     $selectedIds = $livewire
@@ -348,7 +354,7 @@ class ProductsTable
                                     return [];
                                 }
 
-                                return \App\Models\Attribute::query()
+                                return Attribute::query()
                                     ->whereHas('categories', fn ($q) => $q->whereIn('categories.id', $categoryIds))
                                     ->orderBy('name')
                                     ->pluck('name', 'id');
@@ -393,11 +399,11 @@ class ProductsTable
                                         ->value('display_unit_id');
 
                                     if ($displayUnitId) {
-                                        return \App\Models\Unit::find($displayUnitId)?->symbol;
+                                        return Unit::find($displayUnitId)?->symbol;
                                     }
                                 }
 
-                                return \App\Models\Attribute::with('unit')
+                                return Attribute::with('unit')
                                     ->find($attrId)
                                     ?->unit
                                     ?->symbol;
@@ -776,7 +782,8 @@ class ProductsTable
                         DB::transaction(function () use ($data, $ids) {
 
                             if ($data['mode'] === 'fields') {
-                                $q = \App\Models\Product::query()->whereKey($ids);
+                                /** @var Builder<Product> $q */
+                                $q = Product::query()->whereKey($ids);
 
                                 switch ($data['field']) {
                                     case 'brand':
@@ -789,7 +796,8 @@ class ProductsTable
                                         $percent = min(100, max(0, (float) $data['discount_price_percent']));
 
                                         $q->select(['id', 'price_amount'])
-                                            ->chunkById(200, function ($chunk) use ($percent) {
+                                            ->chunkById(200, function (EloquentCollection $chunk) use ($percent): void {
+                                                /** @var Product $product */
                                                 foreach ($chunk as $product) {
                                                     $basePrice = (int) $product->price_amount;
                                                     $discount = (int) round($basePrice * (1 - ($percent / 100)));
@@ -822,37 +830,40 @@ class ProductsTable
                             }
 
                             if ($data['mode'] === 'categories') {
-                                \App\Models\Product::query()
+                                /** @var Builder<Product> $productsQuery */
+                                $productsQuery = Product::query()
                                     ->whereKey($ids)
-                                    ->select('id')
-                                    ->chunkById(200, function ($chunk) use ($data) {
-                                        foreach ($chunk as $product) {
-                                            $rel = $product->categories();
+                                    ->select(['id']);
 
-                                            switch ($data['cat_op']) {
-                                                case 'set_primary':
-                                                    $categoryId = (int) $data['primary_category_id'];
+                                $productsQuery->chunkById(200, function (EloquentCollection $chunk) use ($data): void {
+                                    /** @var Product $product */
+                                    foreach ($chunk as $product) {
+                                        $rel = $product->categories();
 
-                                                    if (! $rel->where('category_id', $categoryId)->exists()) {
-                                                        $rel->attach($categoryId, ['is_primary' => false]);
-                                                    }
+                                        switch ($data['cat_op']) {
+                                            case 'set_primary':
+                                                $categoryId = (int) $data['primary_category_id'];
 
-                                                    $product->setPrimaryCategory($categoryId);
-                                                    break;
+                                                if (! $rel->where('category_id', $categoryId)->exists()) {
+                                                    $rel->attach($categoryId, ['is_primary' => false]);
+                                                }
 
-                                                case 'attach_extra':
-                                                    $payload = collect($data['extra_category_ids'])
-                                                        ->mapWithKeys(fn ($id) => [$id => ['is_primary' => false]])
-                                                        ->all();
-                                                    $rel->syncWithoutDetaching($payload);
-                                                    break;
+                                                $product->setPrimaryCategory($categoryId);
+                                                break;
 
-                                                case 'detach_extra':
-                                                    $rel->detach($data['extra_category_ids']);
-                                                    break;
-                                            }
+                                            case 'attach_extra':
+                                                $payload = collect($data['extra_category_ids'])
+                                                    ->mapWithKeys(fn ($id) => [$id => ['is_primary' => false]])
+                                                    ->all();
+                                                $rel->syncWithoutDetaching($payload);
+                                                break;
+
+                                            case 'detach_extra':
+                                                $rel->detach($data['extra_category_ids']);
+                                                break;
                                         }
-                                    });
+                                    }
+                                });
 
                                 return;
                             }

@@ -94,6 +94,7 @@
             @if ($product->sku)
                 <div class="text-sm px-4 py-2 text-brand-gray">Артикул: {{ $product->sku }}</div>
             @endif
+
             <button class="text-lg font-bold uppercase bg-brand-green p-3 m-4 hover:bg-brand-green/90 text-white flex items-center gap-2 justify-center"><x-icon name="cart" class="w-6 h-6 -translate-y-0.5 mr-2 " />В корзину</button>
 
 

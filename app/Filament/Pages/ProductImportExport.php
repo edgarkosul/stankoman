@@ -2,7 +2,6 @@
 
 namespace App\Filament\Pages;
 
-use App\Models\Category;
 use App\Models\ImportRun;
 use App\Models\Product;
 use App\Support\Products\ProductExportService;
@@ -11,7 +10,6 @@ use BackedEnum;
 use Filament\Actions\Action as FormAction;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Toggle;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Notifications\Notification;
@@ -20,7 +18,6 @@ use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -43,19 +40,13 @@ class ProductImportExport extends Page implements HasForms
     /** @var array{
      *     export_columns: array<int, string>,
      *     import_file: TemporaryUploadedFile|array<int, TemporaryUploadedFile|string>|string|null,
-     *     import_file_original_name: string|null,
-     *     filter_category_ids: array<int, int|string>,
-     *     filter_only_active: bool,
-     *     filter_only_stock: bool
+     *     import_file_original_name: string|null
      * }|null
      */
     public ?array $data = [
         'export_columns' => [],
         'import_file' => null,
         'import_file_original_name' => null,
-        'filter_category_ids' => [],
-        'filter_only_active' => false,
-        'filter_only_stock' => false,
     ];
 
     /** @var array<string, int>|null */
@@ -86,9 +77,6 @@ class ProductImportExport extends Page implements HasForms
             'export_columns' => $visibleDefaults,
             'import_file' => null,
             'import_file_original_name' => null,
-            'filter_category_ids' => [],
-            'filter_only_active' => false,
-            'filter_only_stock' => false,
         ]);
 
         $this->dryRunTotals = null;
@@ -127,27 +115,6 @@ class ProductImportExport extends Page implements HasForms
 
         return $schema
             ->components([
-                Section::make('Фильтры (экспорт и импорт)')
-                    ->schema([
-                        Select::make('filter_category_ids')
-                            ->label('Категории')
-                            ->multiple()
-                            ->searchable()
-                            ->hintIcon(Heroicon::InformationCircle, 'Ограничивает экспорт и проверку импорта выбранными категориями.')
-                            ->options(
-                                Category::query()
-                                    ->orderBy('name')
-                                    ->pluck('name', 'id')
-                            )
-                            ->placeholder('Все категории'),
-                        Toggle::make('filter_only_active')
-                            ->label('Только активные')
-                            ->hintIcon(Heroicon::InformationCircle, 'Если включено, учитываются только товары с пометкой  Показывать на сайте.'),
-                        Toggle::make('filter_only_stock')
-                            ->label('Только в наличии')
-                            ->hintIcon(Heroicon::InformationCircle, 'Если включено, учитываются только товары с пометкой В наличии.'),
-                    ]),
-
                 Section::make('Экспорт в Excel')
                     ->schema([
                         Select::make('export_columns')
@@ -204,11 +171,7 @@ class ProductImportExport extends Page implements HasForms
     public function doExport(ProductExportService $export): void
     {
         $columns = $export->validateColumns($this->data['export_columns'] ?? []);
-
-        $query = Product::query();
-        $query = $this->applyFiltersToProductQuery($query);
-
-        $result = $export->exportToXlsx($query, $columns);
+        $result = $export->exportToXlsx(Product::query(), $columns);
 
         $token = bin2hex(random_bytes(8));
         $key = "exports/tmp/{$token}.path";
@@ -288,9 +251,7 @@ class ProductImportExport extends Page implements HasForms
             'started_at' => now(),
         ]);
 
-        $result = $import->dryRunFromXlsx($run, $absPath, [
-            'filters' => $this->buildImportFilters(),
-        ]);
+        $result = $import->dryRunFromXlsx($run, $absPath);
 
         $totals = $result['totals'] ?? [];
         $preview = $result['preview'] ?? ['create' => [], 'update' => [], 'conflict' => []];
@@ -377,7 +338,6 @@ class ProductImportExport extends Page implements HasForms
 
         $totals = $import->applyFromXlsx($run, $absPath, [
             'write' => true,
-            'filters' => $this->buildImportFilters(),
         ]);
 
         Notification::make()
@@ -391,40 +351,6 @@ class ProductImportExport extends Page implements HasForms
             )
             ->success()
             ->send();
-    }
-
-    protected function applyFiltersToProductQuery(Builder $query): Builder
-    {
-        $categoryIds = $this->data['filter_category_ids'] ?? [];
-
-        if (is_array($categoryIds)) {
-            $categoryIds = array_filter($categoryIds, fn ($id) => $id !== null && $id !== '');
-
-            if (! empty($categoryIds)) {
-                $query->whereHas('categories', function (Builder $builder) use ($categoryIds): void {
-                    $builder->whereIn('categories.id', $categoryIds);
-                });
-            }
-        }
-
-        if (! empty($this->data['filter_only_active'])) {
-            $query->where('is_active', true);
-        }
-
-        if (! empty($this->data['filter_only_stock'])) {
-            $query->where('in_stock', true);
-        }
-
-        return $query;
-    }
-
-    protected function buildImportFilters(): array
-    {
-        return [
-            'category_ids' => $this->data['filter_category_ids'] ?? [],
-            'only_active' => (bool) ($this->data['filter_only_active'] ?? false),
-            'only_stock' => (bool) ($this->data['filter_only_stock'] ?? false),
-        ];
     }
 
     protected function canApplyLastRun(): bool

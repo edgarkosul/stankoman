@@ -2,14 +2,15 @@
 
 namespace App\Filament\Resources\Products\Pages;
 
+use App\Filament\Concerns\QueuesContentImageDerivatives;
+use App\Filament\Resources\Products\ProductResource;
+use App\Support\Products\ProductSpecsAttributesSyncService;
 use Filament\Actions\Action;
-use Filament\Actions\ViewAction;
 use Filament\Actions\DeleteAction;
+use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Validation\ValidationException;
-use App\Filament\Resources\Products\ProductResource;
-use App\Filament\Concerns\QueuesContentImageDerivatives;
 
 class EditProduct extends EditRecord
 {
@@ -42,8 +43,31 @@ class EditProduct extends EditRecord
             Action::make('open_public')
                 ->label('')
                 ->icon('heroicon-o-arrow-top-right-on-square')
-                ->url(fn($record) => route('product.show', $record))
+                ->url(fn ($record) => route('product.show', $record))
                 ->openUrlInNewTab(),
+            Action::make('sync_specs_to_attributes')
+                ->label('Характеристики -> атрибуты')
+                ->icon('heroicon-o-arrow-path')
+                ->color('gray')
+                ->action(function (): void {
+                    $syncResult = app(ProductSpecsAttributesSyncService::class)->sync(
+                        product: $this->record,
+                        rawSpecs: data_get($this->data, 'specs', $this->record->specs),
+                    );
+
+                    $updatedCount = $syncResult['updated_pav'] + $syncResult['updated_pao'];
+
+                    Notification::make()
+                        ->title($updatedCount > 0 ? 'Синк specs -> attributes выполнен' : 'Изменений не найдено')
+                        ->body(
+                            'PAV: '.$syncResult['updated_pav']
+                            .', PAO: '.$syncResult['updated_pao']
+                            .', skipped: '.$syncResult['skipped']
+                            .', unchanged: '.$syncResult['unchanged']
+                        )
+                        ->color($updatedCount > 0 ? 'success' : 'warning')
+                        ->send();
+                }),
             ViewAction::make(),
             DeleteAction::make(),
         ];
@@ -80,13 +104,13 @@ class EditProduct extends EditRecord
             Notification::make()
                 ->danger()
                 ->title('Нельзя сохранить — не заполнены обязательные атрибуты')
-                ->body('Укажите значения: ' . $list)
+                ->body('Укажите значения: '.$list)
                 ->persistent()
                 ->send();
 
             // Бросаем валидацию, чтобы прервать сохранение.
             throw ValidationException::withMessages([
-                'is_active' => 'Заполните обязательные атрибуты: ' . $list,
+                'is_active' => 'Заполните обязательные атрибуты: '.$list,
             ]);
         }
     }
