@@ -451,6 +451,13 @@ class SpecsMatchService
         foreach ($products as $product) {
             $result['processed']++;
 
+            if (! $options['dry_run']) {
+                $this->assignTargetCategoryAsPrimary(
+                    product: $product,
+                    targetCategoryId: (int) $targetCategory->getKey(),
+                );
+            }
+
             if (! $product->primaryCategory()) {
                 $result['issues'] += $this->addIssue(
                     run: $run,
@@ -1884,6 +1891,15 @@ class SpecsMatchService
         return 1;
     }
 
+    private function assignTargetCategoryAsPrimary(Product $product, int $targetCategoryId): void
+    {
+        $product->categories()->syncWithoutDetaching([
+            $targetCategoryId => ['is_primary' => false],
+        ]);
+
+        $product->setPrimaryCategory($targetCategoryId);
+    }
+
     /**
      * @param  array<string, mixed>  $options
      */
@@ -1912,9 +1928,7 @@ class SpecsMatchService
             return;
         }
 
-        $categoryRelation = $product->categories();
-
-        $hasStaging = $categoryRelation
+        $hasStaging = $product->categories()
             ->where('categories.id', $stagingCategoryId)
             ->exists();
 
@@ -1922,12 +1936,12 @@ class SpecsMatchService
             return;
         }
 
-        $hasTarget = $categoryRelation
+        $hasTarget = $product->categories()
             ->where('categories.id', $targetCategoryId)
             ->exists();
 
         if (! $hasTarget) {
-            $categoryRelation->attach($targetCategoryId, ['is_primary' => false]);
+            $product->categories()->attach($targetCategoryId, ['is_primary' => false]);
         }
 
         $isStagingPrimary = $product->categories()
@@ -1935,7 +1949,7 @@ class SpecsMatchService
             ->wherePivot('is_primary', true)
             ->exists();
 
-        $categoryRelation->detach($stagingCategoryId);
+        $product->categories()->detach($stagingCategoryId);
 
         if ($isStagingPrimary) {
             $product->setPrimaryCategory($targetCategoryId);

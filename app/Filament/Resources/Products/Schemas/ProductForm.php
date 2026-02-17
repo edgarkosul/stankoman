@@ -2,30 +2,29 @@
 
 namespace App\Filament\Resources\Products\Schemas;
 
-use Filament\Support\RawJs;
-use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
-use App\Models\Product;
-use Filament\Forms\Components\Hidden;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Toggle;
-use Filament\Schemas\Components\Tabs;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\RichEditor;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Str;
-use Filament\Schemas\Components\Utilities\Get;
-use Filament\Schemas\Components\Utilities\Set;
-use Filament\Forms\Components\RichEditor\RichEditorTool;
-use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
-use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
-
-use function Symfony\Component\String\s;
+use App\Models\Product;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Repeater\TableColumn;
+use Filament\Forms\Components\RichEditor;
+use Filament\Forms\Components\RichEditor\RichEditorTool;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
 
 class ProductForm
 {
@@ -165,7 +164,7 @@ class ProductForm
                                         ->label('Очистить')
                                         ->icon(Heroicon::Trash)
                                         ->activeStyling(false)
-                                        ->jsHandler("confirm('Очистить описание?') && " . '$getEditor' . "()?.chain().focus().clearContent().run()"),
+                                        ->jsHandler("confirm('Очистить описание?') && ".'$getEditor'.'()?.chain().focus().clearContent().run()'),
                                 ])
                                 ->toolbarButtons([
                                     ['bold', 'italic', 'underline', 'textColor', 'strike', 'subscript', 'superscript', 'link'],
@@ -173,7 +172,7 @@ class ProductForm
                                     ['blockquote', 'codeBlock', 'bulletList', 'orderedList'],
                                     ['table', 'attachFiles', 'customBlocks'],
                                     ['undo', 'redo'],
-                                    ['horizontalRule', 'grid', 'gridDelete', 'clearContent']
+                                    ['horizontalRule', 'grid', 'gridDelete', 'clearContent'],
                                 ])
                                 ->fileAttachmentsDisk('public')
                                 ->fileAttachmentsDirectory('pics')
@@ -184,7 +183,7 @@ class ProductForm
                                     RutubeVideoBlock::class,
                                     YoutubeVideoBlock::class,
                                     RawHtmlBlock::class,
-                                ])
+                                ]),
 
                         ]),
                         Tabs\Tab::make('Инструкция и видео')->schema([
@@ -195,7 +194,7 @@ class ProductForm
                                         ->label('Очистить')
                                         ->icon(Heroicon::Trash)
                                         ->activeStyling(false)
-                                        ->jsHandler("confirm('Очистить описание?') && " . '$getEditor' . "()?.chain().focus().clearContent().run()"),
+                                        ->jsHandler("confirm('Очистить описание?') && ".'$getEditor'.'()?.chain().focus().clearContent().run()'),
                                 ])
                                 ->toolbarButtons([
                                     ['bold', 'italic', 'underline', 'textColor', 'strike', 'subscript', 'superscript', 'link'],
@@ -203,7 +202,7 @@ class ProductForm
                                     ['blockquote', 'codeBlock', 'bulletList', 'orderedList'],
                                     ['table', 'attachFiles', 'customBlocks'],
                                     ['undo', 'redo'],
-                                    ['horizontalRule', 'grid', 'gridDelete', 'clearContent']
+                                    ['horizontalRule', 'grid', 'gridDelete', 'clearContent'],
                                 ])
                                 ->fileAttachmentsDisk('public')
                                 ->fileAttachmentsDirectory('pics')
@@ -214,9 +213,51 @@ class ProductForm
                                     RutubeVideoBlock::class,
                                     YoutubeVideoBlock::class,
                                     RawHtmlBlock::class,
-                                ])
+                                ]),
                         ]),
                     ]),
+                Repeater::make('specs')
+                    ->label('Характеристики')
+                    ->helperText('Редактирование в табличном виде. Пустые и дублирующиеся строки автоматически удаляются при сохранении.')
+                    ->default([])
+                    ->columnSpanFull()
+                    ->table([
+                        TableColumn::make('Параметр')
+                            ->markAsRequired()
+                            ->width('35%'),
+                        TableColumn::make('Значение')
+                            ->markAsRequired()
+                            ->width('45%'),
+                        TableColumn::make('Источник')
+                            ->width('20%'),
+                    ])
+                    ->compact()
+                    ->addActionLabel('Добавить характеристику')
+                    ->cloneable()
+                    ->reorderable()
+                    ->schema([
+                        TextInput::make('name')
+                            ->label('Параметр')
+                            ->required()
+                            ->maxLength(255),
+                        TextInput::make('value')
+                            ->label('Значение')
+                            ->required()
+                            ->maxLength(1000),
+                        Select::make('source')
+                            ->label('Источник')
+                            ->options([
+                                'manual' => 'manual',
+                                'jsonld' => 'jsonld',
+                                'inertia' => 'inertia',
+                                'dom' => 'dom',
+                                'import' => 'import',
+                                'legacy' => 'legacy',
+                            ])
+                            ->default('manual')
+                            ->native(false),
+                    ])
+                    ->mutateDehydratedStateUsing(static fn (mixed $state): ?array => self::normalizeSpecsState($state)),
 
                 FileUpload::make('image')
                     ->disk('public')
@@ -245,11 +286,72 @@ class ProductForm
                     ->relationship(
                         name: 'categories',
                         titleAttribute: 'name',
-                        modifyQueryUsing: fn(Builder $query) => $query->leaf(),
+                        modifyQueryUsing: fn (Builder $query) => $query->leaf(),
                     )
                     ->multiple()
                     ->preload()
                     ->columnSpan(['default' => 2, 'lg' => 2]),
             ]);
+    }
+
+    /**
+     * @return array<int, array{name: string, value: string, source: string}>|null
+     */
+    public static function normalizeSpecsState(mixed $state): ?array
+    {
+        if (! is_array($state)) {
+            return null;
+        }
+
+        $normalized = [];
+        $keys = [];
+
+        foreach ($state as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $name = self::sanitizeSpecsString($row['name'] ?? null);
+            $value = self::sanitizeSpecsString($row['value'] ?? null);
+            $source = self::sanitizeSpecsString($row['source'] ?? null) ?? 'manual';
+
+            if ($name === null || $value === null) {
+                continue;
+            }
+
+            $key = mb_strtolower($name.'::'.$value);
+
+            if (isset($keys[$key])) {
+                continue;
+            }
+
+            $keys[$key] = true;
+            $normalized[] = [
+                'name' => $name,
+                'value' => $value,
+                'source' => $source,
+            ];
+        }
+
+        return $normalized === [] ? null : $normalized;
+    }
+
+    private static function sanitizeSpecsString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $string = trim((string) $value);
+
+        return $string === '' ? null : $string;
     }
 }

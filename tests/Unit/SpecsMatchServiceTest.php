@@ -231,6 +231,62 @@ it('matches specs into pav and pao with option auto-create in apply mode', funct
         ->toContain('skipped_existing_value');
 });
 
+it('sets target category as primary for every product in apply mode', function () {
+    $sourceCategory = Category::query()->create([
+        'name' => 'Исходная',
+        'slug' => 'source',
+        'parent_id' => -1,
+        'order' => 15,
+        'is_active' => true,
+    ]);
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Целевая',
+        'slug' => 'target',
+        'parent_id' => -1,
+        'order' => 16,
+        'is_active' => true,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Станок P',
+        'slug' => 'stanok-p',
+        'price_amount' => 109900,
+        'specs' => [],
+    ]);
+
+    $product->categories()->attach($sourceCategory->id, ['is_primary' => true]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'specs_match',
+        'status' => 'pending',
+    ]);
+
+    $service = new SpecsMatchService;
+    $result = $service->run($run, [$product->id], [
+        'target_category_id' => $targetCategory->id,
+        'dry_run' => false,
+    ]);
+
+    expect($result['processed'])->toBe(1);
+
+    $product->refresh();
+
+    expect(
+        $product->categories()
+            ->where('categories.id', $targetCategory->id)
+            ->wherePivot('is_primary', true)
+            ->exists()
+    )->toBeTrue();
+
+    expect(
+        $product->categories()
+            ->where('categories.id', $sourceCategory->id)
+            ->wherePivot('is_primary', false)
+            ->exists()
+    )->toBeTrue();
+});
+
 it('does not write values in dry-run mode', function () {
     $targetCategory = Category::query()->create([
         'name' => 'Станки',

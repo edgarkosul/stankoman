@@ -30,5 +30,8 @@
             </aside>
 
         </div>
+        <div>
+            @include('pages.product.partials.specs', ['specs' => $specs])
+        </div>
     </div>
 </x-layouts.app>

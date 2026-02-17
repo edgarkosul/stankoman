@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Support\ImageDerivativesResolver;
 use Illuminate\Support\Collection;
@@ -28,6 +27,7 @@ class ProductController extends Controller
             'summary' => $this->buildSummary($product),
             'contentSections' => $this->buildContentSections($product),
             'features' => $this->buildFeatures($product),
+            'specs' => $this->buildSpecs($product),
         ]);
     }
 
@@ -46,13 +46,13 @@ class ProductController extends Controller
 
         $sources = collect([$product->image, $product->thumb])
             ->merge($this->normalizeGallery($product->gallery))
-            ->map(fn($value) => is_string($value) ? trim($value) : null)
+            ->map(fn ($value) => is_string($value) ? trim($value) : null)
             ->filter()
             ->unique()
             ->values();
 
         $items = $sources
-            ->map(fn(string $src): array => array_merge([
+            ->map(fn (string $src): array => array_merge([
                 'src' => $src,
                 'url' => $this->resolveImageUrl($src),
                 'alt' => $product->name,
@@ -84,7 +84,7 @@ class ProductController extends Controller
             ['label' => 'Производитель', 'value' => $product->country],
             ['label' => 'Гарантия', 'value' => $product->warranty_display],
         ])
-            ->filter(fn(array $item) => filled($item['value']))
+            ->filter(fn (array $item) => filled($item['value']))
             ->values()
             ->all();
 
@@ -130,14 +130,14 @@ class ProductController extends Controller
     private function buildFeatures(Product $product): array
     {
         $fromValues = $product->attributeValues
-            ->map(fn($value): array => [
+            ->map(fn ($value): array => [
                 'name' => $value->attribute?->name ?? 'Атрибут',
                 'value' => $value->display_value ?? '—',
             ]);
 
         $fromOptions = $product->attributeOptions
-            ->groupBy(fn($option) => (string) ($option->pivot?->attribute_id ?? ''))
-            ->map(fn(Collection $options): array => [
+            ->groupBy(fn ($option) => (string) ($option->pivot?->attribute_id ?? ''))
+            ->map(fn (Collection $options): array => [
                 'name' => $options->first()?->attribute?->name ?? 'Опции',
                 'value' => $options->pluck('value')->filter()->join(', '),
             ])
@@ -145,9 +145,84 @@ class ProductController extends Controller
 
         return $fromValues
             ->concat($fromOptions)
-            ->filter(fn(array $item) => filled($item['value']))
+            ->filter(fn (array $item) => filled($item['value']))
             ->values()
             ->all();
+    }
+
+    /**
+     * @return array<int, array{name: string, value: string, source: string|null}>
+     */
+    private function buildSpecs(Product $product): array
+    {
+        $rawSpecs = $product->specs;
+
+        if (is_string($rawSpecs)) {
+            $decoded = json_decode($rawSpecs, true);
+
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $rawSpecs = $decoded;
+            }
+        }
+
+        if (! is_array($rawSpecs)) {
+            return [];
+        }
+
+        return collect($rawSpecs)
+            ->map(function (mixed $row, mixed $key): ?array {
+                if (is_array($row)) {
+                    return $this->normalizeSpecRow(
+                        $row['name'] ?? $key,
+                        $row['value'] ?? null,
+                        $row['source'] ?? null,
+                    );
+                }
+
+                return $this->normalizeSpecRow($key, $row);
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array{name: string, value: string, source: string|null}|null
+     */
+    private function normalizeSpecRow(mixed $nameRaw, mixed $valueRaw, mixed $sourceRaw = null): ?array
+    {
+        $name = $this->normalizeSpecString($nameRaw);
+        $value = $this->normalizeSpecValue($valueRaw);
+
+        if ($name === null || $value === null) {
+            return null;
+        }
+
+        return [
+            'name' => $name,
+            'value' => $value,
+            'source' => $this->normalizeSpecString($sourceRaw),
+        ];
+    }
+
+    private function normalizeSpecString(mixed $value): ?string
+    {
+        if ($value === null || is_array($value) || is_object($value)) {
+            return null;
+        }
+
+        $string = trim((string) $value);
+
+        return $string !== '' ? $string : null;
+    }
+
+    private function normalizeSpecValue(mixed $value): ?string
+    {
+        if (is_bool($value)) {
+            return $value ? 'Да' : 'Нет';
+        }
+
+        return $this->normalizeSpecString($value);
     }
 
     private function normalizeGallery(mixed $gallery): array
@@ -205,7 +280,7 @@ class ProductController extends Controller
         }
 
         if (Str::startsWith($value, 'storage/')) {
-            return '/' . $value;
+            return '/'.$value;
         }
 
         return Storage::disk('public')->url($value);

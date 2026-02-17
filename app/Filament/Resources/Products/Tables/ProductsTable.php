@@ -185,7 +185,7 @@ class ProductsTable
                                 'fields' => 'Параметры товара',
                                 'categories' => 'Категории товара',
                                 'filters' => 'Значения фильтров',
-                                'specs_match' => 'Specs JSON → атрибуты',
+                                'specs_match' => 'Характеристики → фильтры',
                             ])
                             ->required()
                             ->live()
@@ -466,7 +466,8 @@ class ProductsTable
 
                         Toggle::make('dry_run')
                             ->label('Только проверка (dry-run)')
-                            ->default(true)
+                            ->default(false)
+                            ->live()
                             ->visible(fn ($get) => $get('mode') === 'specs_match')
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
 
@@ -483,14 +484,14 @@ class ProductsTable
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
 
                         Toggle::make('auto_create_options')
-                            ->label('Автосоздавать отсутствующие option')
-                            ->default(false)
+                            ->label('Автосоздавать отсутствующие фильтры')
+                            ->default(true)
                             ->visible(fn ($get) => $get('mode') === 'specs_match')
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
 
                         Toggle::make('detach_staging_after_success')
-                            ->label('После успешного apply убрать staging')
-                            ->default(false)
+                            ->label('После успеха убрать staging категорию с проекта')
+                            ->default(true)
                             ->visible(fn ($get) => $get('mode') === 'specs_match' && ! (bool) $get('dry_run')),
 
                         Repeater::make('attribute_proposals')

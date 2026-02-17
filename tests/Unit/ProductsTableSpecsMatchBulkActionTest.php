@@ -10,6 +10,7 @@ use App\Models\Product;
 use App\Models\Unit;
 use App\Models\User;
 use App\Support\NameNormalizer;
+use Filament\Forms\Components\Toggle;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -243,6 +244,33 @@ it('applies attribute decisions from specs match confirmation wizard', function 
             && (bool) ($job->options['dry_run'] ?? true) === false
             && count((array) ($job->options['attribute_name_map'] ?? [])) === 2;
     });
+});
+
+it('configures dry-run toggle as live for immediate staging checkbox visibility update', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $product = Product::query()->create([
+        'name' => 'Тестовый товар',
+        'slug' => 'test-product',
+        'price_amount' => 9900,
+        'specs' => [],
+    ]);
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$product])
+        ->mountTableBulkAction('massEdit', [$product])
+        ->setTableBulkActionData([
+            'mode' => 'specs_match',
+            'dry_run' => true,
+        ])
+        ->assertFormFieldExists('dry_run', fn (Toggle $field): bool => $field->isLive())
+        ->assertFormFieldHidden('detach_staging_after_success')
+        ->setTableBulkActionData([
+            'mode' => 'specs_match',
+            'dry_run' => false,
+        ])
+        ->assertFormFieldVisible('detach_staging_after_success');
 });
 
 it('uses multiselect as default input type for text and excludes text option in wizard', function () {
