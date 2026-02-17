@@ -2,9 +2,11 @@
 
 use App\Filament\Pages\CategoryFiltersImportExport;
 use App\Filament\Pages\ImportExportHelp;
+use App\Filament\Pages\MetalmasterProductImport;
 use App\Filament\Pages\ProductImportExport;
 use App\Filament\Pages\VactoolProductImport;
 use App\Filament\Resources\ImportRuns\ImportRunResource;
+use App\Jobs\RunMetalmasterProductImportJob;
 use App\Jobs\RunVactoolProductImportJob;
 use App\Models\ImportRun;
 use App\Support\Products\CategoryFilterSchemaService;
@@ -69,6 +71,18 @@ test('vactool product import page metadata and route are configured', function (
     expect(Route::has('filament.admin.pages.vactool-product-import'))->toBeTrue();
 });
 
+test('metalmaster product import page metadata and route are configured', function () {
+    expect(MetalmasterProductImport::getNavigationGroup())->toBe('Импорт/Экспорт');
+    expect(MetalmasterProductImport::getNavigationLabel())->toBe('Импорт Metalmaster');
+    expect(MetalmasterProductImport::getNavigationIcon())->toBe('heroicon-o-cloud-arrow-down');
+
+    $defaults = (new ReflectionClass(MetalmasterProductImport::class))->getDefaultProperties();
+
+    expect($defaults['view'])->toBe('filament.pages.metalmaster-product-import');
+    expect($defaults['title'])->toBe('Импорт товаров из Metalmaster');
+    expect(Route::has('filament.admin.pages.metalmaster-product-import'))->toBeTrue();
+});
+
 test('product import export page has instruction header action', function () {
     $page = new ProductImportExport;
 
@@ -87,6 +101,21 @@ test('vactool product import page has expected header actions', function () {
     $page = new VactoolProductImport;
 
     $method = new ReflectionMethod(VactoolProductImport::class, 'getHeaderActions');
+    $method->setAccessible(true);
+
+    $actions = $method->invoke($page);
+
+    expect($actions)->toHaveCount(2);
+    expect($actions[0]->getName())->toBe('instructions');
+    expect($actions[0]->getUrl())->toBe(ImportExportHelp::getUrl());
+    expect($actions[1]->getName())->toBe('history');
+    expect($actions[1]->getUrl())->toBe(ImportRunResource::getUrl());
+});
+
+test('metalmaster product import page has expected header actions', function () {
+    $page = new MetalmasterProductImport;
+
+    $method = new ReflectionMethod(MetalmasterProductImport::class, 'getHeaderActions');
     $method->setAccessible(true);
 
     $actions = $method->invoke($page);
@@ -258,6 +287,37 @@ test('vactool product import form has default fields and hint icons', function (
     expect($skipExistingField->getHintIcon())->toBe(Heroicon::InformationCircle);
 });
 
+test('metalmaster product import form has default fields and hint icons', function () {
+    $page = new MetalmasterProductImport;
+    $schema = $page->form(Schema::make($page));
+
+    $bucketField = $schema->getComponent(
+        fn ($component) => $component instanceof TextInput && $component->getName() === 'bucket',
+    );
+    $bucketsFileField = $schema->getComponent(
+        fn ($component) => $component instanceof TextInput && $component->getName() === 'buckets_file',
+    );
+    $timeoutField = $schema->getComponent(
+        fn ($component) => $component instanceof TextInput && $component->getName() === 'timeout',
+    );
+    $skipExistingField = $schema->getComponent(
+        fn ($component) => $component instanceof Toggle && $component->getName() === 'skip_existing',
+    );
+    $downloadImagesField = $schema->getComponent(
+        fn ($component) => $component instanceof Toggle && $component->getName() === 'download_images',
+    );
+
+    expect($bucketField)->not->toBeNull();
+    expect($bucketsFileField)->not->toBeNull();
+    expect($timeoutField)->not->toBeNull();
+    expect($skipExistingField)->not->toBeNull();
+    expect($downloadImagesField)->toBeNull();
+
+    expect($timeoutField->isNumeric())->toBeTrue();
+    expect($bucketsFileField->isRequired())->toBeTrue();
+    expect($skipExistingField->getHintIcon())->toBe(Heroicon::InformationCircle);
+});
+
 test('vactool product import page dispatches queued dry-run job', function () {
     if (! DatabaseSchema::hasTable('import_runs')) {
         DatabaseSchema::create('import_runs', function (Blueprint $table): void {
@@ -305,4 +365,54 @@ test('vactool product import page dispatches queued dry-run job', function () {
     expect($run?->type)->toBe('vactool_products');
     expect($run?->status)->toBe('pending');
     expect(data_get($run?->totals, '_meta.is_running'))->toBeTrue();
+});
+
+test('metalmaster product import page dispatches queued dry-run job', function () {
+    if (! DatabaseSchema::hasTable('import_runs')) {
+        DatabaseSchema::create('import_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->string('type')->default('products');
+            $table->string('status')->default('pending');
+            $table->json('columns')->nullable();
+            $table->json('totals')->nullable();
+            $table->string('source_filename')->nullable();
+            $table->string('stored_path')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    if (! DatabaseSchema::hasTable('import_issues')) {
+        DatabaseSchema::create('import_issues', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('run_id');
+            $table->integer('row_index')->nullable();
+            $table->string('code', 64);
+            $table->string('severity', 16)->default('error');
+            $table->text('message')->nullable();
+            $table->json('row_snapshot')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    Queue::fake();
+
+    $page = new MetalmasterProductImport;
+    $page->mount();
+    $page->doDryRun();
+
+    Queue::assertPushed(RunMetalmasterProductImportJob::class, function (RunMetalmasterProductImportJob $job) use ($page): bool {
+        return $job->runId === $page->lastRunId
+            && $job->write === false;
+    });
+
+    $run = ImportRun::query()->find($page->lastRunId);
+
+    expect($run)->not->toBeNull();
+    expect($run?->type)->toBe('metalmaster_products');
+    expect($run?->status)->toBe('pending');
+    expect(data_get($run?->totals, '_meta.is_running'))->toBeTrue();
+    expect(data_get($run?->columns, 'buckets_file'))->toBe(storage_path('app/parser/metalmaster-buckets.json'));
 });

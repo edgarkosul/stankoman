@@ -31,6 +31,7 @@ class ImportRunsTable
                         'products' => 'Excel товары',
                         'category_filters' => 'Категорийные фильтры',
                         'vactool_products' => 'Vactool',
+                        'metalmaster_products' => 'Metalmaster',
                         'specs_match' => 'Specs match',
                         default => (string) $state,
                     })
@@ -39,6 +40,7 @@ class ImportRunsTable
                         'gray' => 'products',
                         'warning' => 'category_filters',
                         'primary' => 'vactool_products',
+                        'success' => 'metalmaster_products',
                         'info' => 'specs_match',
                     ])
                     ->sortable(),
