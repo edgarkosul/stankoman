@@ -69,7 +69,7 @@
         {{-- LOGO --}}
         <div class="min-w-0 max-w-52 order-0 ">
             <a href="{{ route('home') }}" aria-label="На главную">
-                <x-icon name="logo" class="w-full h-auto hidden xs:block" />
+                <x-icon name="logo" class="w-full h-auto hidden xs:block [&_.brand-gray]:text-brand-gray [&_.white]:text-white [&_.brand-red]:text-brand-red [&_.brand-dark]:text-black" />
                 <x-icon name="logo_sq" class="size-14 ml-2 xs:hidden" />
             </a>
         </div>
