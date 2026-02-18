@@ -4,7 +4,7 @@
     <div class="relative lg:hidden" x-data="navDropdown()" @keydown.escape.window="close()">
         <button type="button" class="flex items-center gap-2 text-sm" @click="toggle()"
             :aria-expanded="open.toString()" aria-haspopup="true">
-            <x-icon name="menu" class="w-5 h-5" />
+            <x-icon name="menu" class="w-5 h-5 text-zinc-700" />
             <div class="hidden md:block">Меню</div>
         </button>
 
@@ -28,7 +28,7 @@
                             <span class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
                                 {{ $item['label'] }}
                             </span>
-                            <x-icon name="arrow_down" class="w-3 h-3 transition-transform"
+                            <x-icon name="arrow_down" class="w-3 h-3 text-zinc-600 transition-transform"
                                 x-bind:class="{ 'rotate-180': open }" />
                         </button>
                         <div id="menu-mobile-{{ $item['id'] }}" x-ref="panel"
@@ -62,7 +62,7 @@
                 <li class="relative" x-data="navDropdown()" @mouseenter="show()" @mouseleave="hide(150)"
                     @keydown.escape.window="close()">
                     <span class="inline-flex items-center gap-2 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
-                        {{ $item['label'] }} <x-icon name="arrow_down" class="w-3 h-3" />
+                        {{ $item['label'] }} <x-icon name="arrow_down" class="w-3 h-3 text-zinc-600" />
                     </span>
 
                     <div x-show="open" @mouseenter="show()" @mouseleave="hide(150)" @click.outside="close()"
@@ -98,7 +98,7 @@
                 @keydown.escape.window="close()">
                 <button type="button" class="inline-flex items-center gap-2" @click="toggle()"
                     :aria-expanded="open.toString()" aria-haspopup="true">
-                    Ещё <x-icon name="arrow_down" class="w-3 h-3" />
+                    Ещё <x-icon name="arrow_down" class="w-3 h-3 text-zinc-600" />
                 </button>
 
                 <div x-show="open" @mouseenter="show()" @mouseleave="hide(150)" @click.outside="close()"
@@ -122,7 +122,7 @@
                                     <span class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
                                         {{ $item['label'] }}
                                     </span>
-                                    <x-icon name="arrow_down" class="w-3 h-3 transition-transform"
+                                    <x-icon name="arrow_down" class="w-3 h-3 text-zinc-600 transition-transform"
                                         x-bind:class="{ 'rotate-180': open }" />
                                 </button>
                                 <div id="menu-more-{{ $item['id'] }}" x-ref="panel"
@@ -159,7 +159,7 @@
                 <li class="relative" x-data="navDropdown()" @mouseenter="show()" @mouseleave="hide(150)"
                     @keydown.escape.window="close()">
                     <span class="inline-flex items-center gap-2 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
-                        {{ $item['label'] }} <x-icon name="arrow_down" class="w-3 h-3" />
+                        {{ $item['label'] }} <x-icon name="arrow_down" class="w-3 h-3 text-zinc-600" />
                     </span>
 
                     <div x-show="open" @mouseenter="show()" @mouseleave="hide(150)" @click.outside="close()"
@@ -195,7 +195,7 @@
                 @keydown.escape.window="close()">
                 <button type="button" class="inline-flex items-center gap-2" @click="toggle()"
                     :aria-expanded="open.toString()" aria-haspopup="true">
-                    Ещё <x-icon name="arrow_down" class="w-3 h-3" />
+                    Ещё <x-icon name="arrow_down" class="w-3 h-3 text-zinc-600" />
                 </button>
 
                 <div x-show="open" @mouseenter="show()" @mouseleave="hide(150)" @click.outside="close()"
@@ -219,7 +219,7 @@
                                     <span class="flex-1 {{ $item['is_active'] ? 'text-brand-green' : '' }}">
                                         {{ $item['label'] }}
                                     </span>
-                                    <x-icon name="arrow_down" class="w-3 h-3 transition-transform"
+                                    <x-icon name="arrow_down" class="w-3 h-3 text-zinc-600 transition-transform"
                                         x-bind:class="{ 'rotate-180': open }" />
                                 </button>
                                 <div id="menu-xl-more-{{ $item['id'] }}" x-ref="panel"

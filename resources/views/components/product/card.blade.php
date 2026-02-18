@@ -141,7 +141,7 @@
                 </dl>
             @endif
 
-            <button class="mt-auto mx-4 mb-4 flex items-center justify-center gap-2 bg-brand-green p-3 text-lg font-bold uppercase text-white hover:bg-brand-green/90"><x-icon name="cart" class="mr-2 -translate-y-0.5 h-6 w-6 " />В корзину</button>
+            <button class="mt-auto mx-4 mb-4 flex items-center justify-center gap-2 bg-brand-green p-3 text-lg font-bold uppercase text-white hover:bg-brand-green/90"><x-icon name="cart" class="mr-2 -translate-y-0.5 h-6 w-6 [&_.icon-base]:text-white [&_.icon-accent]:text-white" />В корзину</button>
 
 
         </div>

@@ -10,7 +10,7 @@
                     <x-tooltip {{-- title="Режим работы:" --}} subtitle="г. Краснодар, трасса М4-ДОН">
                         <x-slot:trigger>
                             <span class="inline-flex items-center gap-2">
-                                <x-icon name="spot" class="w-5 h-5" />
+                                <x-icon name="spot" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
                                 <span class="hidden md:block">Краснодар</span>
                             </span>
                         </x-slot:trigger>
@@ -23,13 +23,13 @@
                 <div class="flex flex-col gap-8">
                     <div class="flex items-center gap-3 text-sm">
                         <a href="https://max.ru/" target="_blank">
-                            <x-icon name="max" class="w-5 h-5" />
+                            <x-icon name="max" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
                         </a>
                         <a href="tg://resolve?phone=79002468660">
-                            <x-icon name="telegram" class="w-5 h-5" />
+                            <x-icon name="telegram" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
                         </a>
                         <a href="tel:+79002468660" class="flex gap-2">
-                            <x-icon name="phone" class="w-5 h-5" />
+                            <x-icon name="phone" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
                             <span class="whitespace-nowrap hidden xs:block">+7 (900) 246-86-60</span>
                         </a>
                     </div>
@@ -38,7 +38,7 @@
                 <div x-data x-tooltip.smart.bottom.offset-10.lt-md="'sale@kratonkuban.ru'" class="flex flex-col gap-8">
                     <a href="mailto:sale@kratonkuban.ru">
                         <div class="flex items-center md:gap-2 text-sm">
-                            <x-icon name="email" class="w-5 h-5 " />
+                            <x-icon name="email" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
                             <div>
                                 <span class="hidden md:block">sale@kratonkuban.ru</span>
                             </div>
@@ -52,7 +52,7 @@
                             subtitle2="Сб-Вс: выходной ">
                             <x-slot:trigger>
                                 <span class="inline-flex items-center gap-2">
-                                    <x-icon name="info" class="w-5 h-5" />
+                                    <x-icon name="info" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
                                     <span class="whitespace-nowrap hidden xs:block">Режим работы</span>
                                 </span>
                             </x-slot:trigger>
@@ -70,7 +70,7 @@
         <div class="min-w-0 max-w-52 order-0 ">
             <a href="{{ route('home') }}" aria-label="На главную">
                 <x-icon name="logo" class="w-full h-auto hidden xs:block [&_.brand-gray]:text-brand-gray [&_.white]:text-white [&_.brand-red]:text-brand-red [&_.brand-dark]:text-black" />
-                <x-icon name="logo_sq" class="size-14 ml-2 xs:hidden" />
+                <x-icon name="logo_sq" class="size-14 ml-2 xs:hidden [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red [&_.icon-muted]:text-zinc-400 [&_.icon-contrast]:text-white" />
             </a>
         </div>
         {{-- КАТАЛОГ + ПОИСК --}}
@@ -88,7 +88,7 @@
         <div class="grid grid-cols-4 gap-6 xl:gap-4 order-1 lg:oreder-2">
             <div x-data x-tooltip.smart.bottom.offset-10.lt-xl="'Войти'"
                 class="flex-1 flex flex-col items-center text-sm cursor-pointer">
-                <x-icon name="user" class="size-6 xl:size-5 -translate-y-0.5" />
+                <x-icon name="user" class="size-6 xl:size-5 -translate-y-0.5 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red" />
                 <div>
                     <span class="hidden xl:block">Войти</span>
                 </div>

@@ -30,7 +30,7 @@
                 @if ($home)
                     <li class="flex">
                         <a href="{{ url('/') }}" class="inline-flex items-center gap-2 hover:underline">
-                            <x-icon name="home" class="h-4 w-4" />
+                            <x-icon name="home" class="h-4 w-4 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
                             <span>Главная</span>
                         </a>
                     </li>

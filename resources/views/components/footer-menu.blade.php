@@ -1,6 +1,6 @@
 @if (!empty($links))
     <nav aria-label="Footer" class="w-full">
-        <ul class="flex flex-col gap-2 text-sm">
+        <ul class="flex flex-col gap-2">
             @foreach ($links as $link)
                 <li>
                     <a
