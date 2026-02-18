@@ -41,6 +41,7 @@ class MetalmasterProductImport extends Page implements HasForms
      *     timeout: int,
      *     delay_ms: int,
      *     publish: bool,
+     *     download_images: bool,
      *     skip_existing: bool,
      *     show_samples: int
      * }|null
@@ -124,6 +125,10 @@ class MetalmasterProductImport extends Page implements HasForms
                         Toggle::make('publish')
                             ->label('Публиковать импортированные товары')
                             ->hintIcon(Heroicon::InformationCircle, 'В write-режиме выставляет признак Показывать на сайте.'),
+                        Toggle::make('download_images')
+                            ->label('Скачивать изображения')
+                            ->hintIcon(Heroicon::InformationCircle, 'Включено по умолчанию: изображения сохраняются в storage/app/public/pics.')
+                            ->default(true),
                         Toggle::make('skip_existing')
                             ->label('Пропускать уже существующие товары')
                             ->hintIcon(Heroicon::InformationCircle, 'Если товар найден по slug, он не будет обновлен.'),
@@ -175,6 +180,9 @@ class MetalmasterProductImport extends Page implements HasForms
                 '_meta' => [
                     'mode' => $mode,
                     'found_urls' => 0,
+                    'images_downloaded' => 0,
+                    'image_download_failed' => 0,
+                    'derivatives_queued' => 0,
                     'no_urls' => false,
                     'is_running' => true,
                 ],
@@ -211,6 +219,7 @@ class MetalmasterProductImport extends Page implements HasForms
      *     delay_ms: int,
      *     write: bool,
      *     publish: bool,
+     *     download_images: bool,
      *     skip_existing: bool,
      *     show_samples: int
      * }
@@ -225,6 +234,7 @@ class MetalmasterProductImport extends Page implements HasForms
             'delay_ms' => max(0, (int) ($this->data['delay_ms'] ?? 250)),
             'write' => $write,
             'publish' => (bool) ($this->data['publish'] ?? false),
+            'download_images' => (bool) ($this->data['download_images'] ?? true),
             'skip_existing' => (bool) ($this->data['skip_existing'] ?? false),
             'show_samples' => max(0, (int) ($this->data['show_samples'] ?? 3)),
         ];
@@ -283,6 +293,9 @@ class MetalmasterProductImport extends Page implements HasForms
             'updated' => (int) ($totals['update'] ?? 0),
             'skipped' => (int) ($totals['same'] ?? 0),
             'errors' => (int) ($totals['error'] ?? 0),
+            'images_downloaded' => (int) ($meta['images_downloaded'] ?? 0),
+            'image_download_failed' => (int) ($meta['image_download_failed'] ?? 0),
+            'derivatives_queued' => (int) ($meta['derivatives_queued'] ?? 0),
             'samples_count' => count(is_array($totals['_samples'] ?? null) ? $totals['_samples'] : []),
             'bucket' => (string) ($columns['bucket'] ?? ''),
             'buckets_file' => (string) ($columns['buckets_file'] ?? ''),
@@ -306,6 +319,7 @@ class MetalmasterProductImport extends Page implements HasForms
      *     timeout: int,
      *     delay_ms: int,
      *     publish: bool,
+     *     download_images: bool,
      *     skip_existing: bool,
      *     show_samples: int
      * }
@@ -319,6 +333,7 @@ class MetalmasterProductImport extends Page implements HasForms
             'timeout' => 25,
             'delay_ms' => 250,
             'publish' => false,
+            'download_images' => true,
             'skip_existing' => false,
             'show_samples' => 3,
         ];

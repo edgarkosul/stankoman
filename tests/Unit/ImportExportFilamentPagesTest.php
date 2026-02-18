@@ -311,10 +311,11 @@ test('metalmaster product import form has default fields and hint icons', functi
     expect($bucketsFileField)->not->toBeNull();
     expect($timeoutField)->not->toBeNull();
     expect($skipExistingField)->not->toBeNull();
-    expect($downloadImagesField)->toBeNull();
+    expect($downloadImagesField)->not->toBeNull();
 
     expect($timeoutField->isNumeric())->toBeTrue();
     expect($bucketsFileField->isRequired())->toBeTrue();
+    expect($downloadImagesField->getHintIcon())->toBe(Heroicon::InformationCircle);
     expect($skipExistingField->getHintIcon())->toBe(Heroicon::InformationCircle);
 });
 
@@ -415,4 +416,5 @@ test('metalmaster product import page dispatches queued dry-run job', function (
     expect($run?->status)->toBe('pending');
     expect(data_get($run?->totals, '_meta.is_running'))->toBeTrue();
     expect(data_get($run?->columns, 'buckets_file'))->toBe(storage_path('app/parser/metalmaster-buckets.json'));
+    expect(data_get($run?->columns, 'download_images'))->toBeTrue();
 });

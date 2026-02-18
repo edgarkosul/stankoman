@@ -84,12 +84,18 @@ it('generates local slug and downloads image to pics with queued derivatives', f
             ->assertSuccessful();
 
         $product = Product::query()->firstOrFail();
+        $rawSpecs = DB::table('products')
+            ->where('id', $product->id)
+            ->value('specs');
 
         expect($product->slug)->toBe(Str::slug($title));
         expect($product->slug)->not->toBe($donorSlug);
         expect(str_starts_with((string) $product->image, 'pics/'))->toBeTrue();
         expect(str_ends_with((string) $product->image, '.jpg'))->toBeTrue();
         expect($product->gallery)->toBe([$product->image]);
+        expect($rawSpecs)->toBeString();
+        expect($rawSpecs)->toContain('Мощность');
+        expect($rawSpecs)->not->toContain('\\u');
         expect(
             DB::table('product_categories')
                 ->where('product_id', $product->id)

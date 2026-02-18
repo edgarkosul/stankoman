@@ -293,6 +293,8 @@ class ProductsTable
                                 ->whereHas('products')
                                 ->orderBy('name')
                                 ->pluck('name', 'id'))
+                            ->getSearchResultsUsing(fn (string $search): array => self::leafCategorySearchResults($search))
+                            ->getOptionLabelUsing(fn ($value): ?string => self::categoryOptionLabel($value))
                             ->visible(fn ($get) => $get('mode') === 'categories' && $get('cat_op') === 'set_primary')
                             ->required(fn ($get) => $get('mode') === 'categories' && $get('cat_op') === 'set_primary'),
 
@@ -321,7 +323,15 @@ class ProductsTable
                                     ->leaf()
                                     ->whereHas('products')
                                     ->pluck('name', 'id');
-                            }) // лучше вынести в ->getSearchResultsUsing(...)
+                            })
+                            ->getSearchResultsUsing(function (string $search, Get $get, $livewire): array {
+                                if ($get('cat_op') === 'detach_extra') {
+                                    return self::selectedProductsCategorySearchResults($livewire, $search);
+                                }
+
+                                return self::leafCategorySearchResults($search);
+                            })
+                            ->getOptionLabelsUsing(fn (array $values): array => self::categoryOptionLabels($values))
                             ->visible(fn ($get) => $get('mode') === 'categories' && in_array($get('cat_op'), ['attach_extra', 'detach_extra']))
                             ->required(fn ($get) => $get('mode') === 'categories' && in_array($get('cat_op'), ['attach_extra', 'detach_extra'])),
 
@@ -496,9 +506,20 @@ class ProductsTable
                             ->visible(fn ($get) => $get('mode') === 'specs_match')
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
 
+                        Select::make('number_conflict_strategy')
+                            ->label('Если несколько number-значений для одного атрибута')
+                            ->options([
+                                'max' => 'Брать максимум',
+                                'min' => 'Брать минимум',
+                            ])
+                            ->default('max')
+                            ->native(false)
+                            ->visible(fn ($get) => $get('mode') === 'specs_match')
+                            ->required(fn ($get) => $get('mode') === 'specs_match'),
+
                         Toggle::make('auto_create_options')
-                            ->label('Автосоздавать отсутствующие фильтры')
-                            ->default(true)
+                            ->label('Автосоздавать недостающие опции фильтров (select/multiselect)')
+                            ->default(false)
                             ->visible(fn ($get) => $get('mode') === 'specs_match')
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
 
@@ -538,12 +559,14 @@ class ProductsTable
                                 TextInput::make('suggested_data_type')
                                     ->label('Предложенный data_type')
                                     ->disabled()
-                                    ->dehydrated(false),
+                                    ->dehydrated(false)
+                                    ->visible(fn (Get $get): bool => ! ((int) ($get('existing_attribute_id') ?? 0) > 0) || $get('decision') === 'create_attribute'),
 
                                 TextInput::make('suggested_input_type')
                                     ->label('Предложенный input_type')
                                     ->disabled()
-                                    ->dehydrated(false),
+                                    ->dehydrated(false)
+                                    ->visible(fn (Get $get): bool => ! ((int) ($get('existing_attribute_id') ?? 0) > 0) || $get('decision') === 'create_attribute'),
 
                                 TextInput::make('confidence_label')
                                     ->label('Уверенность')
@@ -562,6 +585,24 @@ class ProductsTable
                                     ->dehydrated(false)
                                     ->visible(fn (Get $get): bool => (int) ($get('existing_attribute_id') ?? 0) > 0),
 
+                                TextInput::make('existing_attribute_data_type')
+                                    ->label('Текущий data_type')
+                                    ->disabled()
+                                    ->dehydrated(false)
+                                    ->visible(fn (Get $get): bool => (int) ($get('existing_attribute_id') ?? 0) > 0),
+
+                                TextInput::make('existing_attribute_input_type')
+                                    ->label('Текущий input_type')
+                                    ->disabled()
+                                    ->dehydrated(false)
+                                    ->visible(fn (Get $get): bool => (int) ($get('existing_attribute_id') ?? 0) > 0),
+
+                                TextInput::make('existing_attribute_unit_label')
+                                    ->label('Текущий unit')
+                                    ->disabled()
+                                    ->dehydrated(false)
+                                    ->visible(fn (Get $get): bool => (int) ($get('existing_attribute_id') ?? 0) > 0),
+
                                 TextInput::make('attribute_match_status')
                                     ->label('Статус совпадения атрибута')
                                     ->disabled()
@@ -572,13 +613,13 @@ class ProductsTable
                                     ->label('Предложенная единица')
                                     ->disabled()
                                     ->dehydrated(false)
-                                    ->visible(fn (Get $get): bool => in_array((string) ($get('create_data_type') ?? $get('suggested_data_type')), ['number', 'range'], true)),
+                                    ->visible(fn (Get $get): bool => (! ((int) ($get('existing_attribute_id') ?? 0) > 0) || $get('decision') === 'create_attribute') && in_array((string) ($get('create_data_type') ?? $get('suggested_data_type')), ['number', 'range'], true)),
 
                                 TextInput::make('suggested_unit_confidence_label')
                                     ->label('Уверенность unit')
                                     ->disabled()
                                     ->dehydrated(false)
-                                    ->visible(fn (Get $get): bool => in_array((string) ($get('create_data_type') ?? $get('suggested_data_type')), ['number', 'range'], true)),
+                                    ->visible(fn (Get $get): bool => (! ((int) ($get('existing_attribute_id') ?? 0) > 0) || $get('decision') === 'create_attribute') && in_array((string) ($get('create_data_type') ?? $get('suggested_data_type')), ['number', 'range'], true)),
 
                                 Select::make('decision')
                                     ->label('Действие')
@@ -599,6 +640,16 @@ class ProductsTable
                                     })
                                     ->afterStateUpdated(function (?string $state, Get $get, Set $set): void {
                                         if ($state !== 'link_existing') {
+                                            if ($state !== 'create_attribute') {
+                                                return;
+                                            }
+
+                                            $currentCreateName = trim((string) ($get('create_attribute_name') ?? ''));
+
+                                            if ($currentCreateName === '') {
+                                                $set('create_attribute_name', (string) ($get('spec_name') ?? ''));
+                                            }
+
                                             return;
                                         }
 
@@ -618,7 +669,7 @@ class ProductsTable
                                     ->label('Существующий атрибут')
                                     ->searchable()
                                     ->options(fn (): array => self::attributeLinkOptions())
-                                    ->visible(fn (Get $get): bool => $get('decision') === 'link_existing')
+                                    ->visible(fn (Get $get): bool => $get('decision') === 'link_existing' && (int) ($get('existing_attribute_id') ?? 0) <= 0)
                                     ->required(fn (Get $get): bool => $get('decision') === 'link_existing' && (int) ($get('existing_attribute_id') ?? 0) <= 0),
 
                                 Select::make('create_data_type')
@@ -645,6 +696,11 @@ class ProductsTable
                                             $set('create_unit_id', (int) ($get('suggested_unit_id') ?? 0) ?: null);
                                         }
                                     })
+                                    ->visible(fn (Get $get): bool => $get('decision') === 'create_attribute')
+                                    ->required(fn (Get $get): bool => $get('decision') === 'create_attribute'),
+
+                                TextInput::make('create_attribute_name')
+                                    ->label('Новое имя атрибута')
                                     ->visible(fn (Get $get): bool => $get('decision') === 'create_attribute')
                                     ->required(fn (Get $get): bool => $get('decision') === 'create_attribute'),
 
@@ -721,6 +777,7 @@ class ProductsTable
                                 'dry_run' => $dryRun,
                                 'only_empty_attributes' => (bool) ($data['only_empty_attributes'] ?? true),
                                 'overwrite_existing' => (bool) ($data['overwrite_existing'] ?? false),
+                                'number_conflict_strategy' => (string) ($data['number_conflict_strategy'] ?? 'max'),
                                 'auto_create_options' => (bool) ($data['auto_create_options'] ?? false),
                                 'detach_staging_after_success' => (bool) ($data['detach_staging_after_success'] ?? false),
                                 'attribute_name_map' => $decisionResolution['name_map'],
@@ -749,6 +806,7 @@ class ProductsTable
                                         'selected_products' => count($ids),
                                         'only_empty_attributes' => $options['only_empty_attributes'],
                                         'overwrite_existing' => $options['overwrite_existing'],
+                                        'number_conflict_strategy' => $options['number_conflict_strategy'],
                                         'auto_create_options' => $options['auto_create_options'],
                                         'detach_staging_after_success' => $options['detach_staging_after_success'],
                                         'attribute_decisions' => count($decisionRows),
@@ -974,6 +1032,10 @@ class ProductsTable
 
         return array_map(function (array $suggestion): array {
             $createDataType = (string) $suggestion['suggested_data_type'];
+            $createInputType = self::normalizeInputTypeForDataType(
+                $suggestion['suggested_input_type'] ?? null,
+                $createDataType,
+            );
 
             return [
                 'spec_name' => (string) $suggestion['spec_name'],
@@ -987,6 +1049,9 @@ class ProductsTable
                 'suggested_unit_confidence_label' => (string) ($suggestion['suggested_unit_confidence_label'] ?? 'Низкая'),
                 'existing_attribute_id' => ($suggestion['existing_attribute_id'] ?? null) ? (int) $suggestion['existing_attribute_id'] : null,
                 'existing_attribute_name' => (string) ($suggestion['existing_attribute_name'] ?? ''),
+                'existing_attribute_data_type' => (string) ($suggestion['existing_attribute_data_type'] ?? ''),
+                'existing_attribute_input_type' => (string) ($suggestion['existing_attribute_input_type'] ?? ''),
+                'existing_attribute_unit_label' => (string) ($suggestion['existing_attribute_unit_label'] ?? '—'),
                 'attribute_match_status' => ($suggestion['existing_attribute_id'] ?? null)
                     ? 'Точный глобальный атрибут найден. Рекомендуем связать его с целевой категорией.'
                     : 'Точный глобальный атрибут не найден.',
@@ -994,8 +1059,9 @@ class ProductsTable
                     (int) ($suggestion['existing_attribute_id'] ?? 0) > 0,
                 ),
                 'link_attribute_id' => ($suggestion['existing_attribute_id'] ?? null) ? (int) $suggestion['existing_attribute_id'] : null,
+                'create_attribute_name' => (string) $suggestion['spec_name'],
                 'create_data_type' => $createDataType,
-                'create_input_type' => self::defaultInputTypeForDataType($createDataType),
+                'create_input_type' => $createInputType,
                 'create_unit_id' => ($suggestion['suggested_unit_id'] ?? null) ? (int) $suggestion['suggested_unit_id'] : null,
                 'create_additional_unit_ids' => [],
             ];
@@ -1053,22 +1119,18 @@ class ProductsTable
      */
     private static function decisionOptionsForProposal(bool $hasExactMatch): array
     {
-        if ($hasExactMatch) {
-            return [
-                'link_existing' => 'Связать существующий атрибут с категорией',
-                'ignore' => 'Игнорировать',
-            ];
-        }
-
         return [
-            'create_attribute' => 'Создать новый глобальный атрибут и привязать',
+            'link_existing' => 'Связать существующий атрибут с категорией',
+            'create_attribute' => $hasExactMatch
+                ? 'Создать новый атрибут с тем же названием'
+                : 'Создать новый глобальный атрибут и привязать',
             'ignore' => 'Игнорировать',
         ];
     }
 
-    private static function defaultDecisionForProposal(bool $hasExactMatch): string
+    private static function defaultDecisionForProposal(bool $_hasExactMatch): string
     {
-        return $hasExactMatch ? 'link_existing' : 'ignore';
+        return 'ignore';
     }
 
     /**
@@ -1142,6 +1204,80 @@ class ProductsTable
     }
 
     /**
+     * @return array<int, string>
+     */
+    private static function leafCategorySearchResults(string $search): array
+    {
+        return Category::query()
+            ->leaf()
+            ->where('name', 'like', "%{$search}%")
+            ->orderBy('name')
+            ->limit(50)
+            ->pluck('name', 'id')
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function selectedProductsCategorySearchResults(mixed $livewire, string $search): array
+    {
+        if (! is_object($livewire) || ! method_exists($livewire, 'getSelectedTableRecordsQuery')) {
+            return [];
+        }
+
+        $selectedIds = $livewire
+            ->getSelectedTableRecordsQuery(shouldFetchSelectedRecords: false)
+            ->pluck('id');
+
+        if ($selectedIds->isEmpty()) {
+            return [];
+        }
+
+        return Category::query()
+            ->whereHas('products', fn ($q) => $q->whereIn('products.id', $selectedIds))
+            ->where('name', 'like', "%{$search}%")
+            ->orderBy('name')
+            ->limit(50)
+            ->pluck('name', 'id')
+            ->all();
+    }
+
+    private static function categoryOptionLabel(mixed $value): ?string
+    {
+        $categoryId = (int) $value;
+
+        if ($categoryId <= 0) {
+            return null;
+        }
+
+        return Category::query()
+            ->whereKey($categoryId)
+            ->value('name');
+    }
+
+    /**
+     * @param  array<int, mixed>  $values
+     * @return array<int, string>
+     */
+    private static function categoryOptionLabels(array $values): array
+    {
+        $categoryIds = collect($values)
+            ->map(fn ($value): int => (int) $value)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->values();
+
+        if ($categoryIds->isEmpty()) {
+            return [];
+        }
+
+        return Category::query()
+            ->whereIn('id', $categoryIds)
+            ->pluck('name', 'id')
+            ->all();
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     private static function normalizeAttributeDecisionRows(mixed $rawRows): array
@@ -1155,6 +1291,7 @@ class ProductsTable
             ->map(function (array $row): array {
                 $linkAttributeId = $row['link_attribute_id'] ?? null;
                 $createDataType = (string) ($row['create_data_type'] ?? 'text');
+                $createAttributeName = trim((string) ($row['create_attribute_name'] ?? $row['spec_name'] ?? ''));
 
                 if ((int) $linkAttributeId <= 0 && (int) ($row['existing_attribute_id'] ?? 0) > 0) {
                     $linkAttributeId = (int) $row['existing_attribute_id'];
@@ -1164,6 +1301,7 @@ class ProductsTable
                     'spec_name' => (string) ($row['spec_name'] ?? ''),
                     'decision' => (string) ($row['decision'] ?? 'ignore'),
                     'link_attribute_id' => $linkAttributeId,
+                    'create_attribute_name' => $createAttributeName,
                     'create_data_type' => $createDataType,
                     'create_input_type' => self::normalizeInputTypeForDataType(
                         $row['create_input_type'] ?? null,

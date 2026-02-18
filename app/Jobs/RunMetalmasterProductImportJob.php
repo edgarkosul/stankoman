@@ -106,6 +106,9 @@ class RunMetalmasterProductImportJob implements ShouldQueue
         $totals = $this->mergeMeta($totals, [
             'mode' => $this->write ? 'write' : 'dry-run',
             'found_urls' => (int) ($progress['found_urls'] ?? 0),
+            'images_downloaded' => (int) ($progress['images_downloaded'] ?? 0),
+            'image_download_failed' => (int) ($progress['image_download_failed'] ?? 0),
+            'derivatives_queued' => (int) ($progress['derivatives_queued'] ?? 0),
             'no_urls' => (bool) ($progress['no_urls'] ?? false),
             'is_running' => true,
         ]);
@@ -133,6 +136,9 @@ class RunMetalmasterProductImportJob implements ShouldQueue
         return $this->mergeMeta($totals, [
             'mode' => $this->write ? 'write' : 'dry-run',
             'found_urls' => (int) ($result['found_urls'] ?? 0),
+            'images_downloaded' => (int) ($result['images_downloaded'] ?? 0),
+            'image_download_failed' => (int) ($result['image_download_failed'] ?? 0),
+            'derivatives_queued' => (int) ($result['derivatives_queued'] ?? 0),
             'no_urls' => (bool) ($result['no_urls'] ?? false),
             'is_running' => false,
         ]);

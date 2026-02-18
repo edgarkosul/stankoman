@@ -2,11 +2,13 @@
 
 namespace App\Support\Metalmaster;
 
+use App\Jobs\GenerateImageDerivativesJob;
 use App\Models\Product;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -32,6 +34,9 @@ class MetalmasterProductImportService
      *     created: int,
      *     updated: int,
      *     skipped: int,
+     *     images_downloaded: int,
+     *     image_download_failed: int,
+     *     derivatives_queued: int,
      *     samples: array<int, array<string, string>>,
      *     url_errors: array<int, array{url: string, message: string}>,
      *     fatal_error: string|null,
@@ -57,6 +62,9 @@ class MetalmasterProductImportService
                 created: 0,
                 updated: 0,
                 skipped: 0,
+                imagesDownloaded: 0,
+                imageDownloadFailed: 0,
+                derivativesQueued: 0,
                 noUrls: false,
             ));
 
@@ -69,6 +77,9 @@ class MetalmasterProductImportService
                 'created' => 0,
                 'updated' => 0,
                 'skipped' => 0,
+                'images_downloaded' => 0,
+                'image_download_failed' => 0,
+                'derivatives_queued' => 0,
                 'samples' => [],
                 'url_errors' => [],
                 'fatal_error' => $exception->getMessage(),
@@ -86,6 +97,9 @@ class MetalmasterProductImportService
                 created: 0,
                 updated: 0,
                 skipped: 0,
+                imagesDownloaded: 0,
+                imageDownloadFailed: 0,
+                derivativesQueued: 0,
                 noUrls: true,
             ));
 
@@ -98,6 +112,9 @@ class MetalmasterProductImportService
                 'created' => 0,
                 'updated' => 0,
                 'skipped' => 0,
+                'images_downloaded' => 0,
+                'image_download_failed' => 0,
+                'derivatives_queued' => 0,
                 'samples' => [],
                 'url_errors' => [],
                 'fatal_error' => null,
@@ -115,6 +132,9 @@ class MetalmasterProductImportService
         $created = 0;
         $updated = 0;
         $skipped = 0;
+        $imagesDownloaded = 0;
+        $imageDownloadFailed = 0;
+        $derivativesQueued = 0;
         $samples = [];
         $urlErrors = [];
 
@@ -125,6 +145,9 @@ class MetalmasterProductImportService
             created: 0,
             updated: 0,
             skipped: 0,
+            imagesDownloaded: $imagesDownloaded,
+            imageDownloadFailed: $imageDownloadFailed,
+            derivativesQueued: $derivativesQueued,
             noUrls: false,
         ));
 
@@ -152,6 +175,7 @@ class MetalmasterProductImportService
                     $result = $this->storeProduct(
                         $parsed,
                         $normalized['publish'],
+                        $normalized['download_images'],
                         $normalized['skip_existing'],
                     );
 
@@ -162,6 +186,10 @@ class MetalmasterProductImportService
                     } else {
                         $skipped++;
                     }
+
+                    $imagesDownloaded += $result['images_downloaded'];
+                    $imageDownloadFailed += $result['image_download_failed'];
+                    $derivativesQueued += $result['derivatives_queued'];
                 } elseif (count($samples) < $normalized['show_samples']) {
                     $samples[] = $this->sampleRow($parsed, $bucket);
                 }
@@ -188,6 +216,9 @@ class MetalmasterProductImportService
                 created: $created,
                 updated: $updated,
                 skipped: $skipped,
+                imagesDownloaded: $imagesDownloaded,
+                imageDownloadFailed: $imageDownloadFailed,
+                derivativesQueued: $derivativesQueued,
                 noUrls: false,
             ));
         }
@@ -197,6 +228,17 @@ class MetalmasterProductImportService
 
         if ($normalized['write']) {
             $this->emit($output, 'line', 'DB: created='.$created.', updated='.$updated.', skipped='.$skipped.'.');
+
+            if ($normalized['download_images']) {
+                $this->emit(
+                    $output,
+                    'line',
+                    'Images: downloaded='.$imagesDownloaded
+                    .', failed='.$imageDownloadFailed
+                    .', derivatives_queued='.$derivativesQueued
+                    .'.'
+                );
+            }
         }
 
         if (! $normalized['write'] && $samples !== []) {
@@ -214,6 +256,9 @@ class MetalmasterProductImportService
             created: $created,
             updated: $updated,
             skipped: $skipped,
+            imagesDownloaded: $imagesDownloaded,
+            imageDownloadFailed: $imageDownloadFailed,
+            derivativesQueued: $derivativesQueued,
             noUrls: false,
         ));
 
@@ -226,6 +271,9 @@ class MetalmasterProductImportService
             'created' => $created,
             'updated' => $updated,
             'skipped' => $skipped,
+            'images_downloaded' => $imagesDownloaded,
+            'image_download_failed' => $imageDownloadFailed,
+            'derivatives_queued' => $derivativesQueued,
             'samples' => $samples,
             'url_errors' => $urlErrors,
             'fatal_error' => null,
@@ -244,6 +292,7 @@ class MetalmasterProductImportService
      *     delay_ms: int,
      *     write: bool,
      *     publish: bool,
+     *     download_images: bool,
      *     skip_existing: bool,
      *     show_samples: int
      * }
@@ -267,6 +316,7 @@ class MetalmasterProductImportService
             )),
             'write' => (bool) ($options['write'] ?? true),
             'publish' => (bool) ($options['publish'] ?? false),
+            'download_images' => (bool) ($options['download_images'] ?? $options['download-images'] ?? false),
             'skip_existing' => (bool) ($options['skip_existing'] ?? $options['skip-existing'] ?? false),
             'show_samples' => max(0, (int) ($options['show_samples'] ?? $options['show-samples'] ?? 3)),
         ];
@@ -348,14 +398,24 @@ class MetalmasterProductImportService
 
     /**
      * @param  array<string, mixed>  $parsed
-     * @return array{status: string}
+     * @return array{
+     *     status: string,
+     *     images_downloaded: int,
+     *     image_download_failed: int,
+     *     derivatives_queued: int
+     * }
      */
-    private function storeProduct(array $parsed, bool $publish, bool $skipExisting): array
+    private function storeProduct(array $parsed, bool $publish, bool $downloadImages, bool $skipExisting): array
     {
+        $stats = [
+            'images_downloaded' => 0,
+            'image_download_failed' => 0,
+            'derivatives_queued' => 0,
+        ];
         $slug = $this->limit($parsed['slug'] ?? null, 255);
 
         if ($slug === null) {
-            return ['status' => 'skipped'];
+            return array_merge($stats, ['status' => 'skipped']);
         }
 
         $product = Product::query()
@@ -363,7 +423,7 @@ class MetalmasterProductImportService
             ->first();
 
         if ($product instanceof Product && $skipExisting) {
-            return ['status' => 'skipped'];
+            return array_merge($stats, ['status' => 'skipped']);
         }
 
         $name = $this->limit($parsed['name'] ?? null, 255)
@@ -372,6 +432,27 @@ class MetalmasterProductImportService
         $gallery = $this->normalizeImages($parsed['gallery'] ?? []);
         $image = $this->limit($parsed['image'] ?? null, 255);
         $thumb = $this->limit($parsed['thumb'] ?? null, 255) ?? $image;
+        $images = $gallery;
+
+        if ($image !== null) {
+            $images[] = $image;
+        }
+
+        if ($thumb !== null) {
+            $images[] = $thumb;
+        }
+
+        $images = $this->normalizeImages($images);
+
+        if ($downloadImages) {
+            $imageResult = $this->downloadImagesToPublicDisk($images, (string) ($parsed['source_url'] ?? ''));
+            $gallery = $imageResult['paths'];
+            $image = $gallery[0] ?? null;
+            $thumb = $gallery[0] ?? null;
+            $stats['images_downloaded'] += $imageResult['downloaded'];
+            $stats['image_download_failed'] += $imageResult['failed'];
+            $stats['derivatives_queued'] += $imageResult['queued_derivatives'];
+        }
 
         $attributes = [
             'name' => $name,
@@ -402,7 +483,7 @@ class MetalmasterProductImportService
             $product->save();
             $this->attachToStagingCategory($product);
 
-            return ['status' => 'updated'];
+            return array_merge($stats, ['status' => 'updated']);
         }
 
         $created = Product::query()->create(array_merge($attributes, [
@@ -412,7 +493,7 @@ class MetalmasterProductImportService
         ]));
         $this->attachToStagingCategory($created);
 
-        return ['status' => 'created'];
+        return array_merge($stats, ['status' => 'created']);
     }
 
     private function attachToStagingCategory(Product $product): void
@@ -524,6 +605,256 @@ class MetalmasterProductImportService
         }
 
         return $this->findStagingCategoryId($slug);
+    }
+
+    /**
+     * @param  array<int, mixed>  $images
+     * @return array{paths: array<int, string>, downloaded: int, failed: int, queued_derivatives: int}
+     */
+    private function downloadImagesToPublicDisk(array $images, string $pageUrl): array
+    {
+        $disk = Storage::disk('public');
+        $downloaded = 0;
+        $failed = 0;
+        $queuedDerivatives = 0;
+        $paths = [];
+        $seen = [];
+
+        foreach ($images as $image) {
+            if (! is_string($image)) {
+                continue;
+            }
+
+            $image = trim($image);
+
+            if ($image === '') {
+                continue;
+            }
+
+            $localPath = $this->extractLocalPublicPath($image);
+
+            if ($localPath !== null) {
+                if (! $disk->exists($localPath)) {
+                    $failed++;
+
+                    continue;
+                }
+
+                if (! isset($seen[$localPath])) {
+                    $seen[$localPath] = true;
+                    $paths[] = $localPath;
+                    GenerateImageDerivativesJob::dispatch($localPath, false);
+                    $queuedDerivatives++;
+                }
+
+                continue;
+            }
+
+            $remoteUrl = $this->resolveRemoteImageUrl($image, $pageUrl);
+
+            if ($remoteUrl === null) {
+                $failed++;
+
+                continue;
+            }
+
+            try {
+                $response = Http::timeout(20)
+                    ->retry(2, 300)
+                    ->accept('image/*')
+                    ->get($remoteUrl);
+
+                if (! $response->ok()) {
+                    $failed++;
+
+                    continue;
+                }
+
+                $body = (string) $response->body();
+
+                if ($body === '') {
+                    $failed++;
+
+                    continue;
+                }
+
+                $extension = $this->imageExtensionFromResponse($response->header('Content-Type'), $body);
+
+                if ($extension === null) {
+                    $failed++;
+
+                    continue;
+                }
+
+                $path = $this->buildStorageImagePath($remoteUrl, $extension);
+
+                if (! $disk->exists($path)) {
+                    if (! $disk->put($path, $body)) {
+                        $failed++;
+
+                        continue;
+                    }
+
+                    $downloaded++;
+                }
+
+                if (! isset($seen[$path])) {
+                    $seen[$path] = true;
+                    $paths[] = $path;
+                    GenerateImageDerivativesJob::dispatch($path, false);
+                    $queuedDerivatives++;
+                }
+            } catch (Throwable) {
+                $failed++;
+            }
+        }
+
+        return [
+            'paths' => $paths,
+            'downloaded' => $downloaded,
+            'failed' => $failed,
+            'queued_derivatives' => $queuedDerivatives,
+        ];
+    }
+
+    private function extractLocalPublicPath(string $image): ?string
+    {
+        if (Str::startsWith($image, 'pics/')) {
+            return $image;
+        }
+
+        if (Str::startsWith($image, '/storage/pics/')) {
+            return Str::after($image, '/storage/');
+        }
+
+        if (Str::startsWith($image, 'storage/pics/')) {
+            return Str::after($image, 'storage/');
+        }
+
+        return null;
+    }
+
+    private function resolveRemoteImageUrl(string $image, string $pageUrl): ?string
+    {
+        if (Str::startsWith($image, ['http://', 'https://'])) {
+            return $image;
+        }
+
+        if (Str::startsWith($image, '//')) {
+            $scheme = parse_url($pageUrl, PHP_URL_SCHEME);
+
+            if (! is_string($scheme) || $scheme === '') {
+                $scheme = 'https';
+            }
+
+            return $scheme.':'.$image;
+        }
+
+        $origin = $this->originFromUrl($pageUrl);
+
+        if ($origin === null) {
+            return null;
+        }
+
+        if (Str::startsWith($image, '/')) {
+            return $origin.$image;
+        }
+
+        return $origin.'/'.ltrim($image, '/');
+    }
+
+    private function originFromUrl(string $url): ?string
+    {
+        $parts = parse_url($url);
+
+        if (! is_array($parts)) {
+            return null;
+        }
+
+        $scheme = $parts['scheme'] ?? null;
+        $host = $parts['host'] ?? null;
+        $port = $parts['port'] ?? null;
+
+        if (! is_string($scheme) || ! is_string($host)) {
+            return null;
+        }
+
+        $origin = $scheme.'://'.$host;
+
+        if (is_int($port)) {
+            $origin .= ':'.$port;
+        }
+
+        return $origin;
+    }
+
+    private function imageExtensionFromResponse(mixed $contentType, string $body): ?string
+    {
+        $extension = $this->imageExtensionFromContentType($contentType);
+
+        if ($extension !== null) {
+            return $extension;
+        }
+
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+
+        if ($finfo === false) {
+            return null;
+        }
+
+        try {
+            $mime = finfo_buffer($finfo, $body);
+        } finally {
+            finfo_close($finfo);
+        }
+
+        return $this->imageExtensionFromContentType($mime);
+    }
+
+    private function imageExtensionFromContentType(mixed $contentType): ?string
+    {
+        if (is_array($contentType)) {
+            $contentType = $contentType[0] ?? null;
+        }
+
+        if (! is_string($contentType)) {
+            return null;
+        }
+
+        $mime = strtolower(trim((string) strtok($contentType, ';')));
+
+        return match ($mime) {
+            'image/jpeg', 'image/jpg', 'image/pjpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+            'image/avif' => 'avif',
+            default => null,
+        };
+    }
+
+    private function buildStorageImagePath(string $remoteUrl, string $extension): string
+    {
+        $path = parse_url($remoteUrl, PHP_URL_PATH);
+        $filename = is_string($path) ? pathinfo($path, PATHINFO_FILENAME) : '';
+        $filename = trim((string) $filename);
+
+        if ($filename === '') {
+            $filename = substr(sha1($remoteUrl), 0, 24);
+        }
+
+        $filename = preg_replace('/[^a-z0-9_-]+/i', '_', $filename) ?? '';
+        $filename = trim($filename, '_');
+
+        if ($filename === '') {
+            $filename = substr(sha1($remoteUrl), 0, 24);
+        }
+
+        if (is_string(parse_url($remoteUrl, PHP_URL_QUERY))) {
+            $filename .= '_'.substr(sha1($remoteUrl), 0, 8);
+        }
+
+        return 'pics/'.$filename.'.'.$extension;
     }
 
     /**
@@ -864,6 +1195,9 @@ class MetalmasterProductImportService
         int $created,
         int $updated,
         int $skipped,
+        int $imagesDownloaded,
+        int $imageDownloadFailed,
+        int $derivativesQueued,
         bool $noUrls,
     ): array {
         return [
@@ -873,6 +1207,9 @@ class MetalmasterProductImportService
             'created' => $created,
             'updated' => $updated,
             'skipped' => $skipped,
+            'images_downloaded' => $imagesDownloaded,
+            'image_download_failed' => $imageDownloadFailed,
+            'derivatives_queued' => $derivativesQueued,
             'no_urls' => $noUrls,
         ];
     }

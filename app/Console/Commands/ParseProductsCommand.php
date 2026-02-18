@@ -17,6 +17,7 @@ class ParseProductsCommand extends Command
         {--dry-run=0 : Legacy mode flag (1 = do not write DB)}
         {--write : Save parsed products into DB}
         {--publish : Set imported products as active}
+        {--download-images : Download image URLs into storage/app/public/pics and use local paths}
         {--skip-existing : Skip existing products by slug}
         {--show-samples=3 : Max number of sample rows in dry-run mode}';
 
@@ -42,6 +43,7 @@ class ParseProductsCommand extends Command
             'delay_ms' => $this->resolveDelayMs(),
             'write' => $write,
             'publish' => (bool) $this->option('publish'),
+            'download_images' => (bool) $this->option('download-images'),
             'skip_existing' => (bool) $this->option('skip-existing'),
             'show_samples' => max(0, (int) $this->option('show-samples')),
         ], function (string $type, string|array $payload): void {

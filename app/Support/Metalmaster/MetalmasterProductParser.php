@@ -40,13 +40,17 @@ class MetalmasterProductParser
             ?: null;
 
         $specsJsonLd = $this->extractSpecsFromJsonLd($productJson);
-        $specsDom = $this->extractSpecsFromDom($xpath);
+        $specsDom = $this->extractSpecsFromDom(
+            $xpath,
+            implode(' ', array_filter([$name, $title, $h1, $metaTitle, $slug]))
+        );
 
         $specs = $this->dedupeSpecs(array_merge($specsJsonLd, $specsDom));
 
-        $gallery = $this->extractGallery($xpath, $productJson, $url);
-        $image = $gallery[0] ?? null;
-        $thumb = $gallery[0] ?? null;
+        $ogImage = $this->resolveOgImage($xpath, $url);
+        $gallery = $this->extractGallery($xpath, $productJson, $url, $ogImage);
+        $image = $ogImage ?? ($gallery[0] ?? null);
+        $thumb = $image;
 
         [$priceAmount, $currency, $discountPrice] = $this->extractPrices($xpath, $productJson);
         [$inStock, $qty] = $this->extractStock($xpath, $productJson, $html);
@@ -234,9 +238,11 @@ class MetalmasterProductParser
         return $specs;
     }
 
-    private function extractSpecsFromDom(DOMXPath $xpath): array
+    private function extractSpecsFromDom(DOMXPath $xpath, string $modelContext): array
     {
         $specs = [];
+        $specTables = $this->specificationTables($xpath);
+        $modelTableExtraction = $this->extractSpecsFromModelTables($xpath, $modelContext, $specTables);
 
         // 1) dt/dd пары (как на vactool)
         $dtNodes = $xpath->query("//dt[contains(concat(' ', normalize-space(@class), ' '), ' list-props__title ')]");
@@ -264,11 +270,19 @@ class MetalmasterProductParser
             }
         }
 
-        // 2) table tr td/th (как на metalmaster_demo)
-        $rows = $xpath->query('//table//tr');
-        if ($rows) {
-            foreach ($rows as $row) {
+        $specs = array_merge($specs, $modelTableExtraction['specs']);
+
+        // 2) generic table tr td/th fallback (кроме уже обработанных model-таблиц)
+        foreach ($specTables as $table) {
+            $tablePath = $table->getNodePath();
+
+            if ($tablePath !== null && isset($modelTableExtraction['table_paths'][$tablePath])) {
+                continue;
+            }
+
+            foreach ($this->tableRows($xpath, $table) as $row) {
                 $cells = $xpath->query('./th|./td', $row);
+
                 if (! $cells || $cells->length < 2) {
                     continue;
                 }
@@ -280,7 +294,10 @@ class MetalmasterProductParser
                     continue;
                 }
 
-                // фильтр от мусорных строк таблиц
+                if ($this->isDecorativeSpecRow($name, $value)) {
+                    continue;
+                }
+
                 if (mb_strlen($name) > 120 || mb_strlen($value) > 2000) {
                     continue;
                 }
@@ -294,6 +311,333 @@ class MetalmasterProductParser
         }
 
         return $specs;
+    }
+
+    /**
+     * @param  array<int, DOMNode>  $tables
+     * @return array{
+     *     specs: array<int, array{name: string, value: string, source: string}>,
+     *     table_paths: array<string, true>
+     * }
+     */
+    private function extractSpecsFromModelTables(DOMXPath $xpath, string $modelContext, array $tables): array
+    {
+        $specs = [];
+        $tablePaths = [];
+
+        foreach ($tables as $table) {
+            $rows = $this->tableRows($xpath, $table);
+
+            if (count($rows) < 2) {
+                continue;
+            }
+
+            $headerCells = $xpath->query('./th|./td', $rows[0]);
+            if (! $headerCells || $headerCells->length < 2) {
+                continue;
+            }
+
+            $firstHeaderText = mb_strtolower($this->cleanSpecName($this->nodeText($headerCells->item(0))));
+            if (! Str::contains($firstHeaderText, ['модель', 'model'])) {
+                continue;
+            }
+
+            $tablePath = $table->getNodePath();
+
+            if (is_string($tablePath) && $tablePath !== '') {
+                $tablePaths[$tablePath] = true;
+            }
+
+            $columnsByModelLabel = [];
+            $column = 1;
+
+            foreach ($headerCells as $headerCell) {
+                $label = $this->cleanSpecName($this->nodeText($headerCell));
+                $colspan = max(1, (int) ($headerCell->attributes?->getNamedItem('colspan')?->nodeValue ?? 1));
+
+                for ($offset = 0; $offset < $colspan; $offset++) {
+                    if ($column > 1 && $label !== '') {
+                        $columnsByModelLabel[$column] = $label;
+                    }
+
+                    $column++;
+                }
+            }
+
+            $targetColumns = $this->resolveModelColumns($columnsByModelLabel, $modelContext);
+            if ($targetColumns === []) {
+                continue;
+            }
+
+            $tableGrid = $this->buildTableGrid($xpath, $table);
+            if (count($tableGrid) < 2) {
+                continue;
+            }
+
+            foreach (array_slice($tableGrid, 1) as $rowGrid) {
+                $name = $this->cleanSpecName((string) ($rowGrid[1] ?? ''));
+                if ($name === '' || mb_strtolower($name) === 'модель') {
+                    continue;
+                }
+
+                $values = [];
+
+                foreach ($targetColumns as $targetColumn) {
+                    $value = trim((string) ($rowGrid[$targetColumn] ?? ''));
+
+                    if ($value === '' || mb_strtolower($value) === mb_strtolower($name)) {
+                        continue;
+                    }
+
+                    $values[mb_strtolower($value)] = $value;
+                }
+
+                if ($values === []) {
+                    continue;
+                }
+
+                $value = implode(' / ', array_values($values));
+
+                if (mb_strlen($name) > 120 || mb_strlen($value) > 2000) {
+                    continue;
+                }
+
+                $specs[] = [
+                    'name' => $name,
+                    'value' => $value,
+                    'source' => 'dom',
+                ];
+            }
+
+        }
+
+        return [
+            'specs' => $specs,
+            'table_paths' => $tablePaths,
+        ];
+    }
+
+    /**
+     * @return array<int, DOMNode>
+     */
+    private function specificationTables(DOMXPath $xpath): array
+    {
+        $tables = [];
+        $seenPaths = [];
+
+        $specTables = $xpath->query("//div[contains(concat(' ', normalize-space(@class), ' '), ' wrapper-characteristics ')]//table");
+
+        if ($specTables && $specTables->length > 0) {
+            foreach ($specTables as $table) {
+                $path = $table->getNodePath();
+
+                if (! is_string($path) || $path === '' || isset($seenPaths[$path])) {
+                    continue;
+                }
+
+                $seenPaths[$path] = true;
+                $tables[] = $table;
+            }
+
+            if ($tables !== []) {
+                return $tables;
+            }
+        }
+
+        $fallbackTables = $xpath->query('//table');
+
+        if (! $fallbackTables) {
+            return [];
+        }
+
+        foreach ($fallbackTables as $table) {
+            $tables[] = $table;
+        }
+
+        return $tables;
+    }
+
+    /**
+     * @param  array<int, string>  $columnsByModelLabel
+     * @return array<int, int>
+     */
+    private function resolveModelColumns(array $columnsByModelLabel, string $modelContext): array
+    {
+        if ($columnsByModelLabel === []) {
+            return [];
+        }
+
+        $labels = array_values(array_unique(array_filter($columnsByModelLabel, fn (string $label): bool => $label !== '')));
+
+        if ($labels === []) {
+            return [];
+        }
+
+        if (count($labels) === 1) {
+            $singleLabel = $labels[0];
+
+            return array_values(array_keys($columnsByModelLabel, $singleLabel, true));
+        }
+
+        $normalizedContext = $this->normalizeModelMatchValue($modelContext);
+        $bestLabel = null;
+        $bestScore = 0;
+
+        foreach ($labels as $label) {
+            $normalizedLabel = $this->normalizeModelMatchValue($label);
+            if ($normalizedLabel === '') {
+                continue;
+            }
+
+            $score = 0;
+
+            if ($normalizedContext !== '' && Str::contains($normalizedContext, $normalizedLabel)) {
+                $score += 100 + mb_strlen($normalizedLabel);
+            }
+
+            foreach ($this->tokenizeModelMatchValue($label) as $token) {
+                if (mb_strlen($token) < 3) {
+                    continue;
+                }
+
+                if (Str::contains($normalizedContext, $token)) {
+                    $score += mb_strlen($token);
+                }
+            }
+
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestLabel = $label;
+            }
+        }
+
+        if ($bestLabel === null || $bestScore <= 0) {
+            return [];
+        }
+
+        return array_values(array_keys($columnsByModelLabel, $bestLabel, true));
+    }
+
+    /**
+     * @return array<int, DOMNode>
+     */
+    private function tableRows(DOMXPath $xpath, DOMNode $table): array
+    {
+        $rows = $xpath->query('./thead/tr|./tbody/tr|./tfoot/tr|./tr', $table);
+
+        if (! $rows) {
+            return [];
+        }
+
+        $result = [];
+
+        foreach ($rows as $row) {
+            $result[] = $row;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<int, array<int, string>>
+     */
+    private function buildTableGrid(DOMXPath $xpath, DOMNode $table): array
+    {
+        $rows = $this->tableRows($xpath, $table);
+        $gridRows = [];
+
+        /** @var array<int, array{rows_left: int, text: string}> $activeRowSpans */
+        $activeRowSpans = [];
+
+        foreach ($rows as $row) {
+            $grid = [];
+
+            foreach (array_keys($activeRowSpans) as $column) {
+                $grid[$column] = $activeRowSpans[$column]['text'];
+                $activeRowSpans[$column]['rows_left']--;
+
+                if ($activeRowSpans[$column]['rows_left'] <= 0) {
+                    unset($activeRowSpans[$column]);
+                }
+            }
+
+            $column = 1;
+            $cells = $xpath->query('./th|./td', $row);
+
+            if (! $cells) {
+                $gridRows[] = $grid;
+
+                continue;
+            }
+
+            foreach ($cells as $cell) {
+                while (array_key_exists($column, $grid)) {
+                    $column++;
+                }
+
+                $text = trim($this->nodeText($cell));
+                $colspan = max(1, (int) ($cell->attributes?->getNamedItem('colspan')?->nodeValue ?? 1));
+                $rowspan = max(1, (int) ($cell->attributes?->getNamedItem('rowspan')?->nodeValue ?? 1));
+
+                for ($offset = 0; $offset < $colspan; $offset++) {
+                    $targetColumn = $column + $offset;
+                    $grid[$targetColumn] = $text;
+
+                    if ($rowspan > 1) {
+                        $activeRowSpans[$targetColumn] = [
+                            'rows_left' => $rowspan - 1,
+                            'text' => $text,
+                        ];
+                    }
+                }
+
+                $column += $colspan;
+            }
+
+            ksort($grid);
+            $gridRows[] = $grid;
+        }
+
+        return $gridRows;
+    }
+
+    private function normalizeModelMatchValue(string $value): string
+    {
+        $value = mb_strtolower(trim($value));
+        $value = str_replace('ё', 'е', $value);
+
+        return (string) preg_replace('/[^a-zа-я0-9]+/iu', '', $value);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function tokenizeModelMatchValue(string $value): array
+    {
+        preg_match_all('/[a-zа-я0-9]+/iu', mb_strtolower($value), $matches);
+
+        $tokens = $matches[0] ?? [];
+
+        return array_values(array_filter(array_map(
+            fn (string $token): string => trim($token),
+            $tokens
+        ), fn (string $token): bool => $token !== ''));
+    }
+
+    private function isDecorativeSpecRow(string $name, string $value): bool
+    {
+        $normalizedName = mb_strtolower($this->cleanSpecName($name), 'UTF-8');
+        $normalizedValue = mb_strtolower(trim($value), 'UTF-8');
+
+        if (in_array($normalizedName, ['характеристики', 'спецификации', 'спецификация', 'параметры'], true)) {
+            return true;
+        }
+
+        if ($normalizedName === 'модель' && $normalizedValue !== '') {
+            return true;
+        }
+
+        return false;
     }
 
     private function dedupeSpecs(array $specs): array
@@ -324,48 +668,46 @@ class MetalmasterProductParser
         return array_values($map);
     }
 
-    private function extractGallery(DOMXPath $xpath, array $productJson, string $baseUrl): array
+    private function extractGallery(DOMXPath $xpath, array $productJson, string $baseUrl, ?string $ogImage = null): array
     {
         $gallery = [];
 
-        // JSON-LD image
-        $image = $productJson['image'] ?? null;
-        foreach ($this->flattenImageField($image) as $img) {
-            $abs = $this->absoluteUrl($baseUrl, $img);
-            if ($abs && $this->isLikelyImageUrl($abs)) {
-                $gallery[] = $abs;
-            }
+        if ($ogImage !== null) {
+            $gallery[] = $ogImage;
         }
 
-        // og:image fallback
-        $ogImage = $this->metaProperty($xpath, 'og:image');
-        if ($ogImage) {
-            $abs = $this->absoluteUrl($baseUrl, $ogImage);
-            if ($abs) {
-                $gallery[] = $abs;
-            }
+        foreach ($this->extractDomProductGalleryLinks($xpath, $baseUrl) as $domImage) {
+            $gallery[] = $domImage;
         }
 
-        // DOM fallback (главные картинки товара)
-        $imgNodes = $xpath->query('//img[@src]');
-        if ($imgNodes) {
-            foreach ($imgNodes as $imgNode) {
-                $src = trim((string) ($imgNode->attributes?->getNamedItem('src')?->nodeValue ?? ''));
-                if ($src === '') {
-                    continue;
-                }
-
-                $abs = $this->absoluteUrl($baseUrl, $src);
+        if ($gallery === []) {
+            $image = $productJson['image'] ?? null;
+            foreach ($this->flattenImageField($image) as $img) {
+                $abs = $this->absoluteUrl($baseUrl, $img);
                 if (! $abs || ! $this->isLikelyImageUrl($abs)) {
                     continue;
                 }
 
-                // отсечем явные системные/иконки
-                if (preg_match('~/(logo|icon|sprite|favicon|avatar)~i', $abs)) {
-                    continue;
-                }
-
                 $gallery[] = $abs;
+            }
+        }
+
+        if ($gallery === []) {
+            $domMain = $xpath->query("//div[contains(concat(' ', normalize-space(@class), ' '), ' product__img ')]//a[@href]");
+            if ($domMain) {
+                foreach ($domMain as $anchorNode) {
+                    $href = trim((string) ($anchorNode->attributes?->getNamedItem('href')?->nodeValue ?? ''));
+                    if ($href === '' || Str::startsWith(mb_strtolower($href), 'javascript:')) {
+                        continue;
+                    }
+
+                    $abs = $this->absoluteUrl($baseUrl, $href);
+                    if (! $abs || ! $this->isLikelyImageUrl($abs)) {
+                        continue;
+                    }
+
+                    $gallery[] = $abs;
+                }
             }
         }
 
@@ -373,6 +715,61 @@ class MetalmasterProductParser
 
         // ограничим, чтобы не тащить лишнее
         return array_slice($gallery, 0, 40);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractDomProductGalleryLinks(DOMXPath $xpath, string $baseUrl): array
+    {
+        $gallery = [];
+        $links = $xpath->query("//div[contains(concat(' ', normalize-space(@class), ' '), ' top__product ')]//a[contains(concat(' ', normalize-space(@class), ' '), ' fancybox ')][@href]");
+
+        if (! $links) {
+            return $gallery;
+        }
+
+        foreach ($links as $linkNode) {
+            $href = trim((string) ($linkNode->attributes?->getNamedItem('href')?->nodeValue ?? ''));
+            if ($href === '' || Str::startsWith(mb_strtolower($href), 'javascript:')) {
+                continue;
+            }
+
+            $dataFancybox = mb_strtolower(trim((string) ($linkNode->attributes?->getNamedItem('data-fancybox')?->nodeValue ?? '')));
+            if ($dataFancybox !== '' && ! preg_match('/^img_gal\d*$/u', $dataFancybox)) {
+                continue;
+            }
+
+            $dataType = mb_strtolower(trim((string) ($linkNode->attributes?->getNamedItem('data-type')?->nodeValue ?? '')));
+            $fancyboxType = mb_strtolower(trim((string) ($linkNode->attributes?->getNamedItem('data-fancybox-type')?->nodeValue ?? '')));
+            if (Str::contains($dataType, 'iframe') || Str::contains($fancyboxType, 'iframe')) {
+                continue;
+            }
+
+            $abs = $this->absoluteUrl($baseUrl, $href);
+            if (! $abs || ! $this->isLikelyImageUrl($abs)) {
+                continue;
+            }
+
+            $gallery[] = $abs;
+        }
+
+        return array_values(array_unique($gallery));
+    }
+
+    private function resolveOgImage(DOMXPath $xpath, string $baseUrl): ?string
+    {
+        $ogImage = $this->metaProperty($xpath, 'og:image');
+        if (! is_string($ogImage) || trim($ogImage) === '') {
+            return null;
+        }
+
+        $abs = $this->absoluteUrl($baseUrl, $ogImage);
+        if (! $abs || ! $this->isLikelyImageUrl($abs)) {
+            return null;
+        }
+
+        return $abs;
     }
 
     private function flattenImageField(mixed $image): array
@@ -592,7 +989,9 @@ class MetalmasterProductParser
 
     private function cleanSpecName(string $name): string
     {
-        $name = trim(strip_tags($name));
+        $name = html_entity_decode($name, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $name = preg_replace('/<\s*\/?\s*[a-z][a-z0-9:-]*(?:\s+[^<>]*?)?>/iu', '', $name) ?? $name;
+        $name = trim($name);
         $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
         $name = trim($name, " \t\n\r\0\x0B:;");
 

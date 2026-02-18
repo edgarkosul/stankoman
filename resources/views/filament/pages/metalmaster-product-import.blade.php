@@ -59,7 +59,7 @@
                     </div>
                 </div>
 
-                <div class="grid gap-3 text-xs sm:grid-cols-4 sm:text-sm">
+                <div class="grid gap-3 text-xs sm:grid-cols-6 sm:text-sm">
                     <div>
                         <div class="text-zinc-500">Создано</div>
                         <div class="font-semibold text-emerald-700">{{ $lastSavedRun['created'] ?? 0 }}</div>
@@ -71,6 +71,14 @@
                     <div>
                         <div class="text-zinc-500">Пропущено</div>
                         <div class="font-semibold text-zinc-700">{{ $lastSavedRun['skipped'] ?? 0 }}</div>
+                    </div>
+                    <div>
+                        <div class="text-zinc-500">Скачано изображений</div>
+                        <div class="font-semibold text-zinc-900">{{ $lastSavedRun['images_downloaded'] ?? 0 }}</div>
+                    </div>
+                    <div>
+                        <div class="text-zinc-500">Деривативов</div>
+                        <div class="font-semibold text-zinc-900">{{ $lastSavedRun['derivatives_queued'] ?? 0 }}</div>
                     </div>
                     <div>
                         <div class="text-zinc-500">Примеры dry-run</div>

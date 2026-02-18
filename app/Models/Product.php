@@ -95,7 +95,7 @@ class Product extends Model
         'is_active' => 'bool',
         'with_dns' => 'bool',
         'gallery' => 'array',
-        'specs' => 'array',
+        'specs' => 'json:unicode',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'is_in_yml_feed' => 'bool',

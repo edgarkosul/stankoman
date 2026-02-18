@@ -477,6 +477,15 @@ it('matches superscript unit token with configured numeric unit', function () {
 });
 
 it('suggests linking to existing global attribute by normalized spec name', function () {
+    $watt = Unit::query()->create([
+        'name' => 'Ватт',
+        'symbol' => 'Вт',
+        'dimension' => 'power',
+        'base_symbol' => 'W',
+        'si_factor' => 1,
+        'si_offset' => 0,
+    ]);
+
     $targetCategory = Category::query()->create([
         'name' => 'Пылесосы',
         'slug' => 'vacuums',
@@ -490,6 +499,7 @@ it('suggests linking to existing global attribute by normalized spec name', func
         'slug' => 'power-existing',
         'data_type' => 'number',
         'input_type' => 'number',
+        'unit_id' => $watt->id,
         'is_filterable' => true,
     ]);
 
@@ -513,6 +523,9 @@ it('suggests linking to existing global attribute by normalized spec name', func
     expect($powerSuggestion)->not->toBeNull()
         ->and((int) ($powerSuggestion['existing_attribute_id'] ?? 0))->toBe($existingAttribute->id)
         ->and((string) ($powerSuggestion['existing_attribute_name'] ?? ''))->toBe('Мощность')
+        ->and((string) ($powerSuggestion['existing_attribute_data_type'] ?? ''))->toBe('number')
+        ->and((string) ($powerSuggestion['existing_attribute_input_type'] ?? ''))->toBe('number')
+        ->and((string) ($powerSuggestion['existing_attribute_unit_label'] ?? ''))->toBe('Ватт (Вт) — power')
         ->and((string) ($powerSuggestion['suggested_decision'] ?? ''))->toBe('link_existing');
 });
 
@@ -615,6 +628,209 @@ it('builds suggestions for unmatched spec names with inferred types', function (
         ->and($airFlowSuggestion['suggested_input_type'])->toBe('number')
         ->and((int) ($airFlowSuggestion['suggested_unit_id'] ?? 0))->toBe($flowUnit->id)
         ->and($airFlowSuggestion['suggested_unit_confidence'])->toBe('high');
+});
+
+it('strips unit from spec name in suggestions and falls back to unit from spec name', function () {
+    $millimeter = Unit::query()->create([
+        'name' => 'Миллиметр',
+        'symbol' => 'мм',
+        'dimension' => 'length',
+        'base_symbol' => 'm',
+        'si_factor' => 0.001,
+        'si_offset' => 0,
+    ]);
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Листогибы',
+        'slug' => 'sheet-benders',
+        'parent_id' => -1,
+        'order' => 35,
+        'is_active' => true,
+    ]);
+
+    $existingAttribute = Attribute::query()->create([
+        'name' => 'Толщина металла',
+        'slug' => 'metal-thickness',
+        'data_type' => 'number',
+        'input_type' => 'number',
+        'is_filterable' => true,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Листогиб A',
+        'slug' => 'sheet-bender-a',
+        'price_amount' => 210000,
+        'specs' => [
+            ['name' => 'Толщина металла, мм', 'value' => '0,8', 'source' => 'dom'],
+        ],
+    ]);
+
+    $service = new SpecsMatchService;
+    $suggestions = collect($service->buildAttributeCreationSuggestions(
+        [$product->id],
+        $targetCategory->id,
+    ))->keyBy('spec_name');
+
+    $suggestion = $suggestions->get('Толщина металла');
+
+    expect($suggestion)->not->toBeNull()
+        ->and($suggestions->has('Толщина металла, мм'))->toBeFalse()
+        ->and($suggestion['suggested_data_type'])->toBe('number')
+        ->and((int) ($suggestion['suggested_unit_id'] ?? 0))->toBe($millimeter->id)
+        ->and((int) ($suggestion['existing_attribute_id'] ?? 0))->toBe($existingAttribute->id)
+        ->and((string) ($suggestion['suggested_decision'] ?? ''))->toBe('link_existing');
+});
+
+it('matches numeric value when unit is only in spec name', function () {
+    $millimeter = Unit::query()->create([
+        'name' => 'Миллиметр',
+        'symbol' => 'мм',
+        'dimension' => 'length',
+        'base_symbol' => 'm',
+        'si_factor' => 0.001,
+        'si_offset' => 0,
+    ]);
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Гибочные станки',
+        'slug' => 'bending-machines',
+        'parent_id' => -1,
+        'order' => 36,
+        'is_active' => true,
+    ]);
+
+    $attribute = Attribute::query()->create([
+        'name' => 'Толщина металла',
+        'slug' => 'metal-thickness-attribute',
+        'data_type' => 'number',
+        'input_type' => 'number',
+        'unit_id' => $millimeter->id,
+        'dimension' => 'length',
+        'is_filterable' => true,
+    ]);
+
+    $attribute->units()->sync([
+        $millimeter->id => ['is_default' => true, 'sort_order' => 0],
+    ]);
+
+    $targetCategory->attributeDefs()->attach($attribute->id);
+
+    $product = Product::query()->create([
+        'name' => 'Листогиб B',
+        'slug' => 'sheet-bender-b',
+        'price_amount' => 220000,
+        'specs' => [
+            ['name' => 'Толщина металла, мм', 'value' => '0,8', 'source' => 'dom'],
+        ],
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'specs_match',
+        'status' => 'pending',
+    ]);
+
+    $service = new SpecsMatchService;
+    $result = $service->run($run, [$product->id], [
+        'target_category_id' => $targetCategory->id,
+        'dry_run' => false,
+        'only_empty_attributes' => true,
+        'overwrite_existing' => false,
+        'auto_create_options' => false,
+        'detach_staging_after_success' => false,
+    ]);
+
+    expect($result['matched_pav'])->toBe(1)
+        ->and($result['skipped'])->toBe(0);
+
+    $persistedValue = ProductAttributeValue::query()
+        ->where('product_id', $product->id)
+        ->where('attribute_id', $attribute->id)
+        ->first();
+
+    expect($persistedValue)->not->toBeNull()
+        ->and((float) $persistedValue->value_number)->toBe(0.8);
+});
+
+it('matches mapped spec name when raw spec has chained trailing units', function () {
+    $millimeter = Unit::query()->create([
+        'name' => 'Миллиметр',
+        'symbol' => 'мм',
+        'dimension' => 'length',
+        'base_symbol' => 'm',
+        'si_factor' => 0.001,
+        'si_offset' => 0,
+    ]);
+
+    Unit::query()->create([
+        'name' => 'Мегапаскаль',
+        'symbol' => 'МПа',
+        'dimension' => 'pressure',
+        'base_symbol' => 'Pa',
+        'si_factor' => 1000000,
+        'si_offset' => 0,
+    ]);
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Листогибы',
+        'slug' => 'sheet-benders-chained-units',
+        'parent_id' => -1,
+        'order' => 37,
+        'is_active' => true,
+    ]);
+
+    $service = new SpecsMatchService;
+    $decisionResolution = $service->resolveAttributeDecisions(
+        targetCategoryId: $targetCategory->id,
+        decisionRows: [[
+            'spec_name' => 'Макс. толщина металла сталь, σв<320 МПа',
+            'decision' => 'create_attribute',
+            'create_attribute_name' => 'Толщина металла',
+            'create_data_type' => 'number',
+            'create_input_type' => 'number',
+            'create_unit_id' => $millimeter->id,
+        ]],
+        applyChanges: true,
+    );
+
+    $mappedKey = NameNormalizer::normalize('Макс. толщина металла сталь, σв<320');
+    $attributeId = (int) ($decisionResolution['name_map'][$mappedKey] ?? 0);
+
+    expect($attributeId)->toBeGreaterThan(0);
+
+    $product = Product::query()->create([
+        'name' => 'Листогиб C',
+        'slug' => 'sheet-bender-c',
+        'price_amount' => 230000,
+        'specs' => [
+            ['name' => 'Макс. толщина металла сталь, σв<320 МПа, мм', 'value' => '0,9', 'source' => 'dom'],
+        ],
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'specs_match',
+        'status' => 'pending',
+    ]);
+
+    $result = $service->run($run, [$product->id], [
+        'target_category_id' => $targetCategory->id,
+        'dry_run' => false,
+        'only_empty_attributes' => true,
+        'overwrite_existing' => false,
+        'auto_create_options' => false,
+        'detach_staging_after_success' => false,
+        'attribute_name_map' => $decisionResolution['name_map'],
+    ]);
+
+    expect($result['matched_pav'])->toBe(1)
+        ->and($run->issues()->pluck('code')->all())->not->toContain('spec_name_unmatched');
+
+    $persistedValue = ProductAttributeValue::query()
+        ->where('product_id', $product->id)
+        ->where('attribute_id', $attributeId)
+        ->first();
+
+    expect($persistedValue)->not->toBeNull()
+        ->and((float) $persistedValue->value_number)->toBe(0.9);
 });
 
 it('resolves attribute decisions and creates or links attributes in apply mode', function () {
@@ -729,6 +945,132 @@ it('resolves attribute decisions and creates or links attributes in apply mode',
 
     expect($issueCodes)->toContain('attribute_created_from_spec')
         ->toContain('attribute_creation_skipped');
+});
+
+it('groups create decisions by custom target attribute name', function () {
+    $millimeter = Unit::query()->create([
+        'name' => 'Миллиметр',
+        'symbol' => 'мм',
+        'dimension' => 'length',
+        'base_symbol' => 'm',
+        'si_factor' => 0.001,
+        'si_offset' => 0,
+    ]);
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Гильотины',
+        'slug' => 'guillotines',
+        'parent_id' => -1,
+        'order' => 43,
+        'is_active' => true,
+    ]);
+
+    $service = new SpecsMatchService;
+    $result = $service->resolveAttributeDecisions(
+        targetCategoryId: $targetCategory->id,
+        decisionRows: [
+            [
+                'spec_name' => 'Макс. толщина металла сталь',
+                'decision' => 'create_attribute',
+                'create_attribute_name' => 'Толщина металла',
+                'create_data_type' => 'number',
+                'create_input_type' => 'number',
+                'create_unit_id' => $millimeter->id,
+            ],
+            [
+                'spec_name' => 'Макс. толщина металла нерж.',
+                'decision' => 'create_attribute',
+                'create_attribute_name' => 'Толщина металла',
+                'create_data_type' => 'number',
+                'create_input_type' => 'number',
+                'create_unit_id' => $millimeter->id,
+            ],
+        ],
+        applyChanges: true,
+    );
+
+    $firstKey = NameNormalizer::normalize('Макс. толщина металла сталь');
+    $secondKey = NameNormalizer::normalize('Макс. толщина металла нерж.');
+    $firstAttributeId = (int) ($result['name_map'][$firstKey] ?? 0);
+    $secondAttributeId = (int) ($result['name_map'][$secondKey] ?? 0);
+
+    expect($firstAttributeId)->toBeGreaterThan(0)
+        ->and($secondAttributeId)->toBe($firstAttributeId);
+
+    expect(
+        Attribute::query()
+            ->where('name', 'Толщина металла')
+            ->count()
+    )->toBe(1);
+
+    expect(
+        DB::table('category_attribute')
+            ->where('category_id', $targetCategory->id)
+            ->where('attribute_id', $firstAttributeId)
+            ->exists()
+    )->toBeTrue();
+});
+
+it('skips grouped create decisions when group configuration differs', function () {
+    $millimeter = Unit::query()->create([
+        'name' => 'Миллиметр',
+        'symbol' => 'мм',
+        'dimension' => 'length',
+        'base_symbol' => 'm',
+        'si_factor' => 0.001,
+        'si_offset' => 0,
+    ]);
+
+    $centimeter = Unit::query()->create([
+        'name' => 'Сантиметр',
+        'symbol' => 'см',
+        'dimension' => 'length',
+        'base_symbol' => 'm',
+        'si_factor' => 0.01,
+        'si_offset' => 0,
+    ]);
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Листогибы',
+        'slug' => 'sheet-benders-conflict',
+        'parent_id' => -1,
+        'order' => 44,
+        'is_active' => true,
+    ]);
+
+    $service = new SpecsMatchService;
+    $result = $service->resolveAttributeDecisions(
+        targetCategoryId: $targetCategory->id,
+        decisionRows: [
+            [
+                'spec_name' => 'Толщина стали',
+                'decision' => 'create_attribute',
+                'create_attribute_name' => 'Толщина металла',
+                'create_data_type' => 'number',
+                'create_input_type' => 'number',
+                'create_unit_id' => $millimeter->id,
+            ],
+            [
+                'spec_name' => 'Толщина нержавейки',
+                'decision' => 'create_attribute',
+                'create_attribute_name' => 'Толщина металла',
+                'create_data_type' => 'number',
+                'create_input_type' => 'number',
+                'create_unit_id' => $centimeter->id,
+            ],
+        ],
+        applyChanges: true,
+    );
+
+    expect($result['name_map'])->toBeEmpty();
+
+    expect(
+        collect($result['issues'])
+            ->where('row_snapshot.reason', 'group_configuration_conflict')
+            ->count()
+    )->toBe(2);
+
+    expect(Attribute::query()->where('name', 'Толщина металла')->exists())->toBeFalse();
 });
 
 it('normalizes legacy text input type to multiselect when creating text attributes', function () {
@@ -878,6 +1220,250 @@ it('uses attribute name map during run even when attribute is outside target cat
     )->toBeFalse();
 
     expect($run->issues()->pluck('code')->all())->toContain('attribute_not_in_target_category');
+});
+
+it('uses configured strategy when several number specs map to one attribute', function () {
+    $targetCategory = Category::query()->create([
+        'name' => 'Прессы',
+        'slug' => 'presses',
+        'parent_id' => -1,
+        'order' => 60,
+        'is_active' => true,
+    ]);
+
+    $thicknessAttribute = Attribute::query()->create([
+        'name' => 'Толщина металла',
+        'slug' => 'metal-thickness-number',
+        'data_type' => 'number',
+        'input_type' => 'number',
+        'is_filterable' => true,
+    ]);
+
+    $targetCategory->attributeDefs()->attach($thicknessAttribute->id);
+
+    $productMax = Product::query()->create([
+        'name' => 'Пресс MAX',
+        'slug' => 'press-max',
+        'price_amount' => 100000,
+        'specs' => [
+            ['name' => 'Макс. толщина металла, сталь', 'value' => '2.0', 'source' => 'dom'],
+            ['name' => 'Макс. толщина металла, нерж.', 'value' => '3.5', 'source' => 'dom'],
+        ],
+    ]);
+
+    $productMin = Product::query()->create([
+        'name' => 'Пресс MIN',
+        'slug' => 'press-min',
+        'price_amount' => 101000,
+        'specs' => [
+            ['name' => 'Макс. толщина металла, сталь', 'value' => '2.0', 'source' => 'dom'],
+            ['name' => 'Макс. толщина металла, нерж.', 'value' => '3.5', 'source' => 'dom'],
+        ],
+    ]);
+
+    $service = new SpecsMatchService;
+
+    $runMax = ImportRun::query()->create([
+        'type' => 'specs_match',
+        'status' => 'pending',
+    ]);
+
+    $service->run($runMax, [$productMax->id], [
+        'target_category_id' => $targetCategory->id,
+        'dry_run' => false,
+        'number_conflict_strategy' => 'max',
+        'attribute_name_map' => [
+            'Макс. толщина металла, сталь' => $thicknessAttribute->id,
+            'Макс. толщина металла, нерж.' => $thicknessAttribute->id,
+        ],
+    ]);
+
+    $runMin = ImportRun::query()->create([
+        'type' => 'specs_match',
+        'status' => 'pending',
+    ]);
+
+    $service->run($runMin, [$productMin->id], [
+        'target_category_id' => $targetCategory->id,
+        'dry_run' => false,
+        'number_conflict_strategy' => 'min',
+        'attribute_name_map' => [
+            'Макс. толщина металла, сталь' => $thicknessAttribute->id,
+            'Макс. толщина металла, нерж.' => $thicknessAttribute->id,
+        ],
+    ]);
+
+    $maxValue = ProductAttributeValue::query()
+        ->where('product_id', $productMax->id)
+        ->where('attribute_id', $thicknessAttribute->id)
+        ->value('value_number');
+
+    $minValue = ProductAttributeValue::query()
+        ->where('product_id', $productMin->id)
+        ->where('attribute_id', $thicknessAttribute->id)
+        ->value('value_number');
+
+    expect((float) $maxValue)->toBe(3.5)
+        ->and((float) $minValue)->toBe(2.0);
+});
+
+it('merges several range specs into one combined range for mapped attribute', function () {
+    $targetCategory = Category::query()->create([
+        'name' => 'Станки',
+        'slug' => 'machines',
+        'parent_id' => -1,
+        'order' => 61,
+        'is_active' => true,
+    ]);
+
+    $rangeAttribute = Attribute::query()->create([
+        'name' => 'Диапазон толщины',
+        'slug' => 'thickness-range',
+        'data_type' => 'range',
+        'input_type' => 'range',
+        'is_filterable' => true,
+    ]);
+
+    $targetCategory->attributeDefs()->attach($rangeAttribute->id);
+
+    $product = Product::query()->create([
+        'name' => 'Станок RANGE',
+        'slug' => 'machine-range',
+        'price_amount' => 120000,
+        'specs' => [
+            ['name' => 'Толщина стали', 'value' => '1.5 - 2.5', 'source' => 'dom'],
+            ['name' => 'Толщина нержавейки', 'value' => '2.0 - 4.0', 'source' => 'dom'],
+        ],
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'specs_match',
+        'status' => 'pending',
+    ]);
+
+    $service = new SpecsMatchService;
+    $service->run($run, [$product->id], [
+        'target_category_id' => $targetCategory->id,
+        'dry_run' => false,
+        'attribute_name_map' => [
+            'Толщина стали' => $rangeAttribute->id,
+            'Толщина нержавейки' => $rangeAttribute->id,
+        ],
+    ]);
+
+    $persisted = ProductAttributeValue::query()
+        ->where('product_id', $product->id)
+        ->where('attribute_id', $rangeAttribute->id)
+        ->first();
+
+    expect($persisted)->not->toBeNull()
+        ->and((float) $persisted->value_min)->toBe(1.5)
+        ->and((float) $persisted->value_max)->toBe(4.0);
+});
+
+it('unions values for multiselect and keeps first value for select when specs map to one attribute', function () {
+    $targetCategory = Category::query()->create([
+        'name' => 'Листогибы',
+        'slug' => 'sheet-benders-union',
+        'parent_id' => -1,
+        'order' => 62,
+        'is_active' => true,
+    ]);
+
+    $materialAttribute = Attribute::query()->create([
+        'name' => 'Материал',
+        'slug' => 'material-multiselect',
+        'data_type' => 'text',
+        'input_type' => 'multiselect',
+        'is_filterable' => true,
+    ]);
+
+    $colorAttribute = Attribute::query()->create([
+        'name' => 'Цвет',
+        'slug' => 'color-select',
+        'data_type' => 'text',
+        'input_type' => 'select',
+        'is_filterable' => true,
+    ]);
+
+    $targetCategory->attributeDefs()->attach($materialAttribute->id);
+    $targetCategory->attributeDefs()->attach($colorAttribute->id);
+
+    $steel = AttributeOption::query()->create([
+        'attribute_id' => $materialAttribute->id,
+        'value' => 'Сталь',
+        'sort_order' => 1,
+    ]);
+    $inox = AttributeOption::query()->create([
+        'attribute_id' => $materialAttribute->id,
+        'value' => 'Нержавейка',
+        'sort_order' => 2,
+    ]);
+    $red = AttributeOption::query()->create([
+        'attribute_id' => $colorAttribute->id,
+        'value' => 'Красный',
+        'sort_order' => 1,
+    ]);
+    $blue = AttributeOption::query()->create([
+        'attribute_id' => $colorAttribute->id,
+        'value' => 'Синий',
+        'sort_order' => 2,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Листогиб UNION',
+        'slug' => 'sheet-bender-union',
+        'price_amount' => 130000,
+        'specs' => [
+            ['name' => 'Материал 1', 'value' => 'Сталь', 'source' => 'dom'],
+            ['name' => 'Материал 2', 'value' => 'Нержавейка', 'source' => 'dom'],
+            ['name' => 'Цвет 1', 'value' => 'Красный', 'source' => 'dom'],
+            ['name' => 'Цвет 2', 'value' => 'Синий', 'source' => 'dom'],
+        ],
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'specs_match',
+        'status' => 'pending',
+    ]);
+
+    $service = new SpecsMatchService;
+    $service->run($run, [$product->id], [
+        'target_category_id' => $targetCategory->id,
+        'dry_run' => false,
+        'attribute_name_map' => [
+            'Материал 1' => $materialAttribute->id,
+            'Материал 2' => $materialAttribute->id,
+            'Цвет 1' => $colorAttribute->id,
+            'Цвет 2' => $colorAttribute->id,
+        ],
+    ]);
+
+    $materialOptionIds = ProductAttributeOption::query()
+        ->where('product_id', $product->id)
+        ->where('attribute_id', $materialAttribute->id)
+        ->pluck('attribute_option_id')
+        ->map(fn ($id): int => (int) $id)
+        ->sort()
+        ->values()
+        ->all();
+
+    $colorOptionIds = ProductAttributeOption::query()
+        ->where('product_id', $product->id)
+        ->where('attribute_id', $colorAttribute->id)
+        ->pluck('attribute_option_id')
+        ->map(fn ($id): int => (int) $id)
+        ->sort()
+        ->values()
+        ->all();
+
+    expect($materialOptionIds)->toBe([(int) $steel->id, (int) $inox->id])
+        ->and($colorOptionIds)->toBe([(int) $red->id]);
+
+    expect($run->issues()->pluck('code')->all())->toContain('select_conflict_kept_first')
+        ->and($run->issues()->pluck('code')->all())->not->toContain('option_not_found');
+
+    expect((int) $blue->id)->not->toBe((int) $red->id);
 });
 
 function rebuildSpecsMatchServiceSchemas(): void

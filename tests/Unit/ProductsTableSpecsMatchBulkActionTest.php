@@ -10,6 +10,7 @@ use App\Models\Product;
 use App\Models\Unit;
 use App\Models\User;
 use App\Support\NameNormalizer;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -156,6 +157,7 @@ it('applies attribute decisions from specs match confirmation wizard', function 
                 [
                     'spec_name' => 'Материал корпуса',
                     'decision' => 'create_attribute',
+                    'create_attribute_name' => 'Материал корпуса',
                     'create_data_type' => 'number',
                     'create_input_type' => 'number',
                     'create_unit_id' => $kilopascal->id,
@@ -333,6 +335,58 @@ it('sets selected category as primary in categories mass edit mode', function ()
     )->toBe(0);
 });
 
+it('finds all leaf categories in primary category search even when options are limited', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $visibleLeafCategory = Category::query()->create([
+        'name' => 'Листовая категория в списке',
+        'slug' => 'listed-leaf-category',
+        'parent_id' => -1,
+        'order' => 411,
+        'is_active' => true,
+    ]);
+
+    $searchOnlyLeafCategory = Category::query()->create([
+        'name' => 'Уникальная листовая категория для поиска',
+        'slug' => 'search-only-leaf-category',
+        'parent_id' => -1,
+        'order' => 412,
+        'is_active' => true,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Товар для поиска категорий',
+        'slug' => 'category-search-product',
+        'price_amount' => 2100,
+    ]);
+
+    $product->categories()->attach($visibleLeafCategory->id, ['is_primary' => true]);
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$product])
+        ->mountTableBulkAction('massEdit', [$product])
+        ->setTableBulkActionData([
+            'mode' => 'categories',
+            'cat_op' => 'set_primary',
+        ])
+        ->assertFormFieldExists('primary_category_id', function (Select $field) use ($visibleLeafCategory, $searchOnlyLeafCategory): bool {
+            $optionIds = collect(array_keys($field->getOptions()))
+                ->map(fn ($id): int => (int) $id)
+                ->values()
+                ->all();
+
+            $searchResultIds = collect(array_keys($field->getSearchResults('Уникальная листовая категория')))
+                ->map(fn ($id): int => (int) $id)
+                ->values()
+                ->all();
+
+            return in_array($visibleLeafCategory->id, $optionIds, true)
+                && ! in_array($searchOnlyLeafCategory->id, $optionIds, true)
+                && in_array($searchOnlyLeafCategory->id, $searchResultIds, true);
+        });
+});
+
 it('configures dry-run toggle as live for immediate staging checkbox visibility update', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
@@ -384,6 +438,111 @@ it('disables overwrite toggle when only empty attributes mode is enabled', funct
             'only_empty_attributes' => false,
         ])
         ->assertFormFieldEnabled('overwrite_existing');
+});
+
+it('offers link-existing action for all proposals and defaults decisions to ignore', function () {
+    $optionsMethod = new ReflectionMethod(ProductsTable::class, 'decisionOptionsForProposal');
+    $defaultMethod = new ReflectionMethod(ProductsTable::class, 'defaultDecisionForProposal');
+
+    $optionsMethod->setAccessible(true);
+    $defaultMethod->setAccessible(true);
+
+    $exactMatchOptions = $optionsMethod->invoke(null, true);
+    $noMatchOptions = $optionsMethod->invoke(null, false);
+
+    expect($exactMatchOptions)->toBe([
+        'link_existing' => 'Связать существующий атрибут с категорией',
+        'create_attribute' => 'Создать новый атрибут с тем же названием',
+        'ignore' => 'Игнорировать',
+    ])->and($noMatchOptions)->toBe([
+        'link_existing' => 'Связать существующий атрибут с категорией',
+        'create_attribute' => 'Создать новый глобальный атрибут и привязать',
+        'ignore' => 'Игнорировать',
+    ])->and($defaultMethod->invoke(null, true))->toBe('ignore')
+        ->and($defaultMethod->invoke(null, false))->toBe('ignore');
+});
+
+it('hydrates wizard proposals with existing attribute types and suggested input defaults', function () {
+    $volt = Unit::query()->create([
+        'name' => 'Вольт',
+        'symbol' => 'В',
+        'dimension' => 'electric_potential',
+        'base_symbol' => 'V',
+        'si_factor' => 1,
+        'si_offset' => 0,
+    ]);
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Токарные станки',
+        'slug' => 'lathes',
+        'parent_id' => -1,
+        'order' => 250,
+        'is_active' => true,
+    ]);
+
+    $existingAttribute = Attribute::query()->create([
+        'name' => 'Напряжение',
+        'slug' => 'voltage-existing-for-proposals',
+        'data_type' => 'number',
+        'input_type' => 'number',
+        'unit_id' => $volt->id,
+        'is_filterable' => true,
+    ]);
+
+    $firstProduct = Product::query()->create([
+        'name' => 'Станок A',
+        'slug' => 'lathe-a',
+        'price_amount' => 55000,
+        'specs' => [
+            ['name' => 'Режим работы', 'value' => 'Авто', 'source' => 'dom'],
+            ['name' => 'Напряжение', 'value' => '220 В', 'source' => 'dom'],
+        ],
+    ]);
+
+    $secondProduct = Product::query()->create([
+        'name' => 'Станок B',
+        'slug' => 'lathe-b',
+        'price_amount' => 57000,
+        'specs' => [
+            ['name' => 'Режим работы', 'value' => 'Ручной', 'source' => 'dom'],
+        ],
+    ]);
+
+    $buildMethod = new ReflectionMethod(ProductsTable::class, 'buildSpecsAttributeProposalsState');
+    $buildMethod->setAccessible(true);
+
+    $livewireStub = new class([$firstProduct->id, $secondProduct->id])
+    {
+        /**
+         * @param  array<int, int>  $productIds
+         */
+        public function __construct(private array $productIds) {}
+
+        public function getSelectedTableRecordsQuery(bool $shouldFetchSelectedRecords = false)
+        {
+            return Product::query()->whereKey($this->productIds);
+        }
+    };
+
+    $proposals = collect($buildMethod->invoke(null, $livewireStub, $targetCategory->id))
+        ->keyBy('spec_name');
+
+    $modeProposal = $proposals->get('Режим работы');
+    $voltageProposal = $proposals->get('Напряжение');
+
+    expect($modeProposal)->not->toBeNull()
+        ->and((string) ($modeProposal['suggested_input_type'] ?? ''))->toBe('select')
+        ->and((string) ($modeProposal['create_input_type'] ?? ''))->toBe('select')
+        ->and((string) ($modeProposal['create_attribute_name'] ?? ''))->toBe('Режим работы')
+        ->and((string) ($modeProposal['decision'] ?? ''))->toBe('ignore');
+
+    expect($voltageProposal)->not->toBeNull()
+        ->and((int) ($voltageProposal['existing_attribute_id'] ?? 0))->toBe($existingAttribute->id)
+        ->and((string) ($voltageProposal['existing_attribute_data_type'] ?? ''))->toBe('number')
+        ->and((string) ($voltageProposal['existing_attribute_input_type'] ?? ''))->toBe('number')
+        ->and((string) ($voltageProposal['existing_attribute_unit_label'] ?? ''))->toBe('Вольт (В) — electric_potential')
+        ->and((string) ($voltageProposal['create_attribute_name'] ?? ''))->toBe('Напряжение')
+        ->and((string) ($voltageProposal['decision'] ?? ''))->toBe('ignore');
 });
 
 it('uses multiselect as default input type for text and excludes text option in wizard', function () {

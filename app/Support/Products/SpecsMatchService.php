@@ -33,6 +33,9 @@ class SpecsMatchService
      *     unit_candidate_ids:array<int, int>,
      *     existing_attribute_id:?int,
      *     existing_attribute_name:?string,
+     *     existing_attribute_data_type:?string,
+     *     existing_attribute_input_type:?string,
+     *     existing_attribute_unit_label:?string,
      *     suggested_decision:string
      * }>
      */
@@ -63,13 +66,15 @@ class SpecsMatchService
 
         foreach ($products as $product) {
             foreach ($this->extractSpecs($product->specs) as $specRow) {
-                $specName = $this->stringFromMixed($specRow['name'] ?? null);
+                $specNameRaw = $this->stringFromMixed($specRow['name'] ?? null);
                 $specValue = $this->stringFromMixed($specRow['value'] ?? null);
 
-                if ($specName === null || $specValue === null) {
+                if ($specNameRaw === null || $specValue === null) {
                     continue;
                 }
 
+                $specNameContext = $this->resolveSpecNameContext($specNameRaw);
+                $specName = $specNameContext['name'];
                 $normalizedSpecName = NameNormalizer::normalize($specName);
 
                 if (! $normalizedSpecName || isset($attributeIndex[$normalizedSpecName])) {
@@ -101,9 +106,10 @@ class SpecsMatchService
                 }
 
                 $parsedNumbers = $this->parseNumbersWithUnit($specValue);
+                $unitToken = $parsedNumbers['unit_token'] ?? $specNameContext['unit_token'];
 
-                if ($parsedNumbers['unit_token'] !== null && count($aggregated[$normalizedSpecName]['unit_tokens']) < 25) {
-                    $aggregated[$normalizedSpecName]['unit_tokens'][] = $parsedNumbers['unit_token'];
+                if ($unitToken !== null && count($aggregated[$normalizedSpecName]['unit_tokens']) < 25) {
+                    $aggregated[$normalizedSpecName]['unit_tokens'][] = $unitToken;
                 }
             }
         }
@@ -139,6 +145,9 @@ class SpecsMatchService
                 'unit_candidate_ids' => $unitSuggestion['unit_candidate_ids'],
                 'existing_attribute_id' => $existingAttribute?->id ? (int) $existingAttribute->id : null,
                 'existing_attribute_name' => $existingAttribute?->name,
+                'existing_attribute_data_type' => $existingAttribute?->data_type,
+                'existing_attribute_input_type' => $existingAttribute?->input_type,
+                'existing_attribute_unit_label' => $this->unitLabel($existingAttribute?->unit),
                 'suggested_decision' => $existingAttribute ? 'link_existing' : 'ignore',
             ];
         }
@@ -191,6 +200,7 @@ class SpecsMatchService
         $nameMap = [];
         $ignoredSpecNames = [];
         $issues = [];
+        $pendingCreateGroups = [];
         $nextOrder = max(0, (int) DB::table('category_attribute')
             ->where('category_id', $targetCategoryId)
             ->max('filter_order')) + 1;
@@ -200,10 +210,11 @@ class SpecsMatchService
                 continue;
             }
 
-            $specName = $this->stringFromMixed($decisionRow['spec_name'] ?? null);
+            $specNameRaw = $this->stringFromMixed($decisionRow['spec_name'] ?? null);
+            $specName = $this->resolveSpecNameContext($specNameRaw)['name'];
             $normalizedSpecName = NameNormalizer::normalize($specName);
 
-            if ($specName === null || $normalizedSpecName === null) {
+            if ($normalizedSpecName === null) {
                 continue;
             }
 
@@ -265,6 +276,28 @@ class SpecsMatchService
                 continue;
             }
 
+            $targetAttributeNameRaw = $this->stringFromMixed($decisionRow['create_attribute_name'] ?? null);
+            $targetAttributeName = $this->resolveSpecNameContext($targetAttributeNameRaw ?? $specName)['name'];
+
+            if ($targetAttributeName === '') {
+                $targetAttributeName = $specName;
+            }
+
+            $normalizedTargetAttributeName = NameNormalizer::normalize($targetAttributeName);
+
+            if ($normalizedTargetAttributeName === null) {
+                $issues[] = [
+                    'code' => 'attribute_creation_skipped',
+                    'severity' => 'warning',
+                    'message' => "Не удалось создать атрибут для '{$specName}': имя нового атрибута пустое.",
+                    'row_snapshot' => $baseSnapshot + [
+                        'reason' => 'invalid_create_attribute_name',
+                    ],
+                ];
+
+                continue;
+            }
+
             $dataType = $this->normalizeDataType($decisionRow['create_data_type'] ?? null);
             $inputType = $this->normalizeInputType($decisionRow['create_input_type'] ?? null, $dataType);
             $isNumericAttribute = in_array($dataType, ['number', 'range'], true);
@@ -278,9 +311,10 @@ class SpecsMatchService
                     $issues[] = [
                         'code' => 'attribute_creation_skipped',
                         'severity' => 'warning',
-                        'message' => "Не удалось создать '{$specName}': для number/range атрибута требуется базовая единица.",
+                        'message' => "Не удалось создать '{$targetAttributeName}': для number/range атрибута требуется базовая единица.",
                         'row_snapshot' => $baseSnapshot + [
                             'reason' => 'missing_unit_for_numeric_attribute',
+                            'target_attribute_name' => $targetAttributeName,
                             'data_type' => $dataType,
                             'input_type' => $inputType,
                         ],
@@ -295,9 +329,10 @@ class SpecsMatchService
                     $issues[] = [
                         'code' => 'attribute_creation_skipped',
                         'severity' => 'warning',
-                        'message' => "Не удалось создать '{$specName}': выбранная единица #{$baseUnitId} не найдена.",
+                        'message' => "Не удалось создать '{$targetAttributeName}': выбранная единица #{$baseUnitId} не найдена.",
                         'row_snapshot' => $baseSnapshot + [
                             'reason' => 'selected_unit_not_found',
+                            'target_attribute_name' => $targetAttributeName,
                             'unit_id' => $baseUnitId,
                         ],
                     ];
@@ -311,25 +346,97 @@ class SpecsMatchService
                 );
             }
 
-            if (! $applyChanges) {
-                $issues[] = [
-                    'code' => 'attribute_creation_skipped',
-                    'severity' => 'info',
-                    'message' => "Dry-run: атрибут '{$specName}' будет создан при apply.",
-                    'row_snapshot' => $baseSnapshot + [
-                        'reason' => 'dry_run',
-                        'data_type' => $dataType,
-                        'input_type' => $inputType,
-                        'unit_id' => $baseUnit?->id,
-                        'additional_unit_ids' => $additionalUnitIds,
-                    ],
+            sort($additionalUnitIds);
+
+            $configKey = implode('|', [
+                $dataType,
+                $inputType,
+                (string) ($baseUnit?->id ?? 0),
+                implode(',', $additionalUnitIds),
+            ]);
+
+            if (! isset($pendingCreateGroups[$normalizedTargetAttributeName])) {
+                $pendingCreateGroups[$normalizedTargetAttributeName] = [
+                    'attribute_name' => $targetAttributeName,
+                    'normalized_attribute_name' => $normalizedTargetAttributeName,
+                    'config_key' => $configKey,
+                    'data_type' => $dataType,
+                    'input_type' => $inputType,
+                    'base_unit' => $baseUnit,
+                    'additional_unit_ids' => $additionalUnitIds,
+                    'has_conflict' => false,
+                    'rows' => [],
                 ];
+            } elseif ($pendingCreateGroups[$normalizedTargetAttributeName]['config_key'] !== $configKey) {
+                $pendingCreateGroups[$normalizedTargetAttributeName]['has_conflict'] = true;
+            }
+
+            $pendingCreateGroups[$normalizedTargetAttributeName]['rows'][] = [
+                'spec_name' => $specName,
+                'normalized_spec_name' => $normalizedSpecName,
+                'base_snapshot' => $baseSnapshot,
+            ];
+        }
+
+        foreach ($pendingCreateGroups as $createGroup) {
+            $attributeName = (string) $createGroup['attribute_name'];
+            $rows = is_array($createGroup['rows'] ?? null) ? $createGroup['rows'] : [];
+
+            if ($rows === []) {
+                continue;
+            }
+
+            if ((bool) ($createGroup['has_conflict'] ?? false)) {
+                foreach ($rows as $row) {
+                    $rowSnapshot = (array) ($row['base_snapshot'] ?? []);
+
+                    $issues[] = [
+                        'code' => 'attribute_creation_skipped',
+                        'severity' => 'warning',
+                        'message' => "Не удалось создать '{$attributeName}': строки группы имеют разные data_type/input_type/unit.",
+                        'row_snapshot' => $rowSnapshot + [
+                            'reason' => 'group_configuration_conflict',
+                            'target_attribute_name' => $attributeName,
+                        ],
+                    ];
+                }
+
+                continue;
+            }
+
+            $dataType = (string) ($createGroup['data_type'] ?? 'text');
+            $inputType = (string) ($createGroup['input_type'] ?? 'multiselect');
+            $baseUnit = ($createGroup['base_unit'] ?? null) instanceof Unit
+                ? $createGroup['base_unit']
+                : null;
+            $additionalUnitIds = is_array($createGroup['additional_unit_ids'] ?? null)
+                ? $createGroup['additional_unit_ids']
+                : [];
+
+            if (! $applyChanges) {
+                foreach ($rows as $row) {
+                    $rowSnapshot = (array) ($row['base_snapshot'] ?? []);
+
+                    $issues[] = [
+                        'code' => 'attribute_creation_skipped',
+                        'severity' => 'info',
+                        'message' => "Dry-run: атрибут '{$attributeName}' будет создан при apply.",
+                        'row_snapshot' => $rowSnapshot + [
+                            'reason' => 'dry_run',
+                            'target_attribute_name' => $attributeName,
+                            'data_type' => $dataType,
+                            'input_type' => $inputType,
+                            'unit_id' => $baseUnit?->id,
+                            'additional_unit_ids' => $additionalUnitIds,
+                        ],
+                    ];
+                }
 
                 continue;
             }
 
             $attribute = Attribute::query()->create([
-                'name' => $specName,
+                'name' => $attributeName,
                 'data_type' => $dataType,
                 'input_type' => $inputType,
                 'unit_id' => $baseUnit?->id,
@@ -353,20 +460,29 @@ class SpecsMatchService
             );
             $nextOrder++;
 
-            $nameMap[$normalizedSpecName] = (int) $attribute->getKey();
-            $issues[] = [
-                'code' => 'attribute_created_from_spec',
-                'severity' => 'info',
-                'message' => "Создан атрибут '{$attribute->name}' из спецификации '{$specName}'.",
-                'row_snapshot' => $baseSnapshot + [
-                    'attribute_id' => (int) $attribute->getKey(),
-                    'attribute_name' => $attribute->name,
-                    'data_type' => $attribute->data_type,
-                    'input_type' => $attribute->input_type,
-                    'unit_id' => $attribute->unit_id,
-                    'additional_unit_ids' => $additionalUnitIds,
-                ],
-            ];
+            foreach ($rows as $row) {
+                $normalizedSpecName = (string) ($row['normalized_spec_name'] ?? '');
+                $specName = (string) ($row['spec_name'] ?? '');
+                $rowSnapshot = (array) ($row['base_snapshot'] ?? []);
+
+                if ($normalizedSpecName !== '') {
+                    $nameMap[$normalizedSpecName] = (int) $attribute->getKey();
+                }
+
+                $issues[] = [
+                    'code' => 'attribute_created_from_spec',
+                    'severity' => 'info',
+                    'message' => "Создан атрибут '{$attribute->name}' из спецификации '{$specName}'.",
+                    'row_snapshot' => $rowSnapshot + [
+                        'attribute_id' => (int) $attribute->getKey(),
+                        'attribute_name' => $attribute->name,
+                        'data_type' => $attribute->data_type,
+                        'input_type' => $attribute->input_type,
+                        'unit_id' => $attribute->unit_id,
+                        'additional_unit_ids' => $additionalUnitIds,
+                    ],
+                ];
+            }
         }
 
         return [
@@ -480,16 +596,20 @@ class SpecsMatchService
                 fn (AttributeOption $option): int => (int) $option->pivot->attribute_id
             );
             $matchedInCurrentRun = [];
+            $resolvedPavValuesByAttributeId = [];
+            $resolvedOptionIdsByAttributeId = [];
             $hasSuccessfulWrites = false;
 
             foreach ($specRows as $specRow) {
-                $specName = $this->stringFromMixed($specRow['name'] ?? null);
+                $specNameRaw = $this->stringFromMixed($specRow['name'] ?? null);
+                $specName = $this->resolveSpecNameContext($specNameRaw)['name'];
                 $specValue = $this->stringFromMixed($specRow['value'] ?? null);
                 $specSource = $this->stringFromMixed($specRow['source'] ?? null);
 
                 $specSnapshot = [
                     'product_id' => (int) $product->getKey(),
                     'product_name' => $product->name,
+                    'spec_name_raw' => $specNameRaw,
                     'spec_name' => $specName,
                     'spec_value' => $specValue,
                     'spec_source' => $specSource,
@@ -518,13 +638,12 @@ class SpecsMatchService
 
                 $attribute = $attributeIndex[$normalizedSpecName];
                 $attributeId = (int) $attribute->getKey();
+                $hasMatchedInCurrentRun = isset($matchedInCurrentRun[$attributeId]);
+                $hasExistingBeforeRun = $attribute->usesOptions()
+                    ? ($existingOptionsByAttributeId[$attributeId] ?? collect())->isNotEmpty()
+                    : $this->hasExistingPavValue($existingValuesByAttributeId->get($attributeId), $attribute);
 
-                $hasExisting = isset($matchedInCurrentRun[$attributeId])
-                    || ($attribute->usesOptions()
-                        ? ($existingOptionsByAttributeId[$attributeId] ?? collect())->isNotEmpty()
-                        : $this->hasExistingPavValue($existingValuesByAttributeId->get($attributeId), $attribute));
-
-                if ($this->shouldSkipExisting($hasExisting, $options)) {
+                if (! $hasMatchedInCurrentRun && $this->shouldSkipExisting($hasExistingBeforeRun, $options)) {
                     $result['skipped']++;
                     $result['issues'] += $this->addIssue(
                         run: $run,
@@ -661,6 +780,49 @@ class SpecsMatchService
                         continue;
                     }
 
+                    $resolvedOptionIds = $resolvedOptionIdsByAttributeId[$attributeId] ?? null;
+
+                    if ($attribute->input_type === 'select') {
+                        $incomingOptionId = (int) ($matchedOptionIds[0] ?? 0);
+
+                        if (is_array($resolvedOptionIds) && $resolvedOptionIds !== []) {
+                            $keptOptionId = (int) ($resolvedOptionIds[0] ?? 0);
+
+                            if ($incomingOptionId > 0 && $keptOptionId > 0 && $incomingOptionId !== $keptOptionId) {
+                                $result['issues'] += $this->addIssue(
+                                    run: $run,
+                                    productId: (int) $product->getKey(),
+                                    code: 'select_conflict_kept_first',
+                                    message: "Для атрибута '{$attribute->name}' найдено несколько значений, сохранено первое.",
+                                    severity: 'warning',
+                                    rowSnapshot: $specSnapshot + [
+                                        'attribute_id' => $attributeId,
+                                        'attribute_name' => $attribute->name,
+                                        'kept_option_id' => $keptOptionId,
+                                        'incoming_option_id' => $incomingOptionId,
+                                    ],
+                                );
+                            }
+
+                            $matchedOptionIds = $resolvedOptionIds;
+                        } else {
+                            $matchedOptionIds = $incomingOptionId > 0 ? [$incomingOptionId] : [];
+                        }
+                    } else {
+                        if (is_array($resolvedOptionIds)) {
+                            $matchedOptionIds = array_values(array_unique(array_map('intval', array_merge(
+                                $resolvedOptionIds,
+                                $matchedOptionIds,
+                            ))));
+                        }
+                    }
+
+                    if ($matchedOptionIds === []) {
+                        $result['skipped']++;
+
+                        continue;
+                    }
+
                     if (! $options['dry_run']) {
                         if ($attribute->input_type === 'select') {
                             ProductAttributeOption::setSingle(
@@ -677,6 +839,7 @@ class SpecsMatchService
                         }
                     }
 
+                    $resolvedOptionIdsByAttributeId[$attributeId] = $matchedOptionIds;
                     $matchedInCurrentRun[$attributeId] = true;
                     $hasSuccessfulWrites = true;
                     $result['matched_pao']++;
@@ -684,7 +847,7 @@ class SpecsMatchService
                     continue;
                 }
 
-                $parsedValue = $this->parseValueForPav($attribute, $specValue);
+                $parsedValue = $this->parseValueForPav($attribute, $specValue, $specNameRaw);
 
                 if (! $parsedValue['ok']) {
                     $result['skipped']++;
@@ -703,18 +866,32 @@ class SpecsMatchService
                     continue;
                 }
 
+                $resolvedValue = $resolvedPavValuesByAttributeId[$attributeId] ?? null;
+
+                if ($resolvedValue !== null) {
+                    $resolvedValue = $this->mergePavValues(
+                        attribute: $attribute,
+                        currentValue: $resolvedValue,
+                        incomingValue: $parsedValue['value'],
+                        numberConflictStrategy: $options['number_conflict_strategy'],
+                    );
+                } else {
+                    $resolvedValue = $parsedValue['value'];
+                }
+
                 if (! $options['dry_run']) {
                     $pav = ProductAttributeValue::query()->firstOrNew([
                         'product_id' => (int) $product->getKey(),
                         'attribute_id' => $attributeId,
                     ]);
-                    $pav->setTypedValue($attribute, $parsedValue['value']);
+                    $pav->setTypedValue($attribute, $resolvedValue);
                     $pav->attribute()->associate($attribute);
                     $pav->save();
 
                     $existingValuesByAttributeId->put($attributeId, $pav);
                 }
 
+                $resolvedPavValuesByAttributeId[$attributeId] = $resolvedValue;
                 $matchedInCurrentRun[$attributeId] = true;
                 $hasSuccessfulWrites = true;
                 $result['matched_pav']++;
@@ -739,6 +916,7 @@ class SpecsMatchService
      *     dry_run:bool,
      *     only_empty_attributes:bool,
      *     overwrite_existing:bool,
+     *     number_conflict_strategy:string,
      *     auto_create_options:bool,
      *     detach_staging_after_success:bool,
      *     attribute_name_map:array<string, int>,
@@ -760,6 +938,7 @@ class SpecsMatchService
             'dry_run' => $dryRun,
             'only_empty_attributes' => (bool) ($options['only_empty_attributes'] ?? true),
             'overwrite_existing' => (bool) ($options['overwrite_existing'] ?? false),
+            'number_conflict_strategy' => $this->normalizeNumberConflictStrategy($options['number_conflict_strategy'] ?? null),
             'auto_create_options' => (bool) ($options['auto_create_options'] ?? false),
             'detach_staging_after_success' => $dryRun
                 ? false
@@ -800,7 +979,8 @@ class SpecsMatchService
                 continue;
             }
 
-            $normalizedSpecName = NameNormalizer::normalize($specName);
+            $canonicalSpecName = $this->resolveSpecNameContext($specName)['name'];
+            $normalizedSpecName = NameNormalizer::normalize($canonicalSpecName);
             $normalizedAttributeId = (int) $attributeId;
 
             if (! $normalizedSpecName || $normalizedAttributeId <= 0) {
@@ -833,7 +1013,8 @@ class SpecsMatchService
                 $candidate = $key;
             }
 
-            $normalizedName = NameNormalizer::normalize($candidate);
+            $canonicalCandidate = $this->resolveSpecNameContext($candidate)['name'];
+            $normalizedName = NameNormalizer::normalize($canonicalCandidate);
 
             if (! $normalizedName) {
                 continue;
@@ -1024,6 +1205,13 @@ class SpecsMatchService
         }
 
         return $inputType;
+    }
+
+    private function normalizeNumberConflictStrategy(mixed $strategy): string
+    {
+        $strategy = is_string($strategy) ? trim($strategy) : '';
+
+        return in_array($strategy, ['max', 'min'], true) ? $strategy : 'max';
     }
 
     /**
@@ -1361,7 +1549,8 @@ class SpecsMatchService
     {
         $index = [];
         $attributes = Attribute::query()
-            ->select(['id', 'name'])
+            ->with(['unit:id,name,symbol,dimension'])
+            ->select(['id', 'name', 'data_type', 'input_type', 'unit_id'])
             ->orderBy('id')
             ->get();
 
@@ -1505,10 +1694,87 @@ class SpecsMatchService
         return is_string($value->value_text) && trim($value->value_text) !== '';
     }
 
+    private function mergePavValues(
+        Attribute $attribute,
+        mixed $currentValue,
+        mixed $incomingValue,
+        string $numberConflictStrategy,
+    ): mixed {
+        if ($currentValue === null) {
+            return $incomingValue;
+        }
+
+        if ($attribute->data_type === 'number') {
+            $currentNumber = is_numeric($currentValue) ? (float) $currentValue : null;
+            $incomingNumber = is_numeric($incomingValue) ? (float) $incomingValue : null;
+
+            if ($currentNumber === null) {
+                return $incomingValue;
+            }
+
+            if ($incomingNumber === null) {
+                return $currentValue;
+            }
+
+            return $numberConflictStrategy === 'min'
+                ? min($currentNumber, $incomingNumber)
+                : max($currentNumber, $incomingNumber);
+        }
+
+        if ($attribute->data_type === 'range') {
+            $currentRange = $this->normalizeRangeValue($currentValue);
+            $incomingRange = $this->normalizeRangeValue($incomingValue);
+
+            if ($currentRange === null) {
+                return $incomingValue;
+            }
+
+            if ($incomingRange === null) {
+                return $currentValue;
+            }
+
+            return [
+                'min' => min($currentRange['min'], $incomingRange['min']),
+                'max' => max($currentRange['max'], $incomingRange['max']),
+            ];
+        }
+
+        return $currentValue;
+    }
+
+    /**
+     * @return array{min:float, max:float}|null
+     */
+    private function normalizeRangeValue(mixed $value): ?array
+    {
+        if (! is_array($value)) {
+            return null;
+        }
+
+        $min = $value['min'] ?? null;
+        $max = $value['max'] ?? null;
+
+        if (! is_numeric($min) || ! is_numeric($max)) {
+            return null;
+        }
+
+        $min = (float) $min;
+        $max = (float) $max;
+
+        if ($min > $max) {
+            [$min, $max] = [$max, $min];
+        }
+
+        return [
+            'min' => $min,
+            'max' => $max,
+        ];
+    }
+
     /**
      * @return array{ok:bool, value?:mixed, code?:string, message?:string}
      */
-    private function parseValueForPav(Attribute $attribute, string $rawValue): array
+    private function parseValueForPav(Attribute $attribute, string $rawValue, ?string $rawSpecName = null): array
     {
         if ($attribute->data_type === 'boolean') {
             $parsedBoolean = $this->parseBooleanToken($rawValue);
@@ -1536,6 +1802,10 @@ class SpecsMatchService
             }
 
             $unitToken = $parsedNumbers['unit_token'];
+
+            if ($unitToken === null) {
+                $unitToken = $this->resolveSpecNameContext($rawSpecName)['unit_token'];
+            }
             $numbers = $parsedNumbers['numbers'];
 
             if ($attribute->data_type === 'number') {
@@ -1659,6 +1929,82 @@ class SpecsMatchService
             'numbers' => $numbers,
             'unit_token' => $this->extractUnitToken($normalized),
         ];
+    }
+
+    /**
+     * @return array{name:string, unit_token:?string}
+     */
+    private function resolveSpecNameContext(?string $rawSpecName): array
+    {
+        if (! is_string($rawSpecName)) {
+            return [
+                'name' => '',
+                'unit_token' => null,
+            ];
+        }
+
+        $specName = trim($rawSpecName);
+
+        if ($specName === '') {
+            return [
+                'name' => '',
+                'unit_token' => null,
+            ];
+        }
+
+        $currentSpecName = $specName;
+        $resolvedUnitToken = null;
+
+        while (true) {
+            $unitToken = $this->extractUnitToken($currentSpecName);
+            $lookupToken = $this->normalizeLookupToken($unitToken);
+
+            if ($unitToken === null || $lookupToken === null || $this->resolveUnitsByLookupToken($lookupToken) === []) {
+                break;
+            }
+
+            $nameWithoutUnit = $this->stripTrailingUnitFromSpecName($currentSpecName, $unitToken);
+
+            if ($nameWithoutUnit === '' || $nameWithoutUnit === $currentSpecName) {
+                break;
+            }
+
+            if ($resolvedUnitToken === null) {
+                $resolvedUnitToken = $unitToken;
+            }
+
+            $currentSpecName = $nameWithoutUnit;
+        }
+
+        if ($resolvedUnitToken === null) {
+            return [
+                'name' => $specName,
+                'unit_token' => null,
+            ];
+        }
+
+        return [
+            'name' => $currentSpecName,
+            'unit_token' => $resolvedUnitToken,
+        ];
+    }
+
+    private function stripTrailingUnitFromSpecName(string $specName, string $unitToken): string
+    {
+        $escapedUnit = preg_quote($unitToken, '/');
+        $withoutUnit = preg_replace(
+            '/(?:\s*[,;:]?\s*[\(\[]?\s*)'.$escapedUnit.'(?:\s*[\)\]]?\s*)$/ui',
+            '',
+            $specName,
+        );
+
+        if (! is_string($withoutUnit)) {
+            return trim($specName);
+        }
+
+        $withoutUnit = trim($withoutUnit);
+
+        return trim(rtrim($withoutUnit, " \t\n\r\0\x0B,;:-"));
     }
 
     private function extractUnitToken(string $rawValue): ?string

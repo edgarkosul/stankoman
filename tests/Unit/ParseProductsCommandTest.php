@@ -1,10 +1,13 @@
 <?php
 
+use App\Jobs\GenerateImageDerivativesJob;
 use App\Models\Product;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -69,6 +72,9 @@ it('imports metalmaster products into database and attaches staging category', f
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
 
     try {
+        Storage::fake('public');
+        Queue::fake();
+
         $stagingCategoryId = DB::table('categories')->insertGetId([
             'name' => 'Staging',
             'slug' => 'staging',
@@ -78,13 +84,18 @@ it('imports metalmaster products into database and attaches staging category', f
             'updated_at' => now(),
         ]);
 
+        $imageUrl = 'https://metalmaster.ru/files/originals/z50100-main.jpg';
+
         Http::preventStrayRequests();
         Http::fake([
             $productUrl => Http::response(metalmasterProductHtml(
                 title: 'Станок токарно-винторезный Metal Master Z 50100 DRO',
                 price: 1049972,
-                imageUrl: 'https://metalmaster.ru/files/originals/z50100-main.jpg',
+                imageUrl: $imageUrl,
             ), 200),
+            $imageUrl => Http::response('fake-image-binary', 200, [
+                'Content-Type' => 'image/jpeg',
+            ]),
         ]);
 
         $this->artisan('parser:parse-products', [
@@ -92,23 +103,38 @@ it('imports metalmaster products into database and attaches staging category', f
             '--sleep' => 0,
             '--write' => true,
             '--publish' => true,
+            '--download-images' => true,
         ])
             ->expectsOutputToContain('Режим: write')
             ->assertSuccessful();
 
         $product = Product::query()->firstOrFail();
+        $rawSpecs = DB::table('products')
+            ->where('id', $product->id)
+            ->value('specs');
 
         expect($product->slug)->toBe('z50100-dro');
         expect($product->price_amount)->toBe(1049972);
         expect($product->brand)->toBe('MetalMaster');
         expect($product->is_active)->toBeTrue();
-        expect($product->gallery)->toContain('https://metalmaster.ru/files/originals/z50100-main.jpg');
+        expect(str_starts_with((string) $product->image, 'pics/'))->toBeTrue();
+        expect(str_ends_with((string) $product->image, '.jpg'))->toBeTrue();
+        expect($product->gallery)->toBe([$product->image]);
+        expect($rawSpecs)->toBeString();
+        expect($rawSpecs)->toContain('Мощность');
+        expect($rawSpecs)->not->toContain('\\u');
         expect(
             DB::table('product_categories')
                 ->where('product_id', $product->id)
                 ->where('category_id', $stagingCategoryId)
                 ->exists()
         )->toBeTrue();
+
+        Storage::disk('public')->assertExists($product->image);
+
+        Queue::assertPushed(GenerateImageDerivativesJob::class, function (GenerateImageDerivativesJob $job) use ($product): bool {
+            return $job->sourcePath === $product->image;
+        });
     } finally {
         @unlink($bucketsFile);
         dropMetalmasterParserSchemas();
