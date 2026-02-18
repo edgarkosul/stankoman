@@ -7,6 +7,7 @@ use App\Jobs\RunMetalmasterProductImportJob;
 use App\Models\ImportRun;
 use BackedEnum;
 use Filament\Actions\Action as FormAction;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -17,7 +18,9 @@ use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
+use Throwable;
 use UnitEnum;
 
 class MetalmasterProductImport extends Page implements HasForms
@@ -36,7 +39,6 @@ class MetalmasterProductImport extends Page implements HasForms
 
     /** @var array{
      *     bucket: string,
-     *     buckets_file: string,
      *     limit: int,
      *     timeout: int,
      *     delay_ms: int,
@@ -95,13 +97,23 @@ class MetalmasterProductImport extends Page implements HasForms
                 Section::make('Параметры парсинга Metalmaster')
                     ->description('Перед запуском обновите buckets через parser:sitemap-buckets.')
                     ->schema([
-                        TextInput::make('buckets_file')
-                            ->label('Файл buckets (абсолютный путь)')
-                            ->required()
-                            ->hintIcon(Heroicon::InformationCircle, 'По умолчанию: storage/app/parser/metalmaster-buckets.json.'),
-                        TextInput::make('bucket')
-                            ->label('Bucket (пусто = все категории)')
-                            ->hintIcon(Heroicon::InformationCircle, 'Например: promyshlennye или svetilniki.'),
+                        Actions::make([
+                            FormAction::make('regenerate_buckets')
+                                ->label('Перегенерировать список категорий')
+                                ->icon('heroicon-o-arrow-path')
+                                ->color('gray')
+                                ->requiresConfirmation()
+                                ->action('regenerateBuckets'),
+                        ]),
+                        Select::make('bucket')
+                            ->label('Категория на Metalmaster (пусто = все категории)')
+                            ->searchable()
+                            ->placeholder('Все категории')
+                            ->options(fn (): array => $this->bucketOptions(limit: 50))
+                            ->getSearchResultsUsing(fn (string $search): array => $this->bucketOptions(search: $search, limit: 50))
+                            ->getOptionLabelUsing(fn ($value): ?string => $this->bucketOptionLabel((string) $value))
+                            ->optionsLimit(50)
+                            ->hintIcon(Heroicon::InformationCircle, 'Показаны первые 50 категорий. Поиск работает по всему списку buckets.'),
                         TextInput::make('limit')
                             ->label('Лимит URL (0 = все)')
                             ->numeric()
@@ -159,6 +171,47 @@ class MetalmasterProductImport extends Page implements HasForms
     public function doImport(): void
     {
         $this->dispatchImport(true);
+    }
+
+    public function regenerateBuckets(): void
+    {
+        try {
+            $exitCode = Artisan::call('parser:sitemap-buckets', [
+                '--no-interaction' => true,
+            ]);
+        } catch (Throwable $exception) {
+            Notification::make()
+                ->title('Не удалось обновить категории')
+                ->body($exception->getMessage())
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        if ($exitCode !== 0) {
+            $output = trim(Artisan::output());
+
+            Notification::make()
+                ->title('Команда завершилась с ошибкой')
+                ->body($output !== '' ? $output : 'parser:sitemap-buckets завершилась с кодом '.$exitCode.'.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        if (is_array($this->data)) {
+            $this->data['bucket'] = '';
+        }
+
+        $output = trim(Artisan::output());
+
+        Notification::make()
+            ->title('Список категорий обновлен')
+            ->body($output !== '' ? $output : 'Команда parser:sitemap-buckets выполнена успешно.')
+            ->success()
+            ->send();
     }
 
     private function dispatchImport(bool $write): void
@@ -227,7 +280,7 @@ class MetalmasterProductImport extends Page implements HasForms
     private function buildOptions(bool $write): array
     {
         return [
-            'buckets_file' => trim((string) ($this->data['buckets_file'] ?? storage_path('app/parser/metalmaster-buckets.json'))),
+            'buckets_file' => $this->defaultBucketsFile(),
             'bucket' => trim((string) ($this->data['bucket'] ?? '')),
             'limit' => max(0, (int) ($this->data['limit'] ?? 0)),
             'timeout' => max(1, (int) ($this->data['timeout'] ?? 25)),
@@ -314,7 +367,6 @@ class MetalmasterProductImport extends Page implements HasForms
     /**
      * @return array{
      *     bucket: string,
-     *     buckets_file: string,
      *     limit: int,
      *     timeout: int,
      *     delay_ms: int,
@@ -328,7 +380,6 @@ class MetalmasterProductImport extends Page implements HasForms
     {
         return [
             'bucket' => '',
-            'buckets_file' => storage_path('app/parser/metalmaster-buckets.json'),
             'limit' => 0,
             'timeout' => 25,
             'delay_ms' => 250,
@@ -337,5 +388,110 @@ class MetalmasterProductImport extends Page implements HasForms
             'skip_existing' => false,
             'show_samples' => 3,
         ];
+    }
+
+    private function defaultBucketsFile(): string
+    {
+        return storage_path('app/parser/metalmaster-buckets.json');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function bucketOptions(?string $search = null, int $limit = 50): array
+    {
+        $rows = $this->bucketRows();
+
+        if ($search !== null && trim($search) !== '') {
+            $needle = mb_strtolower(trim($search));
+
+            $rows = array_values(array_filter(
+                $rows,
+                function (array $row) use ($needle): bool {
+                    $bucket = mb_strtolower((string) ($row['bucket'] ?? ''));
+                    $categoryUrl = mb_strtolower((string) ($row['category_url'] ?? ''));
+
+                    return str_contains($bucket, $needle) || str_contains($categoryUrl, $needle);
+                },
+            ));
+        }
+
+        $options = [];
+
+        foreach ($rows as $row) {
+            $bucket = trim((string) ($row['bucket'] ?? ''));
+
+            if ($bucket === '') {
+                continue;
+            }
+
+            $options[$bucket] = $this->bucketLabel($row);
+
+            if (count($options) >= $limit) {
+                break;
+            }
+        }
+
+        return $options;
+    }
+
+    private function bucketOptionLabel(string $bucket): ?string
+    {
+        if ($bucket === '') {
+            return null;
+        }
+
+        foreach ($this->bucketRows() as $row) {
+            if ((string) ($row['bucket'] ?? '') === $bucket) {
+                return $this->bucketLabel($row);
+            }
+        }
+
+        return $bucket;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function bucketRows(): array
+    {
+        $raw = @file_get_contents($this->defaultBucketsFile());
+
+        if (! is_string($raw)) {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        if (array_is_list($decoded)) {
+            return array_values(array_filter($decoded, 'is_array'));
+        }
+
+        $rows = $decoded['buckets'] ?? null;
+
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        return array_values(array_filter($rows, 'is_array'));
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function bucketLabel(array $row): string
+    {
+        $bucket = trim((string) ($row['bucket'] ?? ''));
+        $productsCount = max(0, (int) ($row['products_count'] ?? 0));
+
+        if ($productsCount > 0) {
+            return $bucket.' ('.$productsCount.')';
+        }
+
+        return $bucket;
     }
 }

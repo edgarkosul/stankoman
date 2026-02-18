@@ -42,7 +42,7 @@
                         <div class="font-semibold text-zinc-900">{{ $lastSavedRun['mode'] ?? '—' }}</div>
                     </div>
                     <div>
-                        <div class="text-zinc-500">Bucket</div>
+                        <div class="text-zinc-500">Категория</div>
                         <div class="font-semibold text-zinc-900">{{ $lastSavedRun['bucket'] ?: 'все' }}</div>
                     </div>
                     <div>

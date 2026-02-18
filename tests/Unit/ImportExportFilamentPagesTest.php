@@ -17,6 +17,7 @@ use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema as DatabaseSchema;
@@ -292,7 +293,7 @@ test('metalmaster product import form has default fields and hint icons', functi
     $schema = $page->form(Schema::make($page));
 
     $bucketField = $schema->getComponent(
-        fn ($component) => $component instanceof TextInput && $component->getName() === 'bucket',
+        fn ($component) => $component instanceof Select && $component->getName() === 'bucket',
     );
     $bucketsFileField = $schema->getComponent(
         fn ($component) => $component instanceof TextInput && $component->getName() === 'buckets_file',
@@ -308,15 +309,36 @@ test('metalmaster product import form has default fields and hint icons', functi
     );
 
     expect($bucketField)->not->toBeNull();
-    expect($bucketsFileField)->not->toBeNull();
+    expect($bucketsFileField)->toBeNull();
     expect($timeoutField)->not->toBeNull();
     expect($skipExistingField)->not->toBeNull();
     expect($downloadImagesField)->not->toBeNull();
 
+    expect($bucketField->isSearchable())->toBeTrue();
+    expect($bucketField->getHintIcon())->toBe(Heroicon::InformationCircle);
     expect($timeoutField->isNumeric())->toBeTrue();
-    expect($bucketsFileField->isRequired())->toBeTrue();
     expect($downloadImagesField->getHintIcon())->toBe(Heroicon::InformationCircle);
     expect($skipExistingField->getHintIcon())->toBe(Heroicon::InformationCircle);
+});
+
+test('metalmaster product import page can regenerate categories via artisan command', function () {
+    Artisan::shouldReceive('call')
+        ->once()
+        ->with('parser:sitemap-buckets', ['--no-interaction' => true])
+        ->andReturn(0);
+
+    Artisan::shouldReceive('output')
+        ->once()
+        ->andReturn('Buckets saved: 12');
+
+    $page = new MetalmasterProductImport;
+    $page->data = [
+        'bucket' => 'promyshlennye',
+    ];
+    $page->regenerateBuckets();
+
+    expect($page->data)->toBeArray();
+    expect($page->data['bucket'])->toBe('');
 });
 
 test('vactool product import page dispatches queued dry-run job', function () {
