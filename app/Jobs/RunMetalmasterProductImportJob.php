@@ -15,6 +15,10 @@ class RunMetalmasterProductImportJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public int $timeout = 7200;
+
+    public bool $failOnTimeout = true;
+
     /**
      * @param  array<string, mixed>  $options
      */
@@ -87,6 +91,31 @@ class RunMetalmasterProductImportJob implements ShouldQueue
                 'row_snapshot' => null,
             ]);
         }
+    }
+
+    public function failed(?Throwable $exception): void
+    {
+        $run = ImportRun::query()->find($this->runId);
+
+        if (! $run) {
+            return;
+        }
+
+        $run->status = 'failed';
+        $run->finished_at = $run->finished_at ?? now();
+        $run->totals = $this->mergeMeta($run->totals, [
+            'mode' => $this->write ? 'write' : 'dry-run',
+            'is_running' => false,
+        ]);
+        $run->save();
+
+        $run->issues()->create([
+            'row_index' => null,
+            'code' => 'job_failed',
+            'severity' => 'error',
+            'message' => $exception?->getMessage() ?? 'Задача завершилась с ошибкой без текста исключения.',
+            'row_snapshot' => null,
+        ]);
     }
 
     /**

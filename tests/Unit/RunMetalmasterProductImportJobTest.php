@@ -12,33 +12,7 @@ use Tests\TestCase;
 uses(TestCase::class);
 
 it('updates import run totals and status while handling queued metalmaster import job', function () {
-    Schema::dropIfExists('import_issues');
-    Schema::dropIfExists('import_runs');
-
-    Schema::create('import_runs', function (Blueprint $table): void {
-        $table->id();
-        $table->string('type')->default('products');
-        $table->string('status')->default('pending');
-        $table->json('columns')->nullable();
-        $table->json('totals')->nullable();
-        $table->string('source_filename')->nullable();
-        $table->string('stored_path')->nullable();
-        $table->unsignedBigInteger('user_id')->nullable();
-        $table->timestamp('started_at')->nullable();
-        $table->timestamp('finished_at')->nullable();
-        $table->timestamps();
-    });
-
-    Schema::create('import_issues', function (Blueprint $table): void {
-        $table->id();
-        $table->unsignedBigInteger('run_id');
-        $table->integer('row_index')->nullable();
-        $table->string('code', 64);
-        $table->string('severity', 16)->default('error');
-        $table->text('message')->nullable();
-        $table->json('row_snapshot')->nullable();
-        $table->timestamps();
-    });
+    prepareMetalmasterJobImportTables();
 
     $productUrl = 'https://metalmaster.ru/promyshlennye/z50100-dro/';
     $bucketsFile = storage_path('app/testing/metalmaster-buckets-job-'.Str::lower(Str::random(10)).'.json');
@@ -105,6 +79,74 @@ it('updates import run totals and status while handling queued metalmaster impor
         @unlink($bucketsFile);
     }
 });
+
+it('marks run as failed from queue failed callback for metalmaster import job', function () {
+    prepareMetalmasterJobImportTables();
+
+    $options = [
+        'buckets_file' => '/tmp/metalmaster-buckets.json',
+        'bucket' => '',
+        'write' => true,
+    ];
+
+    $run = ImportRun::query()->create([
+        'type' => 'metalmaster_products',
+        'status' => 'pending',
+        'columns' => $options,
+        'totals' => [
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => true,
+            ],
+        ],
+        'started_at' => now(),
+    ]);
+
+    $job = new RunMetalmasterProductImportJob($run->id, $options, true);
+    $job->failed(new RuntimeException('Queue timeout exceeded.'));
+
+    $run->refresh();
+
+    expect($job->timeout)->toBe(7200);
+    expect($job->failOnTimeout)->toBeTrue();
+    expect($run->status)->toBe('failed');
+    expect($run->finished_at)->not->toBeNull();
+    expect((bool) data_get($run->totals, '_meta.is_running'))->toBeFalse();
+    expect($run->issues()->count())->toBe(1);
+    expect($run->issues()->first()?->code)->toBe('job_failed');
+    expect($run->issues()->first()?->message)->toContain('Queue timeout exceeded');
+});
+
+function prepareMetalmasterJobImportTables(): void
+{
+    Schema::dropIfExists('import_issues');
+    Schema::dropIfExists('import_runs');
+
+    Schema::create('import_runs', function (Blueprint $table): void {
+        $table->id();
+        $table->string('type')->default('products');
+        $table->string('status')->default('pending');
+        $table->json('columns')->nullable();
+        $table->json('totals')->nullable();
+        $table->string('source_filename')->nullable();
+        $table->string('stored_path')->nullable();
+        $table->unsignedBigInteger('user_id')->nullable();
+        $table->timestamp('started_at')->nullable();
+        $table->timestamp('finished_at')->nullable();
+        $table->timestamps();
+    });
+
+    Schema::create('import_issues', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('run_id');
+        $table->integer('row_index')->nullable();
+        $table->string('code', 64);
+        $table->string('severity', 16)->default('error');
+        $table->text('message')->nullable();
+        $table->json('row_snapshot')->nullable();
+        $table->timestamps();
+    });
+}
 
 function metalmasterJobProductHtml(string $title, int $price): string
 {
