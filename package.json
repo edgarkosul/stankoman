@@ -5,7 +5,8 @@
     "scripts": {
         "build": "vite build",
         "build:rich-content-plugins": "node bin/build-rich-content-plugins.js",
-        "dev": "vite"
+        "dev": "concurrently --names=server,vite --prefix-colors=cyan,green \"php artisan serve --host=127.0.0.1 --port=8080\" \"vite\"",
+        "dev:vite": "vite"
     },
     "dependencies": {
         "autoprefixer": "^10.4.20",
