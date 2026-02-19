@@ -668,9 +668,23 @@ class ProductsTable
                                 Select::make('link_attribute_id')
                                     ->label('Существующий атрибут')
                                     ->searchable()
+                                    ->live()
                                     ->options(fn (): array => self::attributeLinkOptions())
+                                    ->afterStateUpdated(function (mixed $_state, Set $set): void {
+                                        $set('link_source_unit_id', null);
+                                    })
                                     ->visible(fn (Get $get): bool => $get('decision') === 'link_existing' && (int) ($get('existing_attribute_id') ?? 0) <= 0)
                                     ->required(fn (Get $get): bool => $get('decision') === 'link_existing' && (int) ($get('existing_attribute_id') ?? 0) <= 0),
+
+                                Select::make('link_source_unit_id')
+                                    ->label('Единица во входном значении')
+                                    ->placeholder('Автоопределение из spec')
+                                    ->searchable()
+                                    ->native(false)
+                                    ->options(fn (Get $get): array => self::linkSourceUnitOptionsForProposal(
+                                        self::linkedAttributeIdForProposal($get),
+                                    ))
+                                    ->visible(fn (Get $get): bool => $get('decision') === 'link_existing' && self::isLinkedAttributeNumeric($get)),
 
                                 Select::make('create_data_type')
                                     ->label('Новый data_type')
@@ -782,6 +796,7 @@ class ProductsTable
                                 'detach_staging_after_success' => (bool) ($data['detach_staging_after_success'] ?? false),
                                 'attribute_name_map' => $decisionResolution['name_map'],
                                 'ignored_spec_names' => $decisionResolution['ignored_spec_names'],
+                                'spec_input_unit_map' => $decisionResolution['spec_input_unit_map'] ?? [],
                                 'preflight_issues' => $decisionResolution['issues'],
                             ];
 
@@ -811,6 +826,7 @@ class ProductsTable
                                         'detach_staging_after_success' => $options['detach_staging_after_success'],
                                         'attribute_decisions' => count($decisionRows),
                                         'attribute_links' => count($options['attribute_name_map']),
+                                        'spec_input_unit_overrides' => count($options['spec_input_unit_map']),
                                         'pav_matched' => 0,
                                         'pao_matched' => 0,
                                         'skipped' => 0,
@@ -1059,6 +1075,7 @@ class ProductsTable
                     (int) ($suggestion['existing_attribute_id'] ?? 0) > 0,
                 ),
                 'link_attribute_id' => ($suggestion['existing_attribute_id'] ?? null) ? (int) $suggestion['existing_attribute_id'] : null,
+                'link_source_unit_id' => null,
                 'create_attribute_name' => (string) $suggestion['spec_name'],
                 'create_data_type' => $createDataType,
                 'create_input_type' => $createInputType,
@@ -1112,6 +1129,62 @@ class ProductsTable
         }
 
         return $normalizedInputType;
+    }
+
+    private static function linkedAttributeIdForProposal(Get $get): int
+    {
+        $linkAttributeId = (int) ($get('link_attribute_id') ?? 0);
+
+        if ($linkAttributeId > 0) {
+            return $linkAttributeId;
+        }
+
+        return (int) ($get('existing_attribute_id') ?? 0);
+    }
+
+    private static function isLinkedAttributeNumeric(Get $get): bool
+    {
+        $attributeId = self::linkedAttributeIdForProposal($get);
+
+        if ($attributeId <= 0) {
+            return false;
+        }
+
+        $dataType = Attribute::query()
+            ->whereKey($attributeId)
+            ->value('data_type');
+
+        return in_array((string) $dataType, ['number', 'range'], true);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function linkSourceUnitOptionsForProposal(int $attributeId): array
+    {
+        if ($attributeId <= 0) {
+            return [];
+        }
+
+        $attribute = Attribute::query()
+            ->with(['unit:id,name,symbol,dimension', 'units:id,name,symbol,dimension'])
+            ->find($attributeId);
+
+        if (! $attribute || ! in_array((string) $attribute->data_type, ['number', 'range'], true)) {
+            return [];
+        }
+
+        $units = $attribute->units;
+
+        if ($attribute->unit && ! $units->contains(fn (Unit $unit): bool => (int) $unit->getKey() === (int) $attribute->unit->getKey())) {
+            $units = $units->prepend($attribute->unit);
+        }
+
+        return $units
+            ->unique(fn (Unit $unit): int => (int) $unit->getKey())
+            ->sortBy(fn (Unit $unit): string => mb_strtolower($unit->name, 'UTF-8'))
+            ->mapWithKeys(fn (Unit $unit): array => [(int) $unit->getKey() => self::unitOptionLabel($unit)])
+            ->all();
     }
 
     /**
@@ -1187,20 +1260,23 @@ class ProductsTable
 
         return $query
             ->get()
-            ->mapWithKeys(function (Unit $unit): array {
-                $label = $unit->name;
-
-                if ($unit->symbol) {
-                    $label .= ' ('.$unit->symbol.')';
-                }
-
-                if ($unit->dimension) {
-                    $label .= ' — '.$unit->dimension;
-                }
-
-                return [(int) $unit->id => $label];
-            })
+            ->mapWithKeys(fn (Unit $unit): array => [(int) $unit->id => self::unitOptionLabel($unit)])
             ->all();
+    }
+
+    private static function unitOptionLabel(Unit $unit): string
+    {
+        $label = $unit->name;
+
+        if ($unit->symbol) {
+            $label .= ' ('.$unit->symbol.')';
+        }
+
+        if ($unit->dimension) {
+            $label .= ' — '.$unit->dimension;
+        }
+
+        return $label;
     }
 
     /**
@@ -1301,6 +1377,9 @@ class ProductsTable
                     'spec_name' => (string) ($row['spec_name'] ?? ''),
                     'decision' => (string) ($row['decision'] ?? 'ignore'),
                     'link_attribute_id' => $linkAttributeId,
+                    'link_source_unit_id' => (($row['link_source_unit_id'] ?? null) !== null)
+                        ? (int) $row['link_source_unit_id']
+                        : null,
                     'create_attribute_name' => $createAttributeName,
                     'create_data_type' => $createDataType,
                     'create_input_type' => self::normalizeInputTypeForDataType(

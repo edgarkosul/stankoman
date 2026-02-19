@@ -833,6 +833,96 @@ it('matches mapped spec name when raw spec has chained trailing units', function
         ->and((float) $persistedValue->value_number)->toBe(0.9);
 });
 
+it('uses explicit spec input unit overrides when matching linked numeric attributes', function () {
+    $litersPerMinute = Unit::query()->create([
+        'name' => 'Литров в минуту',
+        'symbol' => 'л/мин',
+        'dimension' => 'volume_flow_rate',
+        'base_symbol' => 'm3/s',
+        'si_factor' => 0.000016666667,
+        'si_offset' => 0,
+    ]);
+
+    $cubicMetersPerMinute = Unit::query()->create([
+        'name' => 'Кубических метров в минуту',
+        'symbol' => 'м3/мин',
+        'dimension' => 'volume_flow_rate',
+        'base_symbol' => 'm3/s',
+        'si_factor' => 0.016666666667,
+        'si_offset' => 0,
+    ]);
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Компрессоры',
+        'slug' => 'compressors-flow-rate',
+        'parent_id' => -1,
+        'order' => 39,
+        'is_active' => true,
+    ]);
+
+    $airFlowAttribute = Attribute::query()->create([
+        'name' => 'Производительность',
+        'slug' => 'air-flow',
+        'data_type' => 'number',
+        'input_type' => 'number',
+        'unit_id' => $litersPerMinute->id,
+        'is_filterable' => true,
+    ]);
+
+    $airFlowAttribute->units()->sync([
+        $litersPerMinute->id => ['is_default' => true, 'sort_order' => 0],
+        $cubicMetersPerMinute->id => ['is_default' => false, 'sort_order' => 1],
+    ]);
+
+    $targetCategory->attributeDefs()->attach($airFlowAttribute->id);
+
+    $product = Product::query()->create([
+        'name' => 'Компрессор P',
+        'slug' => 'compressor-p',
+        'price_amount' => 20500,
+        'specs' => [
+            ['name' => 'Производительность', 'value' => '0,42 420', 'source' => 'dom'],
+        ],
+    ]);
+
+    $product->categories()->attach($targetCategory->id, ['is_primary' => true]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'specs_match',
+        'status' => 'pending',
+    ]);
+
+    $service = new SpecsMatchService;
+    $result = $service->run($run, [$product->id], [
+        'target_category_id' => $targetCategory->id,
+        'dry_run' => false,
+        'only_empty_attributes' => true,
+        'overwrite_existing' => false,
+        'auto_create_options' => false,
+        'detach_staging_after_success' => false,
+        'attribute_name_map' => [
+            'Производительность' => $airFlowAttribute->id,
+        ],
+        'spec_input_unit_map' => [
+            'Производительность' => $cubicMetersPerMinute->id,
+        ],
+    ]);
+
+    expect($result['matched_pav'])->toBe(1)
+        ->and($result['skipped'])->toBe(0);
+
+    $persistedValue = ProductAttributeValue::query()
+        ->where('product_id', $product->id)
+        ->where('attribute_id', $airFlowAttribute->id)
+        ->first();
+
+    expect($persistedValue)->not->toBeNull()
+        ->and((float) $persistedValue->value_number)->toBeGreaterThan(419.9)
+        ->and((float) $persistedValue->value_number)->toBeLessThan(420.1);
+
+    expect($run->issues()->pluck('code')->all())->not->toContain('spec_input_unit_invalid');
+});
+
 it('resolves attribute decisions and creates or links attributes in apply mode', function () {
     $pascal = Unit::query()->create([
         'name' => 'Паскаль',

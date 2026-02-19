@@ -248,6 +248,96 @@ it('applies attribute decisions from specs match confirmation wizard', function 
     });
 });
 
+it('stores input unit overrides for linked numeric specs in specs match options', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Винтовые компрессоры',
+        'slug' => 'screw-compressors',
+        'parent_id' => -1,
+        'order' => 121,
+        'is_active' => true,
+    ]);
+
+    $litersPerMinute = Unit::query()->create([
+        'name' => 'Литров в минуту',
+        'symbol' => 'л/мин',
+        'dimension' => 'volume_flow_rate',
+        'base_symbol' => 'm3/s',
+        'si_factor' => 0.000016666667,
+        'si_offset' => 0,
+    ]);
+
+    $cubicMetersPerMinute = Unit::query()->create([
+        'name' => 'Кубических метров в минуту',
+        'symbol' => 'м3/мин',
+        'dimension' => 'volume_flow_rate',
+        'base_symbol' => 'm3/s',
+        'si_factor' => 0.016666666667,
+        'si_offset' => 0,
+    ]);
+
+    $existingAttribute = Attribute::query()->create([
+        'name' => 'Производительность',
+        'slug' => 'productivity',
+        'data_type' => 'number',
+        'input_type' => 'number',
+        'unit_id' => $litersPerMinute->id,
+        'is_filterable' => true,
+    ]);
+
+    $existingAttribute->units()->sync([
+        $litersPerMinute->id => ['is_default' => true, 'sort_order' => 0],
+        $cubicMetersPerMinute->id => ['is_default' => false, 'sort_order' => 1],
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Компрессор C',
+        'slug' => 'compressor-c',
+        'price_amount' => 13500,
+        'specs' => [
+            ['name' => 'Производительность', 'value' => '0,42 420', 'source' => 'dom'],
+        ],
+    ]);
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$product])
+        ->callTableBulkAction('massEdit', [$product], [
+            'mode' => 'specs_match',
+            'target_category_id' => $targetCategory->id,
+            'dry_run' => true,
+            'only_empty_attributes' => true,
+            'overwrite_existing' => false,
+            'auto_create_options' => false,
+            'detach_staging_after_success' => false,
+            'attribute_proposals' => [
+                [
+                    'spec_name' => 'Производительность',
+                    'decision' => 'link_existing',
+                    'existing_attribute_id' => $existingAttribute->id,
+                    'link_source_unit_id' => $cubicMetersPerMinute->id,
+                ],
+            ],
+        ]);
+
+    $run = ImportRun::query()->latest('id')->first();
+    $normalizedSpecName = NameNormalizer::normalize('Производительность');
+
+    expect($run)->not->toBeNull();
+
+    expect((int) data_get($run?->columns, "options.spec_input_unit_map.{$normalizedSpecName}"))
+        ->toBe($cubicMetersPerMinute->id);
+
+    Queue::assertPushed(RunSpecsMatchJob::class, function (RunSpecsMatchJob $job) use ($run, $product, $normalizedSpecName, $cubicMetersPerMinute): bool {
+        return $job->runId === $run?->id
+            && $job->productIds === [$product->id]
+            && (int) data_get($job->options, "spec_input_unit_map.{$normalizedSpecName}") === $cubicMetersPerMinute->id;
+    });
+});
+
 it('updates discount price for selected products in fields mass edit mode', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

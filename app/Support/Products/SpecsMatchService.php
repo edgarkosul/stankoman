@@ -170,6 +170,7 @@ class SpecsMatchService
      * @return array{
      *     name_map:array<string, int>,
      *     ignored_spec_names:array<int, string>,
+     *     spec_input_unit_map:array<string, int>,
      *     issues:array<int, array{
      *         code:string,
      *         severity:string,
@@ -186,6 +187,7 @@ class SpecsMatchService
             return [
                 'name_map' => [],
                 'ignored_spec_names' => [],
+                'spec_input_unit_map' => [],
                 'issues' => [[
                     'code' => 'target_category_not_leaf',
                     'severity' => 'error',
@@ -199,6 +201,7 @@ class SpecsMatchService
 
         $nameMap = [];
         $ignoredSpecNames = [];
+        $specInputUnitMap = [];
         $issues = [];
         $pendingCreateGroups = [];
         $nextOrder = max(0, (int) DB::table('category_attribute')
@@ -260,6 +263,12 @@ class SpecsMatchService
                 }
 
                 $nameMap[$normalizedSpecName] = (int) $attribute->getKey();
+
+                $linkSourceUnitId = (int) ($decisionRow['link_source_unit_id'] ?? 0);
+
+                if ($linkSourceUnitId > 0 && in_array((string) $attribute->data_type, ['number', 'range'], true)) {
+                    $specInputUnitMap[$normalizedSpecName] = $linkSourceUnitId;
+                }
 
                 if ($applyChanges) {
                     $isAttached = $this->attachAttributeToCategory(
@@ -488,6 +497,7 @@ class SpecsMatchService
         return [
             'name_map' => $nameMap,
             'ignored_spec_names' => array_values(array_unique($ignoredSpecNames)),
+            'spec_input_unit_map' => $specInputUnitMap,
             'issues' => $issues,
         ];
     }
@@ -847,7 +857,37 @@ class SpecsMatchService
                     continue;
                 }
 
-                $parsedValue = $this->parseValueForPav($attribute, $specValue, $specNameRaw);
+                $forcedInputUnitId = (int) ($options['spec_input_unit_map'][$normalizedSpecName] ?? 0);
+                $forcedInputUnit = null;
+
+                if ($forcedInputUnitId > 0) {
+                    $forcedInputUnit = $this->resolveUnitById($attribute, $forcedInputUnitId);
+
+                    if (! $forcedInputUnit) {
+                        $result['skipped']++;
+                        $result['issues'] += $this->addIssue(
+                            run: $run,
+                            productId: (int) $product->getKey(),
+                            code: 'spec_input_unit_invalid',
+                            message: "Единица #{$forcedInputUnitId} недоступна для атрибута '{$attribute->name}'.",
+                            severity: 'warning',
+                            rowSnapshot: $specSnapshot + [
+                                'attribute_id' => $attributeId,
+                                'attribute_name' => $attribute->name,
+                                'forced_input_unit_id' => $forcedInputUnitId,
+                            ],
+                        );
+
+                        continue;
+                    }
+                }
+
+                $parsedValue = $this->parseValueForPav(
+                    $attribute,
+                    $specValue,
+                    $specNameRaw,
+                    $forcedInputUnit,
+                );
 
                 if (! $parsedValue['ok']) {
                     $result['skipped']++;
@@ -920,6 +960,7 @@ class SpecsMatchService
      *     auto_create_options:bool,
      *     detach_staging_after_success:bool,
      *     attribute_name_map:array<string, int>,
+     *     spec_input_unit_map:array<string, int>,
      *     ignored_spec_names:array<string, bool>,
      *     preflight_issues:array<int, array{
      *         code:string,
@@ -944,6 +985,7 @@ class SpecsMatchService
                 ? false
                 : (bool) ($options['detach_staging_after_success'] ?? false),
             'attribute_name_map' => $this->normalizeAttributeNameMap($options['attribute_name_map'] ?? []),
+            'spec_input_unit_map' => $this->normalizeSpecInputUnitMap($options['spec_input_unit_map'] ?? []),
             'ignored_spec_names' => $this->normalizeIgnoredSpecNames($options['ignored_spec_names'] ?? []),
             'preflight_issues' => $this->normalizePreflightIssues($options['preflight_issues'] ?? []),
         ];
@@ -988,6 +1030,36 @@ class SpecsMatchService
             }
 
             $map[$normalizedSpecName] = $normalizedAttributeId;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function normalizeSpecInputUnitMap(mixed $rawMap): array
+    {
+        if (! is_array($rawMap)) {
+            return [];
+        }
+
+        $map = [];
+
+        foreach ($rawMap as $specName => $unitId) {
+            if (! is_string($specName)) {
+                continue;
+            }
+
+            $canonicalSpecName = $this->resolveSpecNameContext($specName)['name'];
+            $normalizedSpecName = NameNormalizer::normalize($canonicalSpecName);
+            $normalizedUnitId = (int) $unitId;
+
+            if (! $normalizedSpecName || $normalizedUnitId <= 0) {
+                continue;
+            }
+
+            $map[$normalizedSpecName] = $normalizedUnitId;
         }
 
         return $map;
@@ -1774,8 +1846,12 @@ class SpecsMatchService
     /**
      * @return array{ok:bool, value?:mixed, code?:string, message?:string}
      */
-    private function parseValueForPav(Attribute $attribute, string $rawValue, ?string $rawSpecName = null): array
-    {
+    private function parseValueForPav(
+        Attribute $attribute,
+        string $rawValue,
+        ?string $rawSpecName = null,
+        ?Unit $forcedInputUnit = null,
+    ): array {
         if ($attribute->data_type === 'boolean') {
             $parsedBoolean = $this->parseBooleanToken($rawValue);
 
@@ -1803,13 +1879,18 @@ class SpecsMatchService
 
             $unitToken = $parsedNumbers['unit_token'];
 
-            if ($unitToken === null) {
+            if ($forcedInputUnit === null && $unitToken === null) {
                 $unitToken = $this->resolveSpecNameContext($rawSpecName)['unit_token'];
             }
             $numbers = $parsedNumbers['numbers'];
 
             if ($attribute->data_type === 'number') {
-                $converted = $this->convertToAttributeUnit($attribute, $numbers[0], $unitToken);
+                $converted = $this->convertToAttributeUnit(
+                    $attribute,
+                    $numbers[0],
+                    $unitToken,
+                    $forcedInputUnit,
+                );
 
                 if (! $converted['ok']) {
                     return $converted;
@@ -1824,12 +1905,22 @@ class SpecsMatchService
             $min = $numbers[0];
             $max = $numbers[1] ?? $numbers[0];
 
-            $convertedMin = $this->convertToAttributeUnit($attribute, $min, $unitToken);
+            $convertedMin = $this->convertToAttributeUnit(
+                $attribute,
+                $min,
+                $unitToken,
+                $forcedInputUnit,
+            );
             if (! $convertedMin['ok']) {
                 return $convertedMin;
             }
 
-            $convertedMax = $this->convertToAttributeUnit($attribute, $max, $unitToken);
+            $convertedMax = $this->convertToAttributeUnit(
+                $attribute,
+                $max,
+                $unitToken,
+                $forcedInputUnit,
+            );
             if (! $convertedMax['ok']) {
                 return $convertedMax;
             }
@@ -2032,22 +2123,29 @@ class SpecsMatchService
     /**
      * @return array{ok:bool, value?:float, code?:string, message?:string}
      */
-    private function convertToAttributeUnit(Attribute $attribute, float $value, ?string $unitToken): array
-    {
-        if ($unitToken === null) {
+    private function convertToAttributeUnit(
+        Attribute $attribute,
+        float $value,
+        ?string $unitToken,
+        ?Unit $forcedInputUnit = null,
+    ): array {
+        if ($forcedInputUnit === null && $unitToken === null) {
             return [
                 'ok' => true,
                 'value' => $value,
             ];
         }
 
-        $resolvedUnit = $this->resolveUnitByToken($attribute, $unitToken);
+        $resolvedUnit = $forcedInputUnit ?? $this->resolveUnitByToken($attribute, $unitToken ?? '');
 
         if (! $resolvedUnit) {
+            $unitLabel = $unitToken ?? ($forcedInputUnit?->symbol ?: $forcedInputUnit?->name);
+            $unitLabel ??= '—';
+
             return [
                 'ok' => false,
                 'code' => 'unit_ambiguous',
-                'message' => "Не удалось сопоставить единицу '{$unitToken}' для атрибута '{$attribute->name}'.",
+                'message' => "Не удалось сопоставить единицу '{$unitLabel}' для атрибута '{$attribute->name}'.",
             ];
         }
 
@@ -2062,10 +2160,13 @@ class SpecsMatchService
         $si = $attribute->toSiWithUnit($value, $resolvedUnit);
 
         if ($si === null) {
+            $unitLabel = $unitToken ?? ($forcedInputUnit?->symbol ?: $forcedInputUnit?->name);
+            $unitLabel ??= '—';
+
             return [
                 'ok' => false,
                 'code' => 'unit_ambiguous',
-                'message' => "Не удалось конвертировать значение '{$value}' ({$unitToken}).",
+                'message' => "Не удалось конвертировать значение '{$value}' ({$unitLabel}).",
             ];
         }
 
@@ -2085,6 +2186,18 @@ class SpecsMatchService
         ];
     }
 
+    private function resolveUnitById(Attribute $attribute, int $unitId): ?Unit
+    {
+        if ($unitId <= 0) {
+            return null;
+        }
+
+        $unit = $this->availableUnitsForAttribute($attribute)
+            ->first(fn (Unit $unit): bool => (int) $unit->getKey() === $unitId);
+
+        return $unit instanceof Unit ? $unit : null;
+    }
+
     private function resolveUnitByToken(Attribute $attribute, string $unitToken): ?Unit
     {
         $lookupToken = $this->normalizeLookupToken($unitToken);
@@ -2093,15 +2206,7 @@ class SpecsMatchService
             return null;
         }
 
-        $units = $attribute->relationLoaded('units')
-            ? $attribute->units
-            : $attribute->units()->get();
-
-        if ($attribute->unit && ! $units->contains(fn (Unit $unit): bool => (int) $unit->getKey() === (int) $attribute->unit->getKey())) {
-            $units = $units->prepend($attribute->unit);
-        }
-
-        $matches = $units->filter(function (Unit $unit) use ($lookupToken): bool {
+        $matches = $this->availableUnitsForAttribute($attribute)->filter(function (Unit $unit) use ($lookupToken): bool {
             return in_array($lookupToken, $this->unitLookupTokens($unit), true);
         })->values();
 
@@ -2110,6 +2215,22 @@ class SpecsMatchService
         }
 
         return null;
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, Unit>
+     */
+    private function availableUnitsForAttribute(Attribute $attribute)
+    {
+        $units = $attribute->relationLoaded('units')
+            ? $attribute->units
+            : $attribute->units()->get();
+
+        if ($attribute->unit && ! $units->contains(fn (Unit $unit): bool => (int) $unit->getKey() === (int) $attribute->unit->getKey())) {
+            $units = $units->prepend($attribute->unit);
+        }
+
+        return $units->values();
     }
 
     /**
