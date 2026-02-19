@@ -39,6 +39,7 @@ use SolutionForest\FilamentTree\Concern\ModelTree;
  * @property-read mixed $slug_path
  *
  * @method static Builder<static>|Category availableAsParent()
+ * @method static Builder<static>|Category active()
  * @method static Builder<static>|Category isRoot()
  * @method static Builder<static>|Category leaf()
  * @method static Builder<static>|Category newModelQuery()
@@ -135,6 +136,11 @@ class Category extends Model
     public function scopeRoots(Builder $q): Builder
     {
         return $q->where('parent_id', -1)->orderBy('order');
+    }
+
+    public function scopeActive(Builder $q): Builder
+    {
+        return $q->where('is_active', true);
     }
 
     public function scopeLeaf(Builder $q): Builder

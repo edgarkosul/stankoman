@@ -2,15 +2,15 @@
 
 namespace App\View\Components\Navigation;
 
-use Closure;
+use App\Models\Category;
 use App\Models\Page;
 use App\Models\Product;
-use App\Models\Category;
-use Illuminate\Support\Carbon;
-use Illuminate\View\Component;
+use Closure;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
+use Illuminate\View\Component;
 
 class Breadcrumbs extends Component
 {
@@ -152,7 +152,7 @@ class Breadcrumbs extends Component
     /** Собираем крошки по Category-цепочке */
     protected function fromCategory(Category $category, bool $makeLastLink = false): array
     {
-        $key = "breadcrumbs:cat:{$category->getKey()}:linklast:" . ($makeLastLink ? '1' : '0');
+        $key = "breadcrumbs:cat:{$category->getKey()}:linklast:".($makeLastLink ? '1' : '0');
 
         return Cache::remember($key, $this->ttl, function () use ($category, $makeLastLink) {
             $chain = $category->ancestorsAndSelf();
@@ -160,7 +160,8 @@ class Breadcrumbs extends Component
 
             $items = $chain->map(function ($c) use (&$path) {
                 $slug = (string) ($c->slug ?? '');
-                $path = ltrim($path . '/' . $slug, '/');
+                $path = ltrim($path.'/'.$slug, '/');
+
                 return [
                     'title' => (string) $c->name,
                     'url' => route('catalog.leaf', ['path' => $path]),
@@ -189,7 +190,7 @@ class Breadcrumbs extends Component
             return [];
         }
 
-        $cacheKey = 'breadcrumbs:path:' . md5($path);
+        $cacheKey = 'breadcrumbs:path:'.md5($path);
 
         return Cache::remember($cacheKey, $this->ttl, function () use ($segments) {
             $items = [];
@@ -197,9 +198,10 @@ class Breadcrumbs extends Component
             $parentId = Category::defaultParentKey();
 
             foreach ($segments as $seg) {
-                $accum = ltrim($accum . '/' . $seg, '/');
+                $accum = ltrim($accum.'/'.$seg, '/');
 
                 $cat = Category::query()
+                    ->active()
                     ->where('parent_id', $parentId)
                     ->where('slug', $seg)
                     ->first();

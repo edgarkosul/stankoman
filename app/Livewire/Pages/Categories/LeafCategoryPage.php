@@ -53,7 +53,7 @@ class LeafCategoryPage extends Component
 
         $this->filtersSchema = [];
 
-        if ($this->category && ! $this->category->children()->exists()) {
+        if ($this->category && ! $this->category->children()->active()->exists()) {
             $schema = ProductFilterService::schemaForCategory($this->category)
                 ->map
                 ->toArray()
@@ -422,6 +422,7 @@ class LeafCategoryPage extends Component
 
         foreach ($slugs as $slug) {
             $category = Category::query()
+                ->active()
                 ->where('parent_id', $parentId)
                 ->where('slug', $slug)
                 ->firstOrFail();
@@ -468,8 +469,10 @@ class LeafCategoryPage extends Component
     {
         if (! $this->category) {
             $subcategories = Category::query()
+                ->active()
                 ->where('parent_id', Category::defaultParentKey())
                 ->with(['children' => fn ($q) => $q
+                    ->active()
                     ->select(['id', 'name', 'slug', 'parent_id'])
                     ->orderBy('order')])
                 ->orderBy('order')
@@ -483,9 +486,11 @@ class LeafCategoryPage extends Component
             ]);
         }
 
-        if ($this->category->children()->exists()) {
+        if ($this->category->children()->active()->exists()) {
             $subcategories = $this->category->children()
+                ->active()
                 ->with(['children' => fn ($q) => $q
+                    ->active()
                     ->select(['id', 'name', 'slug', 'parent_id'])
                     ->orderBy('order')])
                 ->select(['id', 'name', 'slug', 'img', 'parent_id'])
