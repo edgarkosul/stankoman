@@ -284,6 +284,10 @@ return [
 
     'markdown_editor' => [
 
+        'file_attachments_accepted_file_types_message' => 'Загруженные файлы должны быть следующих типов: :values.',
+
+        'file_attachments_max_size_message' => 'Размер загруженных файлов не должен превышать :max килобайт.',
+
         'tools' => [
             'attach_files' => 'Прикрепить файлы',
             'blockquote' => 'Цитата',
@@ -532,9 +536,44 @@ return [
 
             ],
 
+            'text_color' => [
+
+                'label' => 'Цвет текста',
+
+                'modal' => [
+
+                    'heading' => 'Цвет текста',
+
+                    'form' => [
+
+                        'color' => [
+                            'label' => 'Цвет',
+                        ],
+
+                        'custom_color' => [
+                            'label' => 'Произвольный цвет',
+                        ],
+
+                    ],
+
+                ],
+
+            ],
+
         ],
 
+        'file_attachments_accepted_file_types_message' => 'Загруженные файлы должны быть следующих типов: :values.',
+
+        'file_attachments_max_size_message' => 'Размер загруженных файлов не должен превышать :max килобайт.',
+
         'no_merge_tag_search_results_message' => 'Нет результатов по тегам слияния.',
+
+        'mentions' => [
+            'no_options_message' => 'Нет доступных вариантов.',
+            'no_search_results_message' => 'Нет результатов, соответствующих вашему запросу.',
+            'search_prompt' => 'Введите текст для поиска...',
+            'searching_message' => 'Поиск...',
+        ],
 
         'tools' => [
             'align_center' => 'По центру',
@@ -577,7 +616,9 @@ return [
             'table_delete_row' => 'Удалить строку',
             'table_merge_cells' => 'Объединить ячейки',
             'table_split_cell' => 'Разделить ячейку',
+            'table_toggle_header_cell' => 'Переключить заголовочную ячейку',
             'table_toggle_header_row' => 'Переключить заголовок',
+            'text_color' => 'Цвет текста',
             'underline' => 'Подчеркнутый',
             'undo' => 'Отменить',
         ],
@@ -645,6 +686,8 @@ return [
 
         'max_items_message' => 'Только :count можно выбрать.',
 
+        'no_options_message' => 'Нет доступных вариантов.',
+
         'no_search_results_message' => 'Нет вариантов, соответствующих вашему запросу.',
 
         'placeholder' => 'Выбрать вариант',
@@ -656,6 +699,14 @@ return [
     ],
 
     'tags_input' => [
+        'actions' => [
+
+            'delete' => [
+                'label' => 'Удалить',
+            ],
+
+        ],
+
         'placeholder' => 'Новый тег',
     ],
 
