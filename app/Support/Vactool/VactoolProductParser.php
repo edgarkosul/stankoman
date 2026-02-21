@@ -33,6 +33,7 @@ class VactoolProductParser
 
         $this->parseJsonLd($crawler, $result);
         $this->parseInertia($crawler, $result);
+        $this->applyHtmlFallbacks($crawler, $result);
         $result['specs'] = array_merge($result['specs'], $this->extractSpecsFromHtml($html));
 
         $result['images'] = $this->uniqueStrings($result['images']);
@@ -53,7 +54,7 @@ class VactoolProductParser
                 continue;
             }
 
-            $decoded = json_decode($payload, true);
+            $decoded = $this->decodeJsonPayload($payload);
 
             if (! is_array($decoded)) {
                 continue;
@@ -86,7 +87,7 @@ class VactoolProductParser
         }
 
         $decodedData = html_entity_decode($rawPageData, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $page = json_decode($decodedData, true);
+        $page = $this->decodeJsonPayload($decodedData);
 
         if (! is_array($page)) {
             return;
@@ -160,6 +161,67 @@ class VactoolProductParser
                 $result['breadcrumbs'][] = $name;
             }
         }
+    }
+
+    private function applyHtmlFallbacks(Crawler $crawler, array &$result): void
+    {
+        if ($result['title'] === null) {
+            $result['title'] = $this->extractFallbackTitle($crawler);
+        }
+    }
+
+    private function extractFallbackTitle(Crawler $crawler): ?string
+    {
+        $h1Node = $crawler->filter('h1');
+
+        if ($h1Node->count() > 0) {
+            $titleFromHeading = $this->sanitizeString($h1Node->first()->text());
+
+            if ($titleFromHeading !== null) {
+                return $titleFromHeading;
+            }
+        }
+
+        $ogTitleNode = $crawler->filter('meta[property="og:title"]');
+
+        if ($ogTitleNode->count() > 0) {
+            $titleFromMeta = $this->normalizePageTitle($ogTitleNode->first()->attr('content'));
+
+            if ($titleFromMeta !== null) {
+                return $titleFromMeta;
+            }
+        }
+
+        $titleNode = $crawler->filter('title');
+
+        if ($titleNode->count() === 0) {
+            return null;
+        }
+
+        return $this->normalizePageTitle($titleNode->first()->text());
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function decodeJsonPayload(string $payload): ?array
+    {
+        $decoded = json_decode($payload, true, 512, JSON_INVALID_UTF8_SUBSTITUTE);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    private function normalizePageTitle(mixed $value): ?string
+    {
+        $title = $this->sanitizeString($value);
+
+        if ($title === null) {
+            return null;
+        }
+
+        $normalized = preg_replace('/\s*[|\-–—]\s*Vactool\s*$/iu', '', $title);
+
+        return $this->sanitizeString($normalized);
     }
 
     private function applyProductJsonLd(array $item, array &$result): void

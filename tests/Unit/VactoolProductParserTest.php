@@ -157,3 +157,64 @@ it('merges specs from structured data and dom without replacing jsonld source', 
         'source' => 'dom',
     ]);
 });
+
+it('decodes product payloads with malformed utf8 bytes', function () {
+    $invalidSuffix = chr(194);
+
+    $jsonLd = json_encode([
+        '@context' => 'https://schema.org',
+        '@type' => 'Product',
+        'name' => 'Промышленный пылесос VACTOOL SA36M60',
+        'brand' => ['name' => 'Vactool'],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    $jsonLd = str_replace('SA36M60', 'SA36M60'.$invalidSuffix, $jsonLd);
+
+    $inertiaPayload = [
+        'props' => [
+            'product' => [
+                'title' => 'Промышленный пылесос VACTOOL SA36M60',
+                'brand' => ['name' => 'Vactool'],
+            ],
+        ],
+    ];
+
+    $dataPage = htmlspecialchars(
+        json_encode($inertiaPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ENT_QUOTES | ENT_HTML5,
+        'UTF-8'
+    );
+
+    $dataPage = str_replace('SA36M60', 'SA36M60'.$invalidSuffix, $dataPage);
+
+    $html = '<html><head><script type="application/ld+json">'.$jsonLd.'</script></head><body>'
+        .'<div id="app" data-page="'.$dataPage.'"></div>'
+        .'</body></html>';
+
+    $parsed = (new VactoolProductParser)->parse($html, 'https://vactool.ru/catalog/product-vt-utf8');
+
+    expect($parsed['source']['jsonld'])->toBeTrue();
+    expect($parsed['source']['inertia'])->toBeTrue();
+    expect($parsed['title'])->toContain('VACTOOL SA36M60');
+    expect($parsed['brand'])->toBe('Vactool');
+});
+
+it('falls back to html title when structured payload is invalid', function () {
+    $html = <<<'HTML'
+<html>
+<head>
+    <script type="application/ld+json">{"@type":"Product","name":"broken"</script>
+    <title>Промышленный пылесос VACTOOL SA36M60 - Vactool</title>
+</head>
+<body>
+    <h1>Промышленный пылесос VACTOOL SA36M60</h1>
+</body>
+</html>
+HTML;
+
+    $parsed = (new VactoolProductParser)->parse($html, 'https://vactool.ru/catalog/product-vt-fallback');
+
+    expect($parsed['source']['jsonld'])->toBeFalse();
+    expect($parsed['source']['inertia'])->toBeFalse();
+    expect($parsed['title'])->toBe('Промышленный пылесос VACTOOL SA36M60');
+});
