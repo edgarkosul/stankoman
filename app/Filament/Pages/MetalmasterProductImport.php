@@ -27,6 +27,8 @@ class MetalmasterProductImport extends Page implements HasForms
 {
     use InteractsWithForms;
 
+    private const DISPLAY_TIMEZONE = 'Europe/Moscow';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-cloud-arrow-down';
 
     protected static string|UnitEnum|null $navigationGroup = 'Импорт/Экспорт';
@@ -352,7 +354,7 @@ class MetalmasterProductImport extends Page implements HasForms
             'samples_count' => count(is_array($totals['_samples'] ?? null) ? $totals['_samples'] : []),
             'bucket' => (string) ($columns['bucket'] ?? ''),
             'buckets_file' => (string) ($columns['buckets_file'] ?? ''),
-            'finished_at' => $run->finished_at?->format('Y-m-d H:i'),
+            'finished_at' => $run->finished_at?->copy()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i'),
         ];
 
         $this->lastSavedIssues = $run->issues()

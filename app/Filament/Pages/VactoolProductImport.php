@@ -24,6 +24,8 @@ class VactoolProductImport extends Page implements HasForms
 {
     use InteractsWithForms;
 
+    private const DISPLAY_TIMEZONE = 'Europe/Moscow';
+
     private const DEFAULT_SITEMAP = 'https://vactool.ru/sitemap.xml';
 
     private const DEFAULT_MATCH = '/catalog/product-';
@@ -86,7 +88,7 @@ class VactoolProductImport extends Page implements HasForms
                 ->icon('heroicon-o-question-mark-circle')
                 ->color('gray')
                 ->url('https://help.stankoman.ru/import/vactool-import/', true),
-                // ->url(ImportExportHelp::getUrl()),
+            // ->url(ImportExportHelp::getUrl()),
             FormAction::make('history')
                 ->label('История импортов')
                 ->icon('heroicon-o-clock')
@@ -288,7 +290,7 @@ class VactoolProductImport extends Page implements HasForms
             'image_download_failed' => (int) ($meta['image_download_failed'] ?? 0),
             'derivatives_queued' => (int) ($meta['derivatives_queued'] ?? 0),
             'samples_count' => count(is_array($totals['_samples'] ?? null) ? $totals['_samples'] : []),
-            'finished_at' => $run->finished_at?->format('Y-m-d H:i'),
+            'finished_at' => $run->finished_at?->copy()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i'),
         ];
 
         $this->lastSavedIssues = $run->issues()
