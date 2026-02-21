@@ -81,7 +81,7 @@ class MetalmasterProductImport extends Page implements HasForms
                 ->label('Инструкция')
                 ->icon('heroicon-o-question-mark-circle')
                 ->color('gray')
-                ->url(ImportExportHelp::getUrl()),
+                ->url('https://help.stankoman.ru/import/metalmaster-import/', true),
             FormAction::make('history')
                 ->label('История импортов')
                 ->icon('heroicon-o-clock')

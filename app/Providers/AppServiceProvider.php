@@ -2,19 +2,29 @@
 
 namespace App\Providers;
 
+use App\Listeners\CloneCartOnLogout;
+use App\Listeners\SyncCartOnLogin;
+use App\Listeners\SyncFavoritesOnLogin;
+use App\Listeners\SyncFavoritesOnLogout;
 use App\Models\Category;
+use App\Support\CartService;
+use App\Support\CompareService;
+use App\Support\FavoritesService;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Str;
 use Filament\Support\Assets\Js;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Date;
-use Illuminate\Support\Facades\View;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\ServiceProvider;
-use Illuminate\Validation\Rules\Password;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\Support\Facades\FilamentTimezone;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Logout;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\View;
+use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -23,7 +33,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(CompareService::class, fn (): CompareService => new CompareService);
+        $this->app->singleton(CartService::class, fn (): CartService => new CartService);
+        $this->app->scoped(FavoritesService::class, fn (): FavoritesService => new FavoritesService);
     }
 
     /**
@@ -32,9 +44,18 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->registerAuthEventListeners();
         $this->registerFilamentAssets();
         $this->registerViewComposers();
         FilamentTimezone::set('Europe/Moscow');
+    }
+
+    protected function registerAuthEventListeners(): void
+    {
+        Event::listen(Login::class, SyncCartOnLogin::class);
+        Event::listen(Logout::class, CloneCartOnLogout::class);
+        Event::listen(Login::class, SyncFavoritesOnLogin::class);
+        Event::listen(Logout::class, SyncFavoritesOnLogout::class);
     }
 
     protected function configureDefaults(): void
@@ -46,13 +67,13 @@ class AppServiceProvider extends ServiceProvider
         );
 
         Password::defaults(
-            fn(): ?Password => app()->isProduction()
+            fn (): ?Password => app()->isProduction()
                 ? Password::min(12)
-                ->mixedCase()
-                ->letters()
-                ->numbers()
-                ->symbols()
-                ->uncompromised()
+                    ->mixedCase()
+                    ->letters()
+                    ->numbers()
+                    ->symbols()
+                    ->uncompromised()
                 : null
         );
     }
@@ -93,7 +114,7 @@ class AppServiceProvider extends ServiceProvider
             ->where('is_active', true)
             ->orderBy('order')
             ->get(['id', 'name', 'slug', 'parent_id', 'order'])
-            ->reject(fn(Category $root) => $root->slug === $brandSlug)
+            ->reject(fn (Category $root) => $root->slug === $brandSlug)
             ->values();
 
         if ($roots->isEmpty()) {
@@ -105,18 +126,18 @@ class AppServiceProvider extends ServiceProvider
             ->where('is_active', true)
             ->orderBy('order')
             ->get(['id', 'name', 'slug', 'parent_id', 'order'])
-            ->reject(fn(Category $child) => $child->slug === $brandSlug)
+            ->reject(fn (Category $child) => $child->slug === $brandSlug)
             ->values();
 
         $grandchildren = $children->isEmpty()
             ? collect()
             : Category::query()
-            ->whereIn('parent_id', $children->pluck('id'))
-            ->where('is_active', true)
-            ->orderBy('order')
-            ->get(['id', 'name', 'slug', 'parent_id', 'order'])
-            ->reject(fn(Category $grandchild) => $grandchild->slug === $brandSlug)
-            ->values();
+                ->whereIn('parent_id', $children->pluck('id'))
+                ->where('is_active', true)
+                ->orderBy('order')
+                ->get(['id', 'name', 'slug', 'parent_id', 'order'])
+                ->reject(fn (Category $grandchild) => $grandchild->slug === $brandSlug)
+                ->values();
 
         $childrenByParent = $children->groupBy('parent_id');
         $grandchildrenByParent = $grandchildren->groupBy('parent_id');
@@ -125,13 +146,13 @@ class AppServiceProvider extends ServiceProvider
             $rootPath = $root->slug;
             $children = $childrenByParent->get($root->id, collect())->map(
                 function (Category $child) use ($rootPath, $grandchildrenByParent) {
-                    $childPath = $rootPath . '/' . $child->slug;
+                    $childPath = $rootPath.'/'.$child->slug;
                     $grandchildren = $grandchildrenByParent->get($child->id, collect())->map(
                         function (Category $grandchild) use ($childPath) {
                             return [
                                 'id' => $grandchild->id,
                                 'name' => $grandchild->name,
-                                'menu_path' => $childPath . '/' . $grandchild->slug,
+                                'menu_path' => $childPath.'/'.$grandchild->slug,
                             ];
                         }
                     )->values();

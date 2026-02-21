@@ -2,7 +2,10 @@
 
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\ProductController;
+use App\Livewire\Pages\Cart\Index as CartIndex;
 use App\Livewire\Pages\Categories\LeafCategoryPage;
+use App\Livewire\Pages\Compare\Page as ComparePage;
+use App\Livewire\Pages\Favorites\Index as FavoritesIndex;
 use App\Models\ImportRun;
 use App\Models\Page;
 use Illuminate\Support\Facades\Route;
@@ -29,6 +32,15 @@ Route::livewire('/catalog/{path?}', LeafCategoryPage::class)
 
 Route::get('/product/{product:slug}', [ProductController::class, 'show'])
     ->name('product.show');
+
+Route::get('/compare', ComparePage::class)
+    ->name('compare.index');
+
+Route::get('/cart', CartIndex::class)
+    ->name('cart.index');
+
+Route::get('/favorites', FavoritesIndex::class)
+    ->name('favorites.index');
 
 Route::middleware(['web', 'auth'])
     ->get('/admin/tools/download-export/{token}/{name}', function (string $token, string $name) {

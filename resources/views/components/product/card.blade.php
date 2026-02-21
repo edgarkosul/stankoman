@@ -1,4 +1,4 @@
-@props(['product', 'category' => null])
+@props(['product', 'category' => null, 'index' => 0, 'favorite' => false])
 
 @php
     $basePrice = $product->price_int;
@@ -80,13 +80,33 @@
                 −{{ $pct }}%
             </div>
         @endif
-        <div class="group absolute top-4 right-4 z-30 size-7" data-product-card-swiper-ignore>
-            <x-icon name="bokmark"
-                class="size-full text-zinc-700/70 group-hover:[&_.icon-base]:text-zinc-700 group-hover:[&_.icon-accent]:text-rose-600" />
-        </div>
-        <div class="group absolute top-14 right-4 z-30 size-7" data-product-card-swiper-ignore>
-            <x-icon name="compare"
-                class="size-full text-zinc-700/70 group-hover:[&_.icon-base]:text-zinc-700 group-hover:[&_.icon-accent]:text-rose-600" />
+        @if ($favorite)
+            <div class="absolute top-4 right-4 z-40" data-product-card-swiper-ignore x-data x-on:click.stop.prevent>
+                <button
+                    type="button"
+                    wire:click.stop.prevent="removeFavorite({{ $product->id }})"
+                    title="Убрать из избранного"
+                    class="inline-flex items-center justify-center rounded-full bg-white/85 p-1 shadow-sm hover:bg-white"
+                >
+                    <x-heroicon-o-x-mark class="size-5 text-zinc-600 hover:text-red-500 transition" />
+                </button>
+            </div>
+        @else
+            <div class="absolute top-4 right-4 z-30" data-product-card-swiper-ignore x-data x-on:click.stop.prevent>
+                <livewire:pages.product.favorite-toggle
+                    :product-id="$product->id"
+                    :variant="'card'"
+                    :key="'favorite-' . $product->id . '-' . $index"
+                />
+            </div>
+        @endif
+
+        <div class="absolute top-14 right-4 z-30" data-product-card-swiper-ignore x-data x-on:click.stop.prevent>
+            <livewire:pages.product.compare-toggle
+                :product-id="$product->id"
+                :variant="'card'"
+                :key="'compare-' . $product->id . '-' . $index"
+            />
         </div>
 
         <div class="flex h-full flex-1 flex-col justify-start min-w-0">
@@ -141,8 +161,15 @@
                 </dl>
             @endif
 
-            <button class="mt-auto mx-4 mb-4 flex items-center justify-center gap-2 bg-brand-green p-3 text-lg font-bold uppercase text-white hover:bg-brand-green/90"><x-icon name="cart" class="mr-2 -translate-y-0.5 h-6 w-6 [&_.icon-base]:text-white [&_.icon-accent]:text-white" />В корзину</button>
-
+            <div class="mt-auto mx-4 mb-4" x-data x-on:click.stop.prevent>
+                <livewire:pages.cart.actions
+                    :product-id="$product->id"
+                    :qty="1"
+                    :options="[]"
+                    :variant="'card'"
+                    :key="'cart-' . $product->id . '-' . $index"
+                />
+            </div>
 
         </div>
     </a>

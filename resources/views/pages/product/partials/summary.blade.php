@@ -8,9 +8,15 @@
                 </p>
             @endif
         </div>
-        <button
-            class="text-lg font-bold uppercase bg-brand-green p-3 my-4 hover:bg-brand-green/90 text-white flex items-center gap-2 justify-center"><x-icon
-                name="cart" class="w-6 h-6 -translate-y-0.5 mr-2 [&_.icon-base]:text-white [&_.icon-accent]:text-white" />В корзину</button>
+        <div class="my-4">
+            <livewire:pages.cart.actions
+                :product-id="$product->id"
+                :qty="1"
+                :options="[]"
+                :variant="'product'"
+                :key="'cart-product-' . $product->id"
+            />
+        </div>
         <dl class="grid gap-2 text-zinc-700">
             @foreach (data_get($summary, 'details', []) as $detail)
                 <div class="grid gap-1 sm:grid-cols-[150px_1fr] sm:gap-2">

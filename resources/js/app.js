@@ -1,6 +1,6 @@
 import tooltip from './plugins/tooltip';
 import Swiper from 'swiper';
-import { Autoplay, FreeMode, Navigation, Pagination, Thumbs } from 'swiper/modules';
+import { A11y, Autoplay, FreeMode, Mousewheel, Navigation, Pagination, Thumbs } from 'swiper/modules';
 import PhotoSwipeLightbox from 'photoswipe/lightbox';
 import 'photoswipe/style.css';
 import noUiSlider from 'nouislider';
@@ -514,6 +514,79 @@ const resetOneRangeSlider = (wrap) => {
     resetRangeSliderState(ctx);
 };
 
+const initCompareSwipers = (root = document) => {
+    root.querySelectorAll('.compare-swiper').forEach((wrap) => {
+        const element = wrap.querySelector('.js-compare-swiper');
+
+        if (!element || element.swiper || element.dataset.initing === '1') {
+            return;
+        }
+
+        element.dataset.initing = '1';
+
+        let columnsCount = Number(wrap.dataset.colsCount || 0);
+        if (!Number.isFinite(columnsCount) || columnsCount <= 0) {
+            columnsCount = 1;
+        }
+
+        const clamp = (value) => Math.max(1, Math.min(value, columnsCount));
+
+        try {
+            new Swiper(element, {
+                modules: [A11y, Navigation, Mousewheel],
+                slidesPerView: clamp(1),
+                loop: columnsCount > 1,
+                spaceBetween: 0,
+                nested: true,
+                mousewheel: { forceToAxis: true },
+                resistanceRatio: 0,
+                speed: 300,
+                a11y: { enabled: true },
+                observer: false,
+                observeParents: false,
+                navigation: {
+                    nextEl: wrap.querySelector('.js-compare-next'),
+                    prevEl: wrap.querySelector('.js-compare-prev'),
+                },
+                breakpoints: {
+                    480: { slidesPerView: clamp(2) },
+                    640: { slidesPerView: clamp(3) },
+                    768: { slidesPerView: clamp(2) },
+                    1024: { slidesPerView: clamp(3) },
+                    1280: { slidesPerView: clamp(4) },
+                },
+                on: {
+                    afterInit: () => {
+                        requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+                    },
+                },
+            });
+        } finally {
+            delete element.dataset.initing;
+        }
+    });
+};
+
+const destroyCompareSwipers = (root = document) => {
+    root.querySelectorAll('.compare-swiper .js-compare-swiper').forEach((element) => {
+        if (!element.swiper) {
+            return;
+        }
+
+        try {
+            element.swiper.destroy(true, true);
+        } catch {
+            //
+        }
+
+        try {
+            delete element.swiper;
+        } catch {
+            //
+        }
+    });
+};
+
 const prettyNumberInputFactory = (config = {}) => ({
     decimals: config.decimals ?? 0,
     init() {
@@ -636,6 +709,8 @@ document.addEventListener('DOMContentLoaded', initProductCardSwipers);
 document.addEventListener('livewire:navigated', initProductCardSwipers);
 document.addEventListener('DOMContentLoaded', () => initNouisliderOnRange(document));
 document.addEventListener('livewire:navigated', () => initNouisliderOnRange(document));
+document.addEventListener('DOMContentLoaded', () => initCompareSwipers(document));
+document.addEventListener('livewire:navigated', () => initCompareSwipers(document));
 
 let productCardSwiperHooked = false;
 document.addEventListener('livewire:initialized', () => {
@@ -671,7 +746,22 @@ document.addEventListener('livewire:init', () => {
     });
 
     Livewire.hook('morph.updated', ({ el }) => {
-        initNouisliderOnRange(el || document);
+        const scope = el || document;
+
+        initNouisliderOnRange(scope);
+
+        const compareScope = scope.closest?.('.compare-page') || document.querySelector('.compare-page');
+        if (compareScope) {
+            initCompareSwipers(compareScope);
+            requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+        }
+    });
+
+    Livewire.hook('morph.updating', ({ el }) => {
+        const scope = el?.closest?.('.compare-page');
+        if (scope) {
+            destroyCompareSwipers(scope);
+        }
     });
 
     Livewire.on('category:scrollToProducts', () => {
@@ -754,6 +844,131 @@ const catalogMenuFactory = (initialRootId = null) => ({
     },
 });
 
+const compareEqualizerFactory = () => ({
+    observer: null,
+    rafId: 0,
+    isMeasuring: false,
+
+    init() {
+        this.reobserve();
+        window.addEventListener('load', () => this.queueMeasure(), { once: true });
+    },
+
+    destroy() {
+        if (this.rafId) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = 0;
+        }
+
+        try {
+            this.observer?.disconnect();
+        } catch {
+            //
+        }
+    },
+
+    queueMeasure() {
+        if (this.rafId) {
+            cancelAnimationFrame(this.rafId);
+        }
+
+        this.rafId = requestAnimationFrame(() => {
+            this.rafId = 0;
+            this.measure();
+        });
+    },
+
+    observeCurrentNodes() {
+        const nodes = this.$root.querySelectorAll('.js-attr-head, .js-val-head, .js-attr-row, .js-val-row');
+        nodes.forEach((element) => this.observer?.observe(element));
+    },
+
+    setMinHeight(element, value) {
+        if (!element) {
+            return;
+        }
+
+        if (element.style.minHeight !== value) {
+            element.style.minHeight = value;
+        }
+    },
+
+    reobserve() {
+        try {
+            this.observer?.disconnect();
+        } catch {
+            //
+        }
+
+        this.observer = new ResizeObserver(() => this.queueMeasure());
+
+        this.observeCurrentNodes();
+
+        this.$nextTick(() => this.queueMeasure());
+    },
+
+    measure() {
+        if (this.isMeasuring) {
+            return;
+        }
+
+        this.isMeasuring = true;
+
+        const isMdUp = window.matchMedia('(min-width: 768px)').matches;
+
+        const leftHead = this.$root.querySelector('.js-attr-head');
+        const rightHeads = Array.from(this.$root.querySelectorAll('.js-val-head'));
+        const leftRows = Array.from(this.$root.querySelectorAll('.js-attr-row'));
+        const rightRows = Array.from(this.$root.querySelectorAll('.js-val-row'));
+        const allRows = [leftHead, ...rightHeads, ...leftRows, ...rightRows];
+
+        try {
+            this.observer?.disconnect();
+
+            if (!isMdUp) {
+                allRows.forEach((element) => this.setMinHeight(element, ''));
+
+                return;
+            }
+
+            const leftHeadHeight = leftHead ? leftHead.offsetHeight : 0;
+            const rightHeadMax = rightHeads.reduce((max, element) => Math.max(max, element.offsetHeight || 0), 0);
+            const headHeight = Math.max(leftHeadHeight, rightHeadMax);
+            const headMinHeight = headHeight ? `${headHeight}px` : '';
+
+            this.setMinHeight(leftHead, headMinHeight);
+            rightHeads.forEach((element) => this.setMinHeight(element, headMinHeight));
+
+            const rightRowsByIndex = rightRows.reduce((accumulator, element) => {
+                const index = Number(element.dataset.i ?? -1);
+                if (!accumulator[index]) {
+                    accumulator[index] = [];
+                }
+                accumulator[index].push(element);
+
+                return accumulator;
+            }, {});
+
+            leftRows.forEach((leftElement) => {
+                const index = Number(leftElement.dataset.i ?? -1);
+                const leftHeight = leftElement.offsetHeight || 0;
+                const matchingRows = rightRowsByIndex[index] || [];
+                const rightHeight = matchingRows.reduce((max, element) => Math.max(max, element.offsetHeight || 0), 0);
+                const rowHeight = Math.max(leftHeight, rightHeight);
+                const rowMinHeight = rowHeight ? `${rowHeight}px` : '';
+
+                this.setMinHeight(leftElement, rowMinHeight);
+                matchingRows.forEach((element) => {
+                    this.setMinHeight(element, rowMinHeight);
+                });
+            });
+        } finally {
+            this.observeCurrentNodes();
+            this.isMeasuring = false;
+        }
+    },
+});
+
 const registerAlpineData = () => {
     if (typeof window === 'undefined') return;
 
@@ -766,6 +981,7 @@ const registerAlpineData = () => {
     alpine.plugin(tooltip);
     alpine.data('navDropdown', navDropdownFactory);
     alpine.data('catalogMenu', catalogMenuFactory);
+    alpine.data('compareEqualizer', compareEqualizerFactory);
     alpine.data('prettyNumberInput', prettyNumberInputFactory);
 };
 

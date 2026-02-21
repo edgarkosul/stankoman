@@ -95,7 +95,7 @@ class ProductImportExport extends Page implements HasForms
                 ->label('Инструкция')
                 ->icon('heroicon-o-question-mark-circle')
                 ->color('gray')
-                ->url(ImportExportHelp::getUrl()),
+                ->url('https://help.stankoman.ru/import/excel-import/', true),
         ];
     }
 
