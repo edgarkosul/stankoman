@@ -283,6 +283,7 @@ class ProductForm
                 //     ->default(null),
                 Select::make('categories')
                     ->label('Категория товара')
+                    ->hiddenOn('edit')
                     ->relationship(
                         name: 'categories',
                         titleAttribute: 'name',

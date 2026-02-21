@@ -2,23 +2,25 @@
 
 namespace App\Filament\Resources\Products\RelationManagers;
 
+use App\Filament\Resources\Categories\CategoryResource;
+use App\Models\Category;
 use Filament\Actions\Action;
-use Filament\Tables\Table;
+use Filament\Actions\AttachAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DetachBulkAction;
+use Filament\Forms\Components\Select;
+use Filament\Notifications\Notification;
+use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Notifications\Notification;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Filament\Forms\Components\Select;
-use App\Models\Category;
-use App\Filament\Resources\Categories\CategoryResource;
-use Filament\Resources\RelationManagers\RelationManager;
 
 class CategoriesRelationManager extends RelationManager
 {
     protected static string $relationship = 'categories';
-    protected static null|string $title = 'Категории';
+
+    protected static ?string $title = 'Категории';
 
     public function table(Table $table): Table
     {
@@ -29,7 +31,7 @@ class CategoriesRelationManager extends RelationManager
                     ->label('Категория')
                     ->searchable()
                     // клик по названию — в редактирование категории в админке
-                    ->url(fn($record) => CategoryResource::getUrl('edit', ['record' => $record])),
+                    ->url(fn ($record) => CategoryResource::getUrl('edit', ['record' => $record])),
                 IconColumn::make('pivot.is_primary')
                     ->label('Основная')
                     ->boolean(),
@@ -39,47 +41,25 @@ class CategoriesRelationManager extends RelationManager
                 //
             ])
             ->headerActions([
-                Action::make('attachCategory')
+                AttachAction::make('attachCategory')
                     ->label('Привязать категорию')
                     ->icon('heroicon-o-plus')
                     ->modalHeading('Привязать категорию к товару')
                     ->modalSubmitActionLabel('Привязать')
-                    ->schema([
-                        Select::make('category_id')
+                    ->attachAnother(false)
+                    ->preloadRecordSelect()
+                    ->recordSelectSearchColumns(['name', 'slug'])
+                    ->recordSelectOptionsQuery(
+                        fn (Builder $query): Builder => $query
+                            ->leaf()
+                            ->orderBy('name')
+                    )
+                    ->recordSelect(
+                        fn (Select $select): Select => $select
                             ->label('Категория')
-                            ->searchable()
-                            ->preload()
-                            ->options(function (): array {
-                                $productId = $this->getOwnerRecord()->getKey();
-
-                                return Category::query()
-                                    ->leaf()
-                                    ->whereDoesntHave('products', fn(Builder $q) => $q->whereKey($productId))
-                                    ->orderBy('name')
-                                    ->pluck('name', 'id')
-                                    ->all();
-                            })
-                            ->required(),
-                    ])
-                    ->action(function (array $data): void {
-                        $categoryId = (int) ($data['category_id'] ?? 0);
-                        if (! $categoryId) {
-                            return;
-                        }
-
-                        $product = $this->getOwnerRecord();
-
-                        if (! Category::whereKey($categoryId)->leaf()->exists()) {
-                            Notification::make()
-                                ->danger()
-                                ->title('Товар можно привязывать только к листовой категории.')
-                                ->send();
-                            return;
-                        }
-
-                        $product->categories()
-                            ->syncWithoutDetaching([$categoryId => ['is_primary' => false]]);
-                        $product->unsetRelation('categories');
+                    )
+                    ->after(function (): void {
+                        $this->getOwnerRecord()->unsetRelation('categories');
                     })
                     ->successNotificationTitle('Категория привязана'),
             ])
@@ -87,7 +67,7 @@ class CategoriesRelationManager extends RelationManager
                 Action::make('setPrimary')
                     ->label('Сделать основной')
                     ->icon('heroicon-o-star')
-                    ->visible(fn($record) => ! $record->isBrandCategory()) // запрет для брендовых
+                    ->visible(fn ($record) => ! $record->isBrandCategory()) // запрет для брендовых
                     ->requiresConfirmation()
                     ->action(function ($record, $livewire) {
                         /** @var \App\Models\Product $product */
@@ -98,6 +78,7 @@ class CategoriesRelationManager extends RelationManager
                                 ->danger()
                                 ->title('Категория с брендами не может быть основной!')
                                 ->send();
+
                             return;
                         }
 
@@ -123,7 +104,7 @@ class CategoriesRelationManager extends RelationManager
                 Action::make('openUi')
                     ->label('')
                     ->icon('heroicon-o-arrow-top-right-on-square')
-                    ->url(fn($record) => route('catalog.leaf', ['path' => $record->slug_path])) // если имя роута другое — поменяй тут
+                    ->url(fn ($record) => route('catalog.leaf', ['path' => $record->slug_path])) // если имя роута другое — поменяй тут
                     ->openUrlInNewTab(),
 
             ])

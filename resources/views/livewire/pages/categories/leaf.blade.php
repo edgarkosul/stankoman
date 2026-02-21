@@ -2,68 +2,57 @@
     <h1 class="text-3xl font-bold">{{ $category->name }}</h1>
 
     <div class="flex flex-col md:flex-row gap-4">
-        <aside
-            x-data="{
-                filtersOpen: false,
-                isMd: window.matchMedia('(min-width:768px)').matches,
-            }"
-            x-init="const mql = window.matchMedia('(min-width:768px)');
-                const sync = () => isMd = mql.matches;
-                (mql.addEventListener ? mql.addEventListener('change', sync) : mql.addListener(sync));
-                sync();
+        <aside x-data="{
+            filtersOpen: false,
+            isMd: window.matchMedia('(min-width:768px)').matches,
+        }" x-init="const mql = window.matchMedia('(min-width:768px)');
+        const sync = () => isMd = mql.matches;
+        (mql.addEventListener ? mql.addEventListener('change', sync) : mql.addListener(sync));
+        sync();
 
-                const openFilters = () => filtersOpen = true;
-                const closeFilters = () => filtersOpen = false;
-                const toggleFilters = () => filtersOpen = !filtersOpen;
-                window.addEventListener('filters:open', openFilters);
-                window.addEventListener('filters:close', closeFilters);
-                window.addEventListener('filters:toggle', toggleFilters);
+        const openFilters = () => filtersOpen = true;
+        const closeFilters = () => filtersOpen = false;
+        const toggleFilters = () => filtersOpen = !filtersOpen;
+        window.addEventListener('filters:open', openFilters);
+        window.addEventListener('filters:close', closeFilters);
+        window.addEventListener('filters:toggle', toggleFilters);
 
-                this.__scrollY = 0;
-                this.__lockScroll = () => {
-                    if (this.isMd) return;
-                    this.__scrollY = window.scrollY || document.documentElement.scrollTop;
-                    document.body.style.position = 'fixed';
-                    document.body.style.top = `-${this.__scrollY}px`;
-                    document.body.style.left = '0';
-                    document.body.style.right = '0';
-                    document.body.style.width = '100%';
-                    document.documentElement.style.overflow = 'hidden';
-                };
-                this.__unlockScroll = () => {
-                    document.body.style.position = '';
-                    document.body.style.top = '';
-                    document.body.style.left = '';
-                    document.body.style.right = '';
-                    document.body.style.width = '';
-                    document.documentElement.style.overflow = '';
-                    window.scrollTo(0, this.__scrollY);
-                };"
+        this.__scrollY = 0;
+        this.__lockScroll = () => {
+            if (this.isMd) return;
+            this.__scrollY = window.scrollY || document.documentElement.scrollTop;
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${this.__scrollY}px`;
+            document.body.style.left = '0';
+            document.body.style.right = '0';
+            document.body.style.width = '100%';
+            document.documentElement.style.overflow = 'hidden';
+        };
+        this.__unlockScroll = () => {
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            document.body.style.width = '';
+            document.documentElement.style.overflow = '';
+            window.scrollTo(0, this.__scrollY);
+        };"
             x-effect="(filtersOpen && !isMd) ? this.__lockScroll() : this.__unlockScroll()"
-            @keydown.escape.window="filtersOpen = false"
-            class="contents md:block md:w-80 shrink-0"
-            x-cloak
-        >
+            @keydown.escape.window="filtersOpen = false" class="contents md:block md:w-80 shrink-0" x-cloak>
+            {{-- Оверлей для модалки --}}
             <div x-show="filtersOpen && !isMd" class="fixed inset-0 z-40 bg-black/40 md:hidden"
                 @click="filtersOpen = false" x-transition.opacity></div>
-
-            <div
-                x-show="isMd || filtersOpen"
-                x-transition:enter="transition-transform duration-200"
-                x-transition:enter-start="translate-x-full"
-                x-transition:enter-end="translate-x-0"
-                x-transition:leave="transition-transform duration-200"
-                x-transition:leave-start="translate-x-0"
+            {{-- Модалка с фильтрами --}}
+            <div x-show="isMd || filtersOpen" x-transition:enter="transition-transform duration-200"
+                x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+                x-transition:leave="transition-transform duration-200" x-transition:leave-start="translate-x-0"
                 x-transition:leave-end="translate-x-full"
-                x-effect="if (filtersOpen && !isMd) $nextTick(() => $el.focus())"
-                role="dialog"
-                aria-modal="true"
+                x-effect="if (filtersOpen && !isMd) $nextTick(() => $el.focus())" role="dialog" aria-modal="true"
                 tabindex="-1"
-                class="fixed right-0 top-0 z-50 h-dvh w-[min(90vw,24rem)] box-border
+                class="fixed right-0 top-0 z-50 bg-white h-dvh w-[min(90vw,24rem)] box-border
                     p-4  overflow-y-auto overscroll-contain
                     md:sticky md:top-24 md:self-start md:z-auto md:w-auto md:h-auto md:shadow-none md:translate-x-0
-                    md:max-h-[calc(100dvh-6rem)]"
-            >
+                    md:max-h-[calc(100dvh-6rem)]">
                 <div class="md:hidden flex items-center justify-between mb-2">
                     <h2 class="text-lg font-semibold">Фильтры</h2>
                     <button type="button" @click="filtersOpen = false" aria-label="Закрыть">x</button>
@@ -75,7 +64,9 @@
                             @switch($f['type'])
                                 @case('range')
                                     <div class="font-semibold whitespace-nowrap text-md mb-1">
-                                        {{ $f['label'] }}@if (!empty($f['meta']['suffix'])),@endif
+                                        {{ $f['label'] }}@if (!empty($f['meta']['suffix']))
+                                            ,
+                                        @endif
                                         @if (!empty($f['meta']['suffix']))
                                             <span class="font-normal">{{ $f['meta']['suffix'] }}</span>
                                         @endif
@@ -93,7 +84,9 @@
                                                 $step = $f['meta']['step'] ?? 1;
                                                 $hasFractionalStep = is_numeric($step)
                                                     ? fmod((float) $step, 1.0) !== 0.0
-                                                    : (is_string($step) && (strpos((string) $step, '.') !== false || strpos((string) $step, ',') !== false));
+                                                    : is_string($step) &&
+                                                        (strpos((string) $step, '.') !== false ||
+                                                            strpos((string) $step, ',') !== false);
                                             @endphp
 
                                             @php
@@ -111,15 +104,12 @@
 
                                             @if ($hasFractionalStep)
                                                 <div class="flex-1 min-w-20">
-                                                    <input
-                                                        type="number"
+                                                    <input type="number"
                                                         class="js-range-min w-full border border-brand-green bg-white px-2 py-1 text-sm no-spin focus:ring-2 focus:ring-brand-green"
                                                         min="{{ $f['meta']['min'] }}" max="{{ $f['meta']['max'] }}"
-                                                        step="{{ $f['meta']['step'] }}"
-                                                        inputmode="decimal" autocomplete="off"
+                                                        step="{{ $f['meta']['step'] }}" inputmode="decimal" autocomplete="off"
                                                         placeholder="{{ number_format($f['meta']['min'], $f['meta']['decimals'] ?? 0, ',', ' ') }}"
-                                                        value="{{ $currMin }}"
-                                                    >
+                                                        value="{{ $currMin }}">
                                                 </div>
                                             @else
                                                 <div x-data="prettyNumberInput({ decimals: {{ $f['meta']['decimals'] ?? 0 }} })" class="flex-1 min-w-20">
@@ -150,15 +140,12 @@
 
                                             @if ($hasFractionalStep)
                                                 <div class="flex-1 min-w-20">
-                                                    <input
-                                                        type="number"
+                                                    <input type="number"
                                                         class="js-range-max w-full border border-brand-green bg-white px-2 py-1 text-sm no-spin focus:ring-2 focus:ring-brand-green"
                                                         min="{{ $f['meta']['min'] }}" max="{{ $f['meta']['max'] }}"
-                                                        step="{{ $f['meta']['step'] }}"
-                                                        inputmode="decimal" autocomplete="off"
+                                                        step="{{ $f['meta']['step'] }}" inputmode="decimal" autocomplete="off"
                                                         placeholder="{{ number_format($f['meta']['max'], $f['meta']['decimals'] ?? 0, ',', ' ') }}"
-                                                        value="{{ $currMax }}"
-                                                    >
+                                                        value="{{ $currMax }}">
                                                 </div>
                                             @else
                                                 <div x-data="prettyNumberInput({ decimals: {{ $f['meta']['decimals'] ?? 0 }} })" class="flex-1 min-w-20">
@@ -184,7 +171,9 @@
 
                                 @case('boolean')
                                     <div class="font-semibold whitespace-nowrap text-md mb-1">
-                                        {{ $f['label'] }}@if (!empty($f['meta']['suffix'])),@endif
+                                        {{ $f['label'] }}@if (!empty($f['meta']['suffix']))
+                                            ,
+                                        @endif
                                         @if (!empty($f['meta']['suffix']))
                                             <span class="font-normal">{{ $f['meta']['suffix'] }}</span>
                                         @endif
@@ -220,7 +209,9 @@
 
                                 @case('select')
                                     <div class="font-semibold whitespace-nowrap text-md mb-1">
-                                        {{ $f['label'] }}@if (!empty($f['meta']['suffix'])),@endif
+                                        {{ $f['label'] }}@if (!empty($f['meta']['suffix']))
+                                            ,
+                                        @endif
                                         @if (!empty($f['meta']['suffix']))
                                             <span class="font-normal">{{ $f['meta']['suffix'] }}</span>
                                         @endif
@@ -301,19 +292,14 @@
         <div class="flex-1 space-y-4">
             <div class="flex flex-wrap gap-2 items-center">
                 <div class="md:hidden mb-3">
-                    <button type="button"
-                        class="inline-flex items-center gap-2 rounded border px-3 py-2 bg-white"
+                    <button type="button" class="inline-flex items-center gap-2 rounded border px-3 py-2 bg-white"
                         @click="window.dispatchEvent(new CustomEvent('filters:open'))">
                         <span>Фильтры</span>
                     </button>
                 </div>
 
-                <input
-                    type="search"
-                    wire:model.live.debounce.500ms="q"
-                    placeholder="Поиск в разделе..."
-                    class="max-w-full w-64 rounded border border-zinc-300 pl-3 pr-10 h-10 outline-none focus:ring-2 focus:ring-brand-green bg-white"
-                />
+                <input type="search" wire:model.live.debounce.500ms="q" placeholder="Поиск в разделе..."
+                    class="max-w-full w-64 rounded border border-zinc-300 pl-3 pr-10 h-10 outline-none focus:ring-2 focus:ring-brand-green bg-white" />
 
                 <select wire:model.live="sort" class="h-10 border border-zinc-300 bg-white px-3">
                     <option value="popular">По популярности</option>
@@ -331,7 +317,8 @@
                     </button>
 
                     @foreach ($this->activeFilters as $f)
-                        <span class="inline-flex items-center gap-2 rounded-full border border-brand-green/40 bg-brand-green/10 pl-3 pr-2 py-1 text-sm">
+                        <span
+                            class="inline-flex items-center gap-2 rounded-full border border-brand-green/40 bg-brand-green/10 pl-3 pr-2 py-1 text-sm">
                             <span class="text-brand-green">
                                 <span class="font-medium">{{ $f['label'] }}:</span>
                                 {{ $f['display'] }}
@@ -344,7 +331,8 @@
                                     aria-label="Убрать значение">x</button>
                             @else
                                 <button type="button" wire:click="clearFilter('{{ $f['key'] }}')"
-                                    class="shrink-0 text-brand-green hover:opacity-70" aria-label="Снять фильтр">x</button>
+                                    class="shrink-0 text-brand-green hover:opacity-70"
+                                    aria-label="Снять фильтр">x</button>
                             @endif
                         </span>
                     @endforeach
@@ -365,13 +353,13 @@
 
                     @if ($this->hasMoreProducts)
                         <div wire:intersect="loadMore"
-                            class="absolute inset-x-0 bottom-40 h-1 opacity-0 pointer-events-none"
-                            aria-hidden="true"></div>
+                            class="absolute inset-x-0 bottom-40 h-1 opacity-0 pointer-events-none" aria-hidden="true">
+                        </div>
 
                         <div wire:loading wire:target="loadMore" class="pt-4 text-center text-zinc-500">
                             Загрузка...
                         </div>
-                    @elseif (! $this->hasMoreProducts && $products->isNotEmpty())
+                    @elseif (!$this->hasMoreProducts && $products->isNotEmpty())
                         <div class="pt-4 text-center text-zinc-500">
                             По вашему запросу больше товаров нет.
                         </div>
