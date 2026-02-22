@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ProductWarranty;
 use App\Models\Attribute as AttributeDef;
 use App\Models\Pivots\ProductCategory;
 use App\Support\ImageDerivativesResolver;
@@ -34,7 +35,7 @@ use Illuminate\Support\Str;
  * @property int $popularity
  * @property bool $is_active
  * @property bool $is_in_yml_feed
- * @property string|null $warranty
+ * @property ProductWarranty|null $warranty
  * @property bool $with_dns
  * @property string|null $short
  * @property string|null $description
@@ -99,6 +100,7 @@ class Product extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'is_in_yml_feed' => 'bool',
+        'warranty' => ProductWarranty::class,
     ];
 
     /* ======================================================================
@@ -113,7 +115,7 @@ class Product extends Model
     protected function warrantyDisplay(): EloquentAttribute
     {
         return EloquentAttribute::make(
-            get: fn ($value, array $attributes) => $attributes['warranty'] ?? null,
+            get: fn ($value, array $attributes): ?string => ProductWarranty::tryFrom((string) ($attributes['warranty'] ?? ''))?->label(),
         );
     }
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ProductWarranty;
 use App\Filament\Resources\Products\Pages\CreateProduct;
 use App\Filament\Resources\Products\Schemas\ProductForm;
 use Filament\Forms\Components\Repeater;
@@ -64,4 +65,16 @@ it('normalizes specs state for persistence', function (): void {
         ['name' => '', 'value' => '', 'source' => null],
         ['name' => ' ', 'value' => ' ', 'source' => 'manual'],
     ]))->toBeNull();
+});
+
+it('configures warranty as enum select with nullable placeholder', function (): void {
+    $page = new CreateProduct;
+    $schema = $page->form(Schema::make($page));
+    $warrantyField = $schema->getComponentByStatePath('warranty', withHidden: true);
+
+    expect($warrantyField)->toBeInstanceOf(Select::class);
+
+    /** @var Select $warrantyField */
+    expect($warrantyField->getOptions())->toBe(ProductWarranty::options())
+        ->and($warrantyField->getPlaceholder())->toBe('Без гарантии');
 });

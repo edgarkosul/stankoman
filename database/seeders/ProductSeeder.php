@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\ProductWarranty;
 use App\Models\Category;
 use App\Models\Product;
 use Faker\Factory as FakerFactory;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Storage;
 class ProductSeeder extends Seeder
 {
     private ?array $picsPool = null;
+
     private bool $picsWarned = false;
 
     public function run(): void
@@ -21,6 +23,7 @@ class ProductSeeder extends Seeder
 
         if ($leafCategories->isEmpty()) {
             $this->command?->warn('Не найдено листовых категорий — сначала запустите CategorySeeder.');
+
             return;
         }
 
@@ -62,12 +65,10 @@ class ProductSeeder extends Seeder
             'Выгодный комплект',
         ];
 
-        $warranties = [
-            '6 мес.',
-            '12 мес.',
-            '24 мес.',
-            '36 мес.',
-        ];
+        $warranties = array_map(
+            static fn (ProductWarranty $warranty): string => $warranty->value,
+            ProductWarranty::cases()
+        );
 
         $minPerLeaf = 80;
         $maxPerLeaf = 120;
@@ -107,8 +108,8 @@ class ProductSeeder extends Seeder
                     'warranty' => $faker->randomElement($warranties),
                     'with_dns' => $faker->boolean(70),
                     'short' => $faker->sentence(10),
-                    'description' => '<p>' . $faker->paragraph(3) . '</p>',
-                    'extra_description' => $faker->boolean(40) ? '<p>' . $faker->paragraph(2) . '</p>' : null,
+                    'description' => '<p>'.$faker->paragraph(3).'</p>',
+                    'extra_description' => $faker->boolean(40) ? '<p>'.$faker->paragraph(2).'</p>' : null,
                     'specs' => $faker->boolean(50) ? $faker->paragraph(2) : null,
                     'promo_info' => $faker->boolean(35) ? $faker->randomElement($promoLines) : null,
                     'image' => $this->randomPic(),

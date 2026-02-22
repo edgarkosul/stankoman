@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Products\Tables;
 
+use App\Enums\ProductWarranty;
 use App\Filament\Resources\Products\Pages\CreateProduct;
 use App\Filament\Resources\Products\ProductResource;
 use App\Jobs\RunSpecsMatchJob;
@@ -263,10 +264,12 @@ class ProductsTable
                             ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'is_in_yml_feed')
                             ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'is_in_yml_feed'),
 
-                        TextInput::make('warranty_value')
+                        Select::make('warranty_value')
                             ->label('Новая гарантия')
+                            ->options(ProductWarranty::options())
+                            ->placeholder('Без гарантии')
                             ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'warranty')
-                            ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'warranty'),
+                            ->default(null),
 
                         Textarea::make('promo_info_value')
                             ->label('Промо информация')
@@ -896,7 +899,7 @@ class ProductsTable
                                         $q->update(['is_in_yml_feed' => (bool) $data['is_in_yml_feed_value']]);
                                         break;
                                     case 'warranty':
-                                        $q->update(['warranty' => $data['warranty_value']]);
+                                        $q->update(['warranty' => $data['warranty_value'] ?? null]);
                                         break;
                                     case 'promo_info':
                                         $q->update(['promo_info' => $data['promo_info_value']]);

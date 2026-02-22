@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ProductWarranty;
 use App\Filament\Resources\Products\Pages\ListProducts;
 use App\Filament\Resources\Products\Tables\ProductsTable;
 use App\Jobs\RunSpecsMatchJob;
@@ -527,6 +528,40 @@ it('shows write mode selector with only-empty and overwrite options for specs ma
                 'overwrite' => 'Перезаписывать существующие',
             ];
         });
+});
+
+it('uses nullable warranty select in mass edit fields mode', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $product = Product::query()->create([
+        'name' => 'Товар с гарантией',
+        'slug' => 'warranty-product',
+        'price_amount' => 19900,
+        'warranty' => ProductWarranty::Months24->value,
+    ]);
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$product])
+        ->mountTableBulkAction('massEdit', [$product])
+        ->setTableBulkActionData([
+            'mode' => 'fields',
+            'field' => 'warranty',
+        ])
+        ->assertFormFieldExists('warranty_value', function (Select $field): bool {
+            return $field->getOptions() === ProductWarranty::options()
+                && $field->getPlaceholder() === 'Без гарантии';
+        });
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$product])
+        ->callTableBulkAction('massEdit', [$product], [
+            'mode' => 'fields',
+            'field' => 'warranty',
+            'warranty_value' => null,
+        ]);
+
+    expect($product->fresh()->warranty)->toBeNull();
 });
 
 it('offers link-existing action for all proposals and defaults decisions to ignore', function () {

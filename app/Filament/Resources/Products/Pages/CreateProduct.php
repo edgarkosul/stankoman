@@ -41,29 +41,29 @@ class CreateProduct extends CreateRecord
         }
 
         $data = [
-            'name'              => $source->name . ' (копия)',
-            'slug'              => $source->slug . '-copy',
-            'price_amount'      => $source->price_amount,
-            'discount_price'    => $source->discount_price,
-            'with_dns'          => $source->with_dns,
-            'sku'               => $source->sku,
-            'brand'             => $source->brand,
-            'country'           => $source->country,
-            'warranty'          => $source->warranty,
-            'in_stock'          => $source->in_stock,
-            'is_active'         => false,
-            'popularity'        => $source->popularity,
+            'name' => $source->name.' (копия)',
+            'slug' => $source->slug.'-copy',
+            'price_amount' => $source->price_amount,
+            'discount_price' => $source->discount_price,
+            'with_dns' => $source->with_dns,
+            'sku' => $source->sku,
+            'brand' => $source->brand,
+            'country' => $source->country,
+            'warranty' => $source->warranty?->value,
+            'in_stock' => $source->in_stock,
+            'is_active' => false,
+            'popularity' => $source->popularity,
 
-            'description'       => $source->description,
+            'description' => $source->description,
             'extra_description' => $source->extra_description,
 
-            'image'             => $source->image,
-            'gallery'           => $source->gallery,
-            'promo_info'        => $source->promo_info,
-            'short'             => $source->short,
+            'image' => $source->image,
+            'gallery' => $source->gallery,
+            'promo_info' => $source->promo_info,
+            'short' => $source->short,
 
             // belongsToMany categories
-            'categories'        => $source->categories->pluck('id')->all(),
+            'categories' => $source->categories->pluck('id')->all(),
         ];
 
         $this->form->fill($data);

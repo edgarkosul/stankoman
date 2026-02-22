@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Products\Schemas;
 
+use App\Enums\ProductWarranty;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
@@ -124,8 +125,10 @@ class ProductForm
                     ->label('Производитель')
                     ->columnSpan(['default' => 3, 'lg' => 1])
                     ->default(null),
-                TextInput::make('warranty')
+                Select::make('warranty')
                     ->label('Гарантия производителя')
+                    ->options(ProductWarranty::options())
+                    ->placeholder('Без гарантии')
                     ->columnSpan(['default' => 2, 'lg' => 1])
                     ->default(null),
                 Toggle::make('in_stock')
