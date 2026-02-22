@@ -504,13 +504,13 @@ it('configures dry-run toggle as live for immediate staging checkbox visibility 
         ->assertFormFieldVisible('detach_staging_after_success');
 });
 
-it('disables overwrite toggle when only empty attributes mode is enabled', function () {
+it('shows write mode selector with only-empty and overwrite options for specs match', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
     $product = Product::query()->create([
-        'name' => 'Товар для проверки переключателей',
-        'slug' => 'toggle-check-product',
+        'name' => 'Товар для проверки режима записи',
+        'slug' => 'write-mode-check-product',
         'price_amount' => 9900,
         'specs' => [],
     ]);
@@ -520,14 +520,13 @@ it('disables overwrite toggle when only empty attributes mode is enabled', funct
         ->mountTableBulkAction('massEdit', [$product])
         ->setTableBulkActionData([
             'mode' => 'specs_match',
-            'only_empty_attributes' => true,
         ])
-        ->assertFormFieldDisabled('overwrite_existing')
-        ->setTableBulkActionData([
-            'mode' => 'specs_match',
-            'only_empty_attributes' => false,
-        ])
-        ->assertFormFieldEnabled('overwrite_existing');
+        ->assertFormFieldExists('write_mode', function (Select $field): bool {
+            return $field->getOptions() === [
+                'only_empty' => 'Заполнять только пустые',
+                'overwrite' => 'Перезаписывать существующие',
+            ];
+        });
 });
 
 it('offers link-existing action for all proposals and defaults decisions to ignore', function () {
@@ -633,6 +632,72 @@ it('hydrates wizard proposals with existing attribute types and suggested input 
         ->and((string) ($voltageProposal['existing_attribute_unit_label'] ?? ''))->toBe('Вольт (В) — electric_potential')
         ->and((string) ($voltageProposal['create_attribute_name'] ?? ''))->toBe('Напряжение')
         ->and((string) ($voltageProposal['decision'] ?? ''))->toBe('ignore');
+});
+
+it('includes specs already linked to target category in wizard proposals as auto-fill rows', function () {
+    $volt = Unit::query()->create([
+        'name' => 'Вольт',
+        'symbol' => 'В',
+        'dimension' => 'electric_potential',
+        'base_symbol' => 'V',
+        'si_factor' => 1,
+        'si_offset' => 0,
+    ]);
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Промышленные пылесосы',
+        'slug' => 'industrial-vacuums',
+        'parent_id' => -1,
+        'order' => 260,
+        'is_active' => true,
+    ]);
+
+    $voltageAttribute = Attribute::query()->create([
+        'name' => 'Напряжение',
+        'slug' => 'voltage-for-target-category',
+        'data_type' => 'number',
+        'input_type' => 'number',
+        'unit_id' => $volt->id,
+        'is_filterable' => true,
+    ]);
+
+    $targetCategory->attributeDefs()->attach($voltageAttribute->id);
+
+    $product = Product::query()->create([
+        'name' => 'Пылесос C',
+        'slug' => 'vacuum-c',
+        'price_amount' => 62000,
+        'specs' => [
+            ['name' => 'Напряжение', 'value' => '220 В', 'source' => 'dom'],
+        ],
+    ]);
+
+    $buildMethod = new ReflectionMethod(ProductsTable::class, 'buildSpecsAttributeProposalsState');
+    $buildMethod->setAccessible(true);
+
+    $livewireStub = new class([$product->id])
+    {
+        /**
+         * @param  array<int, int>  $productIds
+         */
+        public function __construct(private array $productIds) {}
+
+        public function getSelectedTableRecordsQuery(bool $shouldFetchSelectedRecords = false)
+        {
+            return Product::query()->whereKey($this->productIds);
+        }
+    };
+
+    $proposals = collect($buildMethod->invoke(null, $livewireStub, $targetCategory->id))
+        ->keyBy('spec_name');
+
+    $voltageProposal = $proposals->get('Напряжение');
+
+    expect($voltageProposal)->not->toBeNull()
+        ->and((bool) ($voltageProposal['matched_in_target_category'] ?? false))->toBeTrue()
+        ->and((int) ($voltageProposal['existing_attribute_id'] ?? 0))->toBe($voltageAttribute->id)
+        ->and((string) ($voltageProposal['attribute_match_status'] ?? ''))
+        ->toContain('уже привязан к целевой категории');
 });
 
 it('uses multiselect as default input type for text and excludes text option in wizard', function () {

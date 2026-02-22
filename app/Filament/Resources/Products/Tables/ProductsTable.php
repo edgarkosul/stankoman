@@ -487,22 +487,14 @@ class ProductsTable
                             ->visible(fn ($get) => $get('mode') === 'specs_match')
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
 
-                        Toggle::make('only_empty_attributes')
-                            ->label('Обрабатывать только незаполненные фильры')
-                            ->default(true)
-                            ->live()
-                            ->afterStateUpdated(function (mixed $state, Set $set): void {
-                                if ((bool) $state) {
-                                    $set('overwrite_existing', false);
-                                }
-                            })
-                            ->visible(fn ($get) => $get('mode') === 'specs_match')
-                            ->required(fn ($get) => $get('mode') === 'specs_match'),
-
-                        Toggle::make('overwrite_existing')
-                            ->label('Перезаписывать существующие значения')
-                            ->default(false)
-                            ->disabled(fn (Get $get): bool => (bool) $get('only_empty_attributes'))
+                        Select::make('write_mode')
+                            ->label('Режим записи значений')
+                            ->options([
+                                'only_empty' => 'Заполнять только пустые',
+                                'overwrite' => 'Перезаписывать существующие',
+                            ])
+                            ->default('only_empty')
+                            ->native(false)
                             ->visible(fn ($get) => $get('mode') === 'specs_match')
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
 
@@ -529,8 +521,8 @@ class ProductsTable
                             ->visible(fn ($get) => $get('mode') === 'specs_match' && ! (bool) $get('dry_run')),
 
                         Repeater::make('attribute_proposals')
-                            ->label('Мастер подтверждения новых атрибутов')
-                            ->helperText('Строки собраны из unmatched spec.name. Для dry-run действия create/link будут зафиксированы только в отчете.')
+                            ->label('Мастер сопоставления атрибутов')
+                            ->helperText('Строки собраны из spec.name выбранных товаров. Уже сопоставленные атрибуты показаны для контроля и будут заполнены автоматически.')
                             ->default([])
                             ->addable(false)
                             ->deletable(false)
@@ -574,6 +566,9 @@ class ProductsTable
                                     ->dehydrated(false),
 
                                 Hidden::make('suggested_unit_id')
+                                    ->dehydrated(true),
+
+                                Hidden::make('matched_in_target_category')
                                     ->dehydrated(true),
 
                                 Hidden::make('existing_attribute_id')
@@ -627,7 +622,8 @@ class ProductsTable
                                         hasExactMatch: (int) ($get('existing_attribute_id') ?? 0) > 0,
                                     ))
                                     ->default('ignore')
-                                    ->required()
+                                    ->visible(fn (Get $get): bool => ! (bool) ($get('matched_in_target_category') ?? false))
+                                    ->required(fn (Get $get): bool => ! (bool) ($get('matched_in_target_category') ?? false))
                                     ->native(false)
                                     ->live()
                                     ->afterStateHydrated(function (mixed $state, Get $get, Set $set): void {
@@ -749,7 +745,7 @@ class ProductsTable
                     ])
                     ->action(function (array $data, Collection $records) {
 
-                        $ids = $records->modelKeys();
+                        $ids = array_values(array_map('intval', $records->modelKeys()));
 
                         if (($data['mode'] ?? null) === 'specs_match') {
                             $targetCategoryId = (int) ($data['target_category_id'] ?? 0);
@@ -785,12 +781,19 @@ class ProductsTable
                                 decisionRows: $decisionRows,
                                 applyChanges: ! $dryRun,
                             );
+                            $writeMode = (string) ($data['write_mode'] ?? '');
+                            $onlyEmptyAttributes = $writeMode === 'overwrite'
+                                ? false
+                                : (bool) ($data['only_empty_attributes'] ?? true);
+                            $overwriteExisting = $writeMode === 'overwrite'
+                                ? true
+                                : (bool) ($data['overwrite_existing'] ?? false);
 
                             $options = [
                                 'target_category_id' => $targetCategoryId,
                                 'dry_run' => $dryRun,
-                                'only_empty_attributes' => (bool) ($data['only_empty_attributes'] ?? true),
-                                'overwrite_existing' => (bool) ($data['overwrite_existing'] ?? false),
+                                'only_empty_attributes' => $onlyEmptyAttributes,
+                                'overwrite_existing' => $overwriteExisting,
                                 'number_conflict_strategy' => (string) ($data['number_conflict_strategy'] ?? 'max'),
                                 'auto_create_options' => (bool) ($data['auto_create_options'] ?? false),
                                 'detach_staging_after_success' => (bool) ($data['detach_staging_after_success'] ?? false),
@@ -1052,6 +1055,8 @@ class ProductsTable
                 $suggestion['suggested_input_type'] ?? null,
                 $createDataType,
             );
+            $matchedInTargetCategory = (bool) ($suggestion['matched_in_target_category'] ?? false);
+            $hasExistingAttribute = (int) ($suggestion['existing_attribute_id'] ?? 0) > 0;
 
             return [
                 'spec_name' => (string) $suggestion['spec_name'],
@@ -1061,6 +1066,7 @@ class ProductsTable
                 'suggested_input_type' => (string) $suggestion['suggested_input_type'],
                 'confidence_label' => (string) $suggestion['confidence_label'],
                 'suggested_unit_id' => ($suggestion['suggested_unit_id'] ?? null) ? (int) $suggestion['suggested_unit_id'] : null,
+                'matched_in_target_category' => $matchedInTargetCategory,
                 'suggested_unit_label' => (string) ($suggestion['suggested_unit_label'] ?? '—'),
                 'suggested_unit_confidence_label' => (string) ($suggestion['suggested_unit_confidence_label'] ?? 'Низкая'),
                 'existing_attribute_id' => ($suggestion['existing_attribute_id'] ?? null) ? (int) $suggestion['existing_attribute_id'] : null,
@@ -1068,11 +1074,13 @@ class ProductsTable
                 'existing_attribute_data_type' => (string) ($suggestion['existing_attribute_data_type'] ?? ''),
                 'existing_attribute_input_type' => (string) ($suggestion['existing_attribute_input_type'] ?? ''),
                 'existing_attribute_unit_label' => (string) ($suggestion['existing_attribute_unit_label'] ?? '—'),
-                'attribute_match_status' => ($suggestion['existing_attribute_id'] ?? null)
-                    ? 'Точный глобальный атрибут найден. Рекомендуем связать его с целевой категорией.'
-                    : 'Точный глобальный атрибут не найден.',
+                'attribute_match_status' => $matchedInTargetCategory
+                    ? 'Атрибут уже привязан к целевой категории и будет заполнен у выбранных товаров.'
+                    : ($hasExistingAttribute
+                        ? 'Точный глобальный атрибут найден. Рекомендуем связать его с целевой категорией.'
+                        : 'Точный глобальный атрибут не найден.'),
                 'decision' => self::defaultDecisionForProposal(
-                    (int) ($suggestion['existing_attribute_id'] ?? 0) > 0,
+                    $hasExistingAttribute,
                 ),
                 'link_attribute_id' => ($suggestion['existing_attribute_id'] ?? null) ? (int) $suggestion['existing_attribute_id'] : null,
                 'link_source_unit_id' => null,
@@ -1363,7 +1371,9 @@ class ProductsTable
         }
 
         return collect($rawRows)
-            ->filter(fn ($row): bool => is_array($row) && ($row['spec_name'] ?? null) !== null)
+            ->filter(fn ($row): bool => is_array($row)
+                && ($row['spec_name'] ?? null) !== null
+                && ! (bool) ($row['matched_in_target_category'] ?? false))
             ->map(function (array $row): array {
                 $linkAttributeId = $row['link_attribute_id'] ?? null;
                 $createDataType = (string) ($row['create_data_type'] ?? 'text');

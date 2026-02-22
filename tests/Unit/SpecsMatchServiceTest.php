@@ -529,6 +529,60 @@ it('suggests linking to existing global attribute by normalized spec name', func
         ->and((string) ($powerSuggestion['suggested_decision'] ?? ''))->toBe('link_existing');
 });
 
+it('includes specs already linked to target category in suggestions', function () {
+    $volt = Unit::query()->create([
+        'name' => 'Вольт',
+        'symbol' => 'В',
+        'dimension' => 'electric_potential',
+        'base_symbol' => 'V',
+        'si_factor' => 1,
+        'si_offset' => 0,
+    ]);
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Промышленные пылесосы',
+        'slug' => 'industrial-vacuums-suggestions',
+        'parent_id' => -1,
+        'order' => 27,
+        'is_active' => true,
+    ]);
+
+    $voltageAttribute = Attribute::query()->create([
+        'name' => 'Напряжение',
+        'slug' => 'voltage-existing-in-target',
+        'data_type' => 'number',
+        'input_type' => 'number',
+        'unit_id' => $volt->id,
+        'is_filterable' => true,
+    ]);
+
+    $targetCategory->attributeDefs()->attach($voltageAttribute->id);
+
+    $product = Product::query()->create([
+        'name' => 'Пылесос X',
+        'slug' => 'vacuum-x',
+        'price_amount' => 19800,
+        'specs' => [
+            ['name' => 'Напряжение', 'value' => '220 В', 'source' => 'dom'],
+        ],
+    ]);
+
+    $service = new SpecsMatchService;
+    $suggestions = collect($service->buildAttributeCreationSuggestions(
+        [$product->id],
+        $targetCategory->id,
+    ))->keyBy('spec_name');
+
+    $voltageSuggestion = $suggestions->get('Напряжение');
+
+    expect($voltageSuggestion)->not->toBeNull()
+        ->and((bool) ($voltageSuggestion['matched_in_target_category'] ?? false))->toBeTrue()
+        ->and((int) ($voltageSuggestion['existing_attribute_id'] ?? 0))->toBe($voltageAttribute->id)
+        ->and((string) ($voltageSuggestion['existing_attribute_data_type'] ?? ''))->toBe('number')
+        ->and((string) ($voltageSuggestion['existing_attribute_input_type'] ?? ''))->toBe('number')
+        ->and((string) ($voltageSuggestion['existing_attribute_unit_label'] ?? ''))->toBe('Вольт (В) — electric_potential');
+});
+
 it('builds suggestions for unmatched spec names with inferred types', function () {
     $kilopascal = Unit::query()->create([
         'name' => 'Килопаскаль',

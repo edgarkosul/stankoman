@@ -36,6 +36,7 @@ class SpecsMatchService
      *     existing_attribute_data_type:?string,
      *     existing_attribute_input_type:?string,
      *     existing_attribute_unit_label:?string,
+     *     matched_in_target_category:bool,
      *     suggested_decision:string
      * }>
      */
@@ -48,7 +49,11 @@ class SpecsMatchService
         }
 
         $targetCategory = Category::query()
-            ->with(['attributeDefs:id,name'])
+            ->with(['attributeDefs' => function ($query): void {
+                $query
+                    ->select(['attributes.id', 'attributes.name', 'attributes.data_type', 'attributes.input_type', 'attributes.unit_id'])
+                    ->with(['unit:id,name,symbol,dimension']);
+            }])
             ->find($targetCategoryId);
 
         if (! $targetCategory || ! $targetCategory->isLeaf()) {
@@ -77,7 +82,7 @@ class SpecsMatchService
                 $specName = $specNameContext['name'];
                 $normalizedSpecName = NameNormalizer::normalize($specName);
 
-                if (! $normalizedSpecName || isset($attributeIndex[$normalizedSpecName])) {
+                if (! $normalizedSpecName) {
                     continue;
                 }
 
@@ -127,7 +132,8 @@ class SpecsMatchService
                     'unit_candidate_ids' => [],
                 ];
 
-            $existingAttribute = $globalAttributeIndex[$row['normalized_name']] ?? null;
+            $targetCategoryAttribute = $attributeIndex[$row['normalized_name']] ?? null;
+            $existingAttribute = $targetCategoryAttribute ?? ($globalAttributeIndex[$row['normalized_name']] ?? null);
 
             $suggestions[] = [
                 'spec_name' => $row['spec_name'],
@@ -148,6 +154,7 @@ class SpecsMatchService
                 'existing_attribute_data_type' => $existingAttribute?->data_type,
                 'existing_attribute_input_type' => $existingAttribute?->input_type,
                 'existing_attribute_unit_label' => $this->unitLabel($existingAttribute?->unit),
+                'matched_in_target_category' => $targetCategoryAttribute !== null,
                 'suggested_decision' => $existingAttribute ? 'link_existing' : 'ignore',
             ];
         }
