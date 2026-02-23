@@ -14,6 +14,7 @@ use App\Support\NameNormalizer;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Text as SchemaText;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -556,18 +557,27 @@ it('shows loading hints for async specs-match wizard fields', function () {
         })
         ->assertFormFieldExists('attribute_proposals', function (Repeater $field): bool {
             $flatFields = $field->getChildSchema()?->getFlatFields(withHidden: true) ?? [];
+            $childComponents = $field->getChildSchema()?->getComponents() ?? [];
 
             $linkAttributeField = $flatFields['link_attribute_id'] ?? null;
             $linkSourceUnitField = $flatFields['link_source_unit_id'] ?? null;
+            $rowLoadingHint = collect($childComponents)->first(
+                fn ($component): bool => $component instanceof SchemaText
+                    && $component->getContent() === 'Ожидайте загрузки полей...',
+            );
 
-            if (! $linkAttributeField instanceof Select || ! $linkSourceUnitField instanceof Select) {
+            if (! $linkAttributeField instanceof Select || ! $linkSourceUnitField instanceof Select || ! $rowLoadingHint instanceof SchemaText) {
                 return false;
             }
+
+            $loadingHintAttributes = $rowLoadingHint->getExtraAttributes();
 
             return $linkAttributeField->getLoadingMessage() === 'Ожидайте загрузки...'
                 && $linkAttributeField->getSearchingMessage() === 'Ищем варианты...'
                 && $linkSourceUnitField->getLoadingMessage() === 'Ожидайте загрузки...'
-                && $linkSourceUnitField->getSearchingMessage() === 'Ищем варианты...';
+                && $linkSourceUnitField->getSearchingMessage() === 'Ищем варианты...'
+                && array_key_exists('wire:loading.flex', $loadingHintAttributes)
+                && array_key_exists('wire:loading.delay', $loadingHintAttributes);
         });
 });
 

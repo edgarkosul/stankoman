@@ -679,6 +679,14 @@ class ProductsTable
                                     })
                                     ->columnSpanFull(),
 
+                                Text::make('Ожидайте загрузки полей...')
+                                    ->extraAttributes([
+                                        'class' => 'hidden items-center gap-2 text-xs text-red-600 animate-pulse',
+                                        'wire:loading.flex' => '',
+                                        'wire:loading.delay' => '',
+                                    ])
+                                    ->columnSpanFull(),
+
                                 Select::make('link_attribute_id')
                                     ->label('Существующий атрибут')
                                     ->searchable()
