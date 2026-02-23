@@ -42,6 +42,10 @@ use Illuminate\Support\Facades\DB;
 
 class ProductsTable
 {
+    private const LOADING_WAIT_MESSAGE = 'Ожидайте загрузки...';
+
+    private const SEARCHING_WAIT_MESSAGE = 'Ищем варианты...';
+
     public static function configure(Table $table): Table
     {
         return self::configureTable($table);
@@ -472,6 +476,8 @@ class ProductsTable
                                 ->leaf()
                                 ->orderBy('name')
                                 ->pluck('name', 'id'))
+                            ->loadingMessage(self::LOADING_WAIT_MESSAGE)
+                            ->searchingMessage(self::SEARCHING_WAIT_MESSAGE)
                             ->live()
                             ->afterStateUpdated(function (mixed $state, Get $get, Set $set, $livewire): void {
                                 if ($get('mode') !== 'specs_match') {
@@ -482,6 +488,15 @@ class ProductsTable
                             })
                             ->visible(fn ($get) => $get('mode') === 'specs_match')
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
+
+                        Text::make('Ожидайте загрузки данных мастера...')
+                            ->extraAttributes([
+                                'class' => 'hidden items-center gap-2 text-sm text-red-600 animate-pulse',
+                                'wire:loading.flex' => '',
+                                'wire:loading.delay' => '',
+                            ])
+                            ->visible(fn ($get): bool => $get('mode') === 'specs_match')
+                            ->columnSpanFull(),
 
                         Toggle::make('dry_run')
                             ->label('Только проверка (dry-run)')
@@ -667,6 +682,8 @@ class ProductsTable
                                 Select::make('link_attribute_id')
                                     ->label('Существующий атрибут')
                                     ->searchable()
+                                    ->loadingMessage(self::LOADING_WAIT_MESSAGE)
+                                    ->searchingMessage(self::SEARCHING_WAIT_MESSAGE)
                                     ->live()
                                     ->options(fn (): array => self::attributeLinkOptions())
                                     ->afterStateUpdated(function (mixed $_state, Set $set): void {
@@ -679,6 +696,8 @@ class ProductsTable
                                     ->label('Единица во входном значении')
                                     ->placeholder('Автоопределение из spec')
                                     ->searchable()
+                                    ->loadingMessage(self::LOADING_WAIT_MESSAGE)
+                                    ->searchingMessage(self::SEARCHING_WAIT_MESSAGE)
                                     ->native(false)
                                     ->options(fn (Get $get): array => self::linkSourceUnitOptionsForProposal(
                                         self::linkedAttributeIdForProposal($get),
@@ -727,6 +746,8 @@ class ProductsTable
                                 Select::make('create_unit_id')
                                     ->label('Базовая единица')
                                     ->searchable()
+                                    ->loadingMessage(self::LOADING_WAIT_MESSAGE)
+                                    ->searchingMessage(self::SEARCHING_WAIT_MESSAGE)
                                     ->native(false)
                                     ->options(fn (Get $get): array => self::unitOptionsForProposal(
                                         dataType: (string) ($get('create_data_type') ?? 'text'),
@@ -740,6 +761,8 @@ class ProductsTable
                                     ->label('Дополнительные единицы')
                                     ->multiple()
                                     ->searchable()
+                                    ->loadingMessage(self::LOADING_WAIT_MESSAGE)
+                                    ->searchingMessage(self::SEARCHING_WAIT_MESSAGE)
                                     ->native(false)
                                     ->options(fn (Get $get): array => self::additionalUnitOptionsForProposal((int) ($get('create_unit_id') ?? 0)))
                                     ->visible(fn (Get $get): bool => $get('decision') === 'create_attribute' && in_array((string) ($get('create_data_type') ?? 'text'), ['number', 'range'], true)),

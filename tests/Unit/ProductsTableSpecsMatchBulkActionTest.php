@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\Unit;
 use App\Models\User;
 use App\Support\NameNormalizer;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
 use Illuminate\Database\Schema\Blueprint;
@@ -527,6 +528,46 @@ it('shows write mode selector with only-empty and overwrite options for specs ma
                 'only_empty' => 'Заполнять только пустые',
                 'overwrite' => 'Перезаписывать существующие',
             ];
+        });
+});
+
+it('shows loading hints for async specs-match wizard fields', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $product = Product::query()->create([
+        'name' => 'Товар для проверки индикаторов загрузки',
+        'slug' => 'specs-loading-hints-product',
+        'price_amount' => 9900,
+        'specs' => [
+            ['name' => 'Мощность', 'value' => '1 кВт', 'source' => 'dom'],
+        ],
+    ]);
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$product])
+        ->mountTableBulkAction('massEdit', [$product])
+        ->setTableBulkActionData([
+            'mode' => 'specs_match',
+        ])
+        ->assertFormFieldExists('target_category_id', function (Select $field): bool {
+            return $field->getLoadingMessage() === 'Ожидайте загрузки...'
+                && $field->getSearchingMessage() === 'Ищем варианты...';
+        })
+        ->assertFormFieldExists('attribute_proposals', function (Repeater $field): bool {
+            $flatFields = $field->getChildSchema()?->getFlatFields(withHidden: true) ?? [];
+
+            $linkAttributeField = $flatFields['link_attribute_id'] ?? null;
+            $linkSourceUnitField = $flatFields['link_source_unit_id'] ?? null;
+
+            if (! $linkAttributeField instanceof Select || ! $linkSourceUnitField instanceof Select) {
+                return false;
+            }
+
+            return $linkAttributeField->getLoadingMessage() === 'Ожидайте загрузки...'
+                && $linkAttributeField->getSearchingMessage() === 'Ищем варианты...'
+                && $linkSourceUnitField->getLoadingMessage() === 'Ожидайте загрузки...'
+                && $linkSourceUnitField->getSearchingMessage() === 'Ищем варианты...';
         });
 });
 
