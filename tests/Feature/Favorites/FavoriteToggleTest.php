@@ -23,6 +23,7 @@ it('toggles product in favorites list and dispatches favorites events', function
         ->assertSet('added', false)
         ->call('toggle')
         ->assertSet('added', true)
+        ->assertDispatched("favorites:list-updated.{$product->id}")
         ->assertDispatched('favorites:list-updated')
         ->assertDispatched('favorites:updated');
 
@@ -35,6 +36,7 @@ it('toggles product in favorites list and dispatches favorites events', function
         ->assertSet('added', true)
         ->call('toggle')
         ->assertSet('added', false)
+        ->assertDispatched("favorites:list-updated.{$product->id}")
         ->assertDispatched('favorites:list-updated')
         ->assertDispatched('favorites:updated');
 

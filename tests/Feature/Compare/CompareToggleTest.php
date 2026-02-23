@@ -22,6 +22,7 @@ it('toggles product in compare list and dispatches compare events', function ():
         ->assertSet('added', false)
         ->call('toggle')
         ->assertSet('added', true)
+        ->assertDispatched("compare:list-updated.{$product->id}")
         ->assertDispatched('compare:list-updated')
         ->assertDispatched('compare:updated');
 
@@ -34,6 +35,7 @@ it('toggles product in compare list and dispatches compare events', function ():
         ->assertSet('added', true)
         ->call('toggle')
         ->assertSet('added', false)
+        ->assertDispatched("compare:list-updated.{$product->id}")
         ->assertDispatched('compare:list-updated')
         ->assertDispatched('compare:updated');
 

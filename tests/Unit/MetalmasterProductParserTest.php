@@ -238,6 +238,49 @@ it('skips decorative characteristics header row in simple two column specs table
     expect($map['Масса станка, кг'] ?? null)->toBe('300');
 });
 
+it('uses blp_3 block html as description when it is present on page', function () {
+    $jsonLd = json_encode([
+        '@context' => 'https://schema.org',
+        '@type' => 'Product',
+        'name' => 'Листогиб Metal Master LBA 2015',
+        'description' => 'Краткое описание из JSON-LD',
+        'brand' => [
+            '@type' => 'Brand',
+            'name' => 'MetalMaster',
+        ],
+        'offers' => [
+            '@type' => 'Offer',
+            'priceCurrency' => 'RUB',
+            'price' => 319000,
+            'availability' => 'https://schema.org/InStock',
+        ],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    $html = '<html><head>'
+        .'<script type="application/ld+json">'.$jsonLd.'</script>'
+        .'</head><body>'
+        .'<h1>Листогиб Metal Master LBA 2015</h1>'
+        .'<div class="d-none d-sm-block lx-hide wrapper__content-product" id="blp_3">'
+        .'  <h3 class="wrapper__left-title">Описание станка Листогиб LBA-2015</h3>'
+        .'  <div class="product__body">'
+        .'    <p>Листогиб Metal Master LBA 2015 предназначен для изготовления различных изделий из листовых материалов и обеспечивает стабильную производительность на длинных сериях.</p>'
+        .'    <p class="centr"><img src="/design/metalmasternew/images/white.gif" data-src="/assets/images/lba-op/lba-opis1.jpg" alt="Metal Master LBA 2015"></p>'
+        .'    <ul><li>Неограниченная глубина подачи листа</li></ul>'
+        .'  </div>'
+        .'</div>'
+        .'</body></html>';
+
+    $parsed = (new MetalmasterProductParser)->parse($html, 'https://metalmaster.ru/listogiby/lba-2015/', 'listogiby');
+    $description = (string) ($parsed['description'] ?? '');
+
+    expect($description)->toContain('<h3 class="wrapper__left-title">');
+    expect($description)->toContain('Описание станка Листогиб LBA-2015');
+    expect($description)->toContain('https://metalmaster.ru/assets/images/lba-op/lba-opis1.jpg');
+    expect($description)->not->toContain('white.gif');
+    expect($description)->not->toContain('Краткое описание из JSON-LD');
+    expect((string) ($parsed['short'] ?? ''))->toContain('Листогиб Metal Master LBA 2015');
+});
+
 /**
  * @param  array<int, array{name?: mixed, value?: mixed}>  $specs
  * @return array<string, string>

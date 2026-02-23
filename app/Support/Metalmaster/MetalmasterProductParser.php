@@ -3,6 +3,7 @@
 namespace App\Support\Metalmaster;
 
 use DOMDocument;
+use DOMElement;
 use DOMNode;
 use DOMXPath;
 use Illuminate\Support\Str;
@@ -35,8 +36,8 @@ class MetalmasterProductParser
         $name = $this->stringOrNull($productJson['name'] ?? null) ?: $h1 ?: Str::title(str_replace('-', ' ', $slug));
         $title = $h1 ?: $name;
 
-        $description = $this->stringOrNull($productJson['description'] ?? null)
-            ?: $this->extractDescriptionFromDom($xpath)
+        $description = $this->extractDescriptionFromDom($xpath, $url)
+            ?: $this->stringOrNull($productJson['description'] ?? null)
             ?: null;
 
         $specsJsonLd = $this->extractSpecsFromJsonLd($productJson);
@@ -942,8 +943,21 @@ class MetalmasterProductParser
         return null;
     }
 
-    private function extractDescriptionFromDom(DOMXPath $xpath): ?string
+    private function extractDescriptionFromDom(DOMXPath $xpath, string $baseUrl): ?string
     {
+        $blpDescriptionBlock = $xpath->query("//*[@id='blp_3']")?->item(0);
+
+        if ($blpDescriptionBlock !== null) {
+            $this->absolutizeRichContentUrls($xpath, $blpDescriptionBlock, $baseUrl);
+
+            $htmlDescription = $this->nodeInnerHtml($blpDescriptionBlock);
+            $descriptionTextLength = mb_strlen(trim(strip_tags($htmlDescription)));
+
+            if ($htmlDescription !== '' && $descriptionTextLength >= 60) {
+                return $htmlDescription;
+            }
+        }
+
         // Попробуем типовые блоки описания
         $candidates = [
             "//*[contains(translate(@class,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'description')]",
@@ -964,6 +978,65 @@ class MetalmasterProductParser
         }
 
         return null;
+    }
+
+    private function absolutizeRichContentUrls(DOMXPath $xpath, DOMNode $scope, string $baseUrl): void
+    {
+        $nodes = $xpath->query('.//*[@src or @data-src or @href or @poster]', $scope);
+
+        if (! $nodes) {
+            return;
+        }
+
+        foreach ($nodes as $node) {
+            if (! $node instanceof DOMElement) {
+                continue;
+            }
+
+            if (mb_strtolower($node->tagName) === 'img') {
+                $source = trim((string) $node->getAttribute('src'));
+                $lazySource = trim((string) $node->getAttribute('data-src'));
+
+                if ($lazySource !== '' && ($source === '' || $this->isWhiteGifPlaceholder($source))) {
+                    $node->setAttribute('src', $lazySource);
+                }
+            }
+
+            foreach (['src', 'data-src', 'href', 'poster'] as $attribute) {
+                if (! $node->hasAttribute($attribute)) {
+                    continue;
+                }
+
+                $rawValue = trim((string) $node->getAttribute($attribute));
+                if ($rawValue === '') {
+                    continue;
+                }
+
+                $normalizedValue = mb_strtolower($rawValue);
+
+                if (Str::startsWith($normalizedValue, ['#', 'javascript:', 'mailto:', 'tel:', 'data:'])) {
+                    continue;
+                }
+
+                $absolute = $this->absoluteUrl($baseUrl, $rawValue);
+                if ($absolute === null) {
+                    continue;
+                }
+
+                $node->setAttribute($attribute, $absolute);
+            }
+        }
+    }
+
+    private function isWhiteGifPlaceholder(string $url): bool
+    {
+        $path = parse_url($url, PHP_URL_PATH);
+
+        if (! is_string($path) || trim($path) === '') {
+            $path = $url;
+        }
+
+        return (bool) preg_match('~(?:^|/)white\.gif$~i', trim($path));
     }
 
     private function extractSlugFromUrl(string $url): string
@@ -1044,6 +1117,27 @@ class MetalmasterProductParser
         $txt = preg_replace('/\s+/u', ' ', $txt) ?? $txt;
 
         return trim($txt);
+    }
+
+    private function nodeInnerHtml(DOMNode $node): string
+    {
+        $dom = $node->ownerDocument;
+
+        if (! $dom) {
+            return '';
+        }
+
+        $html = '';
+
+        foreach ($node->childNodes as $childNode) {
+            $fragment = $dom->saveHTML($childNode);
+
+            if (is_string($fragment)) {
+                $html .= $fragment;
+            }
+        }
+
+        return trim($html);
     }
 
     private function stringOrNull(mixed $v): ?string

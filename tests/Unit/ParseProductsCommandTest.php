@@ -141,7 +141,92 @@ it('imports metalmaster products into database and attaches staging category', f
     }
 });
 
-function metalmasterProductHtml(string $title, int $price, string $imageUrl): string
+it('downloads description images and rewrites them to local storage paths', function () {
+    rebuildMetalmasterParserSchemas();
+
+    $productUrl = 'https://metalmaster.ru/promyshlennye/z50100-dro/';
+    $bucketsFile = storage_path('app/testing/metalmaster-buckets-'.Str::lower(Str::random(10)).'.json');
+
+    file_put_contents($bucketsFile, json_encode([
+        [
+            'bucket' => 'promyshlennye',
+            'category_url' => 'https://metalmaster.ru/promyshlennye/',
+            'products_count' => 1,
+            'product_urls' => [$productUrl],
+        ],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+
+    try {
+        Storage::fake('public');
+        Queue::fake();
+
+        DB::table('categories')->insert([
+            'name' => 'Staging',
+            'slug' => 'staging',
+            'parent_id' => -1,
+            'order' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $mainImageUrl = 'https://metalmaster.ru/files/originals/z50100-main.jpg';
+        $descriptionImageUrl = 'https://metalmaster.ru/assets/images/z5100dro/22.jpg';
+
+        Http::preventStrayRequests();
+        Http::fake([
+            $productUrl => Http::response(metalmasterProductHtml(
+                title: 'Станок токарно-винторезный Metal Master Z 50100 DRO',
+                price: 1049972,
+                imageUrl: $mainImageUrl,
+                descriptionImageUrl: $descriptionImageUrl,
+            ), 200),
+            $mainImageUrl => Http::response('main-image-binary', 200, [
+                'Content-Type' => 'image/jpeg',
+            ]),
+            $descriptionImageUrl => Http::response('description-image-binary', 200, [
+                'Content-Type' => 'image/jpeg',
+            ]),
+        ]);
+
+        $this->artisan('parser:parse-products', [
+            '--buckets-file' => $bucketsFile,
+            '--sleep' => 0,
+            '--write' => true,
+            '--publish' => true,
+            '--download-images' => true,
+        ])
+            ->expectsOutputToContain('Режим: write')
+            ->assertSuccessful();
+
+        $product = Product::query()->firstOrFail();
+        $description = (string) $product->description;
+
+        expect($description)->toContain('/storage/pics/');
+        expect($description)->not->toContain('white.gif');
+        expect($description)->not->toContain('data-src=');
+
+        preg_match('/\/storage\/(pics\/[^"\']+)/', $description, $matches);
+        $descriptionImagePath = $matches[1] ?? null;
+
+        expect($descriptionImagePath)->toBeString();
+        expect($descriptionImagePath)->not->toBeEmpty();
+
+        Storage::disk('public')->assertExists($product->image);
+        Storage::disk('public')->assertExists((string) $descriptionImagePath);
+
+        Queue::assertPushed(GenerateImageDerivativesJob::class, function (GenerateImageDerivativesJob $job) use ($product): bool {
+            return $job->sourcePath === $product->image;
+        });
+        Queue::assertPushed(GenerateImageDerivativesJob::class, function (GenerateImageDerivativesJob $job) use ($descriptionImagePath): bool {
+            return $job->sourcePath === (string) $descriptionImagePath;
+        });
+    } finally {
+        @unlink($bucketsFile);
+        dropMetalmasterParserSchemas();
+    }
+});
+
+function metalmasterProductHtml(string $title, int $price, string $imageUrl, ?string $descriptionImageUrl = null): string
 {
     $jsonLd = json_encode([
         '@context' => 'https://schema.org/',
@@ -176,12 +261,31 @@ function metalmasterProductHtml(string $title, int $price, string $imageUrl): st
         ],
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
+    $descriptionBlock = '';
+
+    if (is_string($descriptionImageUrl) && trim($descriptionImageUrl) !== '') {
+        $descriptionImagePath = (string) parse_url($descriptionImageUrl, PHP_URL_PATH);
+
+        if ($descriptionImagePath === '') {
+            $descriptionImagePath = $descriptionImageUrl;
+        }
+
+        $descriptionBlock = '<div class="d-none d-sm-block lx-hide wrapper__content-product" id="blp_3">'
+            .'  <h3 class="wrapper__left-title">Описание станка '.$title.'</h3>'
+            .'  <div class="product__body">'
+            .'    <p>Описание станка '.$title.'</p>'
+            .'    <p><img src="/design/metalmasternew/images/white.gif" data-src="'.$descriptionImagePath.'" alt="'.$title.'"></p>'
+            .'  </div>'
+            .'</div>';
+    }
+
     return '<html><head><script type="application/ld+json">'
         .$jsonLd
         .'</script><title>'.$title.'</title>'
         .'<meta name="description" content="Описание '.$title.'">'
         .'</head><body>'
         .'<h1>'.$title.'</h1>'
+        .$descriptionBlock
         .'</body></html>';
 }
 

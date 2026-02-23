@@ -31,6 +31,7 @@ class FavoriteToggle extends Component
 
         $this->added = in_array($this->productId, $ids, true);
 
+        $this->dispatch("favorites:list-updated.{$this->productId}", ids: $ids);
         $this->dispatch('favorites:list-updated', ids: $ids);
         $this->dispatch('favorites:updated', count: count($ids))
             ->to(FavoritesBadge::class);
@@ -38,7 +39,7 @@ class FavoriteToggle extends Component
         $this->setTooltip();
     }
 
-    #[On('favorites:list-updated')]
+    #[On('favorites:list-updated.{productId}')]
     public function sync(FavoritesService $favorites): void
     {
         $this->added = $favorites->contains($this->productId);

@@ -4,6 +4,9 @@ namespace App\Support\Metalmaster;
 
 use App\Jobs\GenerateImageDerivativesJob;
 use App\Models\Product;
+use DOMDocument;
+use DOMElement;
+use DOMXPath;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -452,6 +455,15 @@ class MetalmasterProductImportService
             $stats['images_downloaded'] += $imageResult['downloaded'];
             $stats['image_download_failed'] += $imageResult['failed'];
             $stats['derivatives_queued'] += $imageResult['queued_derivatives'];
+
+            $descriptionImageResult = $this->localizeDescriptionImagesToPublicDisk(
+                $description,
+                (string) ($parsed['source_url'] ?? ''),
+            );
+            $description = $descriptionImageResult['html'];
+            $stats['images_downloaded'] += $descriptionImageResult['downloaded'];
+            $stats['image_download_failed'] += $descriptionImageResult['failed'];
+            $stats['derivatives_queued'] += $descriptionImageResult['queued_derivatives'];
         }
 
         $attributes = [
@@ -609,7 +621,13 @@ class MetalmasterProductImportService
 
     /**
      * @param  array<int, mixed>  $images
-     * @return array{paths: array<int, string>, downloaded: int, failed: int, queued_derivatives: int}
+     * @return array{
+     *     paths: array<int, string>,
+     *     downloaded: int,
+     *     failed: int,
+     *     queued_derivatives: int,
+     *     source_map: array<string, string>
+     * }
      */
     private function downloadImagesToPublicDisk(array $images, string $pageUrl): array
     {
@@ -619,6 +637,7 @@ class MetalmasterProductImportService
         $queuedDerivatives = 0;
         $paths = [];
         $seen = [];
+        $sourceMap = [];
 
         foreach ($images as $image) {
             if (! is_string($image)) {
@@ -646,6 +665,8 @@ class MetalmasterProductImportService
                     GenerateImageDerivativesJob::dispatch($localPath, false);
                     $queuedDerivatives++;
                 }
+
+                $sourceMap[$image] = $localPath;
 
                 continue;
             }
@@ -704,6 +725,9 @@ class MetalmasterProductImportService
                     GenerateImageDerivativesJob::dispatch($path, false);
                     $queuedDerivatives++;
                 }
+
+                $sourceMap[$image] = $path;
+                $sourceMap[$remoteUrl] = $path;
             } catch (Throwable) {
                 $failed++;
             }
@@ -714,6 +738,126 @@ class MetalmasterProductImportService
             'downloaded' => $downloaded,
             'failed' => $failed,
             'queued_derivatives' => $queuedDerivatives,
+            'source_map' => $sourceMap,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     html: string|null,
+     *     downloaded: int,
+     *     failed: int,
+     *     queued_derivatives: int
+     * }
+     */
+    private function localizeDescriptionImagesToPublicDisk(?string $description, string $pageUrl): array
+    {
+        if (! is_string($description) || trim($description) === '') {
+            return [
+                'html' => $description,
+                'downloaded' => 0,
+                'failed' => 0,
+                'queued_derivatives' => 0,
+            ];
+        }
+
+        $dom = $this->domFromHtml($description);
+
+        if (! $dom instanceof DOMDocument) {
+            return [
+                'html' => $description,
+                'downloaded' => 0,
+                'failed' => 0,
+                'queued_derivatives' => 0,
+            ];
+        }
+
+        $xpath = new DOMXPath($dom);
+        $nodes = $xpath->query('//img[@src or @data-src]');
+
+        if (! $nodes || $nodes->length === 0) {
+            return [
+                'html' => $description,
+                'downloaded' => 0,
+                'failed' => 0,
+                'queued_derivatives' => 0,
+            ];
+        }
+
+        $images = [];
+        $entries = [];
+
+        foreach ($nodes as $node) {
+            if (! $node instanceof DOMElement) {
+                continue;
+            }
+
+            $source = $this->resolveDescriptionImageSource($node);
+
+            if ($source === null) {
+                continue;
+            }
+
+            $images[] = $source;
+            $entries[] = [
+                'node' => $node,
+                'source' => $source,
+            ];
+        }
+
+        if ($images === []) {
+            return [
+                'html' => $description,
+                'downloaded' => 0,
+                'failed' => 0,
+                'queued_derivatives' => 0,
+            ];
+        }
+
+        $downloadResult = $this->downloadImagesToPublicDisk($images, $pageUrl);
+        $sourceMap = is_array($downloadResult['source_map'] ?? null)
+            ? $downloadResult['source_map']
+            : [];
+
+        foreach ($entries as $entry) {
+            $node = $entry['node'];
+            $source = $entry['source'];
+
+            if (! $node instanceof DOMElement || ! is_string($source) || $source === '') {
+                continue;
+            }
+
+            $localPath = $sourceMap[$source] ?? null;
+
+            if (! is_string($localPath) || $localPath === '') {
+                $resolvedSource = $this->resolveRemoteImageUrl($source, $pageUrl);
+
+                if (is_string($resolvedSource) && $resolvedSource !== '') {
+                    $localPath = $sourceMap[$resolvedSource] ?? null;
+                }
+            }
+
+            if (! is_string($localPath) || $localPath === '') {
+                continue;
+            }
+
+            $node->setAttribute('src', '/storage/'.$localPath);
+
+            if ($node->hasAttribute('data-src')) {
+                $node->removeAttribute('data-src');
+            }
+        }
+
+        $bodyNode = $dom->getElementsByTagName('body')->item(0);
+        $html = $bodyNode instanceof DOMElement
+            ? $this->nodeInnerHtml($bodyNode)
+            : $description;
+
+        return [
+            'html' => $html,
+            'downloaded' => (int) ($downloadResult['downloaded'] ?? 0),
+            'failed' => (int) ($downloadResult['failed'] ?? 0),
+            'queued_derivatives' => (int) ($downloadResult['queued_derivatives'] ?? 0),
         ];
     }
 
@@ -761,6 +905,87 @@ class MetalmasterProductImportService
         }
 
         return $origin.'/'.ltrim($image, '/');
+    }
+
+    private function resolveDescriptionImageSource(DOMElement $node): ?string
+    {
+        $source = trim((string) $node->getAttribute('src'));
+        $lazySource = trim((string) $node->getAttribute('data-src'));
+
+        if ($lazySource !== '' && ($source === '' || $this->isWhiteGifPlaceholder($source))) {
+            return $lazySource;
+        }
+
+        if ($source !== '') {
+            return $source;
+        }
+
+        if ($lazySource !== '') {
+            return $lazySource;
+        }
+
+        return null;
+    }
+
+    private function isWhiteGifPlaceholder(string $url): bool
+    {
+        $path = parse_url($url, PHP_URL_PATH);
+
+        if (! is_string($path) || trim($path) === '') {
+            $path = $url;
+        }
+
+        return (bool) preg_match('~(?:^|/)white\.gif$~i', trim($path));
+    }
+
+    private function domFromHtml(string $html): ?DOMDocument
+    {
+        $previousUseInternalErrors = libxml_use_internal_errors(true);
+
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $loaded = $dom->loadHTML(
+            '<?xml encoding="UTF-8">'.$this->ensureUtf8($html),
+            LIBXML_NOWARNING | LIBXML_NOERROR
+        );
+
+        libxml_clear_errors();
+        libxml_use_internal_errors($previousUseInternalErrors);
+
+        if ($loaded === false) {
+            return null;
+        }
+
+        return $dom;
+    }
+
+    private function nodeInnerHtml(DOMElement $node): string
+    {
+        $dom = $node->ownerDocument;
+
+        if (! $dom) {
+            return '';
+        }
+
+        $html = '';
+
+        foreach ($node->childNodes as $childNode) {
+            $fragment = $dom->saveHTML($childNode);
+
+            if (is_string($fragment)) {
+                $html .= $fragment;
+            }
+        }
+
+        return trim($html);
+    }
+
+    private function ensureUtf8(string $html): string
+    {
+        if (mb_detect_encoding($html, 'UTF-8', true) !== false) {
+            return $html;
+        }
+
+        return mb_convert_encoding($html, 'UTF-8', 'Windows-1251,CP1251,ISO-8859-1,UTF-8');
     }
 
     private function originFromUrl(string $url): ?string

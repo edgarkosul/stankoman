@@ -33,12 +33,13 @@ class CompareToggle extends Component
 
         $ids = $compare->ids();
 
+        $this->dispatch("compare:list-updated.{$this->productId}", ids: $ids);
         $this->dispatch('compare:list-updated', ids: $ids);
         $this->dispatch('compare:updated', count: count($ids))
             ->to(CompareBadge::class);
     }
 
-    #[On('compare:list-updated')]
+    #[On('compare:list-updated.{productId}')]
     public function sync(CompareService $compare): void
     {
         $this->syncState($compare);

@@ -59,7 +59,7 @@ class Actions extends Component
         $this->inCart = true;
         $this->setTooltip();
 
-        $this->dispatch('cart:updated', count: $this->count($cart));
+        $this->dispatchCartUpdated($cart);
         $this->dispatch('cart:added', productId: $this->productId);
     }
 
@@ -70,7 +70,7 @@ class Actions extends Component
         $this->inCart = false;
         $this->setTooltip();
 
-        $this->dispatch('cart:updated', count: $this->count($cart));
+        $this->dispatchCartUpdated($cart);
     }
 
     public function setQty(CartService $cart): void
@@ -81,14 +81,22 @@ class Actions extends Component
         $this->inCart = $quantity > 0;
         $this->setTooltip();
 
-        $this->dispatch('cart:updated', count: $this->count($cart));
+        $this->dispatchCartUpdated($cart);
     }
 
-    #[On('cart:updated')]
+    #[On('cart:updated.{productId}')]
     public function sync(CartService $cart): void
     {
         $this->inCart = $cart->isInCart($this->productId, options: null, strictOptions: false);
         $this->setTooltip();
+    }
+
+    protected function dispatchCartUpdated(CartService $cart): void
+    {
+        $count = $this->count($cart);
+
+        $this->dispatch("cart:updated.{$this->productId}", count: $count);
+        $this->dispatch('cart:updated', count: $count);
     }
 
     protected function count(CartService $cart): int

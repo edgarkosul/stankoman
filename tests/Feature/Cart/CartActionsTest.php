@@ -27,6 +27,7 @@ it('adds product to cart and dispatches cart events', function (): void {
         ->assertSet('inCart', false)
         ->call('add')
         ->assertSet('inCart', true)
+        ->assertDispatched("cart:updated.{$product->id}")
         ->assertDispatched('cart:updated')
         ->assertDispatched('cart:added');
 
