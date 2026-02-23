@@ -4,13 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Support\ImageDerivativesResolver;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
-    public function show(Product $product)
+    public function show(Product $product): View
     {
         abort_unless($product->is_active, 404);
 
@@ -20,14 +21,15 @@ class ProductController extends Controller
             'attributeOptions.attribute',
         ]);
 
+        $specs = $this->buildSpecs($product);
+
         return view('pages.product.show', [
             'product' => $product,
             'meta' => $this->buildMeta($product),
             'gallery' => $this->buildGallery($product),
             'summary' => $this->buildSummary($product),
-            'contentSections' => $this->buildContentSections($product),
+            'tabs' => $this->buildTabs($product, $specs),
             'features' => $this->buildFeatures($product),
-            'specs' => $this->buildSpecs($product),
         ]);
     }
 
@@ -101,30 +103,68 @@ class ProductController extends Controller
         ];
     }
 
-    private function buildContentSections(Product $product): array
+    /**
+     * @param  array<int, array{name: string, value: string, source: string|null}>  $specs
+     * @return array<int, array{key: string, title: string, type: string, html?: string, specs?: array<int, array{name: string, value: string, source: string|null}>}>
+     */
+    private function buildTabs(Product $product, array $specs): array
     {
-        $sections = [];
+        $tabs = [];
 
-        $sections[] = [
-            'key' => 'description',
-            'title' => 'Описание',
-            'html' => $product->description,
-            'has_content' => $this->hasRichContent($product->description),
-            'empty_text' => 'Описание пока не заполнено.',
-        ];
-
-        $extraDescription = $product->extra_description;
-        if ($this->hasRichContent($extraDescription)) {
-            $sections[] = [
-                'key' => 'extra_description',
-                'title' => 'Дополнительное описание',
-                'html' => $extraDescription,
-                'has_content' => true,
-                'empty_text' => null,
+        if ($specs !== []) {
+            $tabs[] = [
+                'key' => 'specs',
+                'title' => 'Характеристики',
+                'type' => 'specs',
+                'specs' => $specs,
             ];
         }
 
-        return $sections;
+        $contentTabs = [
+            [
+                'key' => 'description',
+                'title' => 'Описание',
+                'html' => $product->description,
+            ],
+            [
+                'key' => 'instructions',
+                'title' => 'Инструкции',
+                'html' => $this->resolveInstructionsContent($product),
+            ],
+            [
+                'key' => 'video',
+                'title' => 'Видео',
+                'html' => $product->video,
+            ],
+        ];
+
+        foreach ($contentTabs as $tab) {
+            if ($this->hasRichContent($tab['html'] ?? null)) {
+                $tabs[] = [
+                    'key' => $tab['key'],
+                    'title' => $tab['title'],
+                    'type' => 'rich_content',
+                    'html' => (string) $tab['html'],
+                ];
+            }
+        }
+
+        return $tabs;
+    }
+
+    private function resolveInstructionsContent(Product $product): ?string
+    {
+        $instructions = $product->instructions;
+
+        if ($this->hasRichContent($instructions)) {
+            return $instructions;
+        }
+
+        if ($this->hasRichContent($product->extra_description)) {
+            return $product->extra_description;
+        }
+
+        return $instructions;
     }
 
     private function buildFeatures(Product $product): array

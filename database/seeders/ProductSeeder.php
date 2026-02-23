@@ -110,6 +110,8 @@ class ProductSeeder extends Seeder
                     'short' => $faker->sentence(10),
                     'description' => '<p>'.$faker->paragraph(3).'</p>',
                     'extra_description' => $faker->boolean(40) ? '<p>'.$faker->paragraph(2).'</p>' : null,
+                    'instructions' => $faker->boolean(35) ? '<p>'.$faker->paragraph(2).'</p>' : null,
+                    'video' => $faker->boolean(20) ? '<p>'.$faker->sentence(10).'</p>' : null,
                     'specs' => $faker->boolean(50) ? $faker->paragraph(2) : null,
                     'promo_info' => $faker->boolean(35) ? $faker->randomElement($promoLines) : null,
                     'image' => $this->randomPic(),

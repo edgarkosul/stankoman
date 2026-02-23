@@ -40,6 +40,8 @@ use Illuminate\Support\Str;
  * @property string|null $short
  * @property string|null $description
  * @property string|null $extra_description
+ * @property string|null $instructions
+ * @property string|null $video
  * @property array<array-key, mixed>|null $specs
  * @property string|null $image
  * @property string|null $thumb
@@ -77,6 +79,8 @@ class Product extends Model
         'short',
         'description',
         'extra_description',
+        'instructions',
+        'video',
         'specs',
         'image',
         'thumb',

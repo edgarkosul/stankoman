@@ -83,6 +83,8 @@ class EditProduct extends EditRecord
             $state['gallery'] ?? $this->record->gallery,
             $state['description'] ?? $this->record->description,
             $state['extra_description'] ?? $this->record->extra_description,
+            $state['instructions'] ?? $this->record->instructions,
+            $state['video'] ?? $this->record->video,
         ];
     }
 

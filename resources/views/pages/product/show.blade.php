@@ -13,13 +13,6 @@
         <div class="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1.65fr)_minmax(20rem,1fr)] lg:items-start">
             <div class="space-y-8">
                 @include('pages.product.partials.hero', ['gallery' => $gallery, 'summary' => $summary])
-
-                @include('pages.product.partials.content-sections', ['sections' => $contentSections])
-
-                {{-- <section class="space-y-3">
-                    <h2 class="text-lg font-semibold">Контент вкладок</h2>
-                    @include('pages.product.partials.tab-content')
-                </section> --}}
             </div>
 
             <aside class="space-y-4 lg:sticky lg:top-28">
@@ -30,8 +23,6 @@
             </aside>
 
         </div>
-        <div>
-            @include('pages.product.partials.specs', ['specs' => $specs])
-        </div>
+        @include('pages.product.partials.tabs', ['tabs' => $tabs])
     </div>
 </x-layouts.app>

@@ -40,7 +40,10 @@ class ProductInfolist
                 TextEntry::make('description')
                     ->placeholder('-')
                     ->columnSpanFull(),
-                TextEntry::make('extra_description')
+                TextEntry::make('instructions')
+                    ->placeholder('-')
+                    ->columnSpanFull(),
+                TextEntry::make('video')
                     ->placeholder('-')
                     ->columnSpanFull(),
                 TextEntry::make('specs')

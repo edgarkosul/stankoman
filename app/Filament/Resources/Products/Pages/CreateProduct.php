@@ -55,7 +55,8 @@ class CreateProduct extends CreateRecord
             'popularity' => $source->popularity,
 
             'description' => $source->description,
-            'extra_description' => $source->extra_description,
+            'instructions' => filled($source->instructions) ? $source->instructions : $source->extra_description,
+            'video' => $source->video,
 
             'image' => $source->image,
             'gallery' => $source->gallery,

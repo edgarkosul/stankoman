@@ -4,6 +4,7 @@ use App\Enums\ProductWarranty;
 use App\Filament\Resources\Products\Pages\CreateProduct;
 use App\Filament\Resources\Products\Schemas\ProductForm;
 use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Schemas\Schema;
 use Tests\TestCase;
@@ -77,4 +78,20 @@ it('configures warranty as enum select with nullable placeholder', function (): 
     /** @var Select $warrantyField */
     expect($warrantyField->getOptions())->toBe(ProductWarranty::options())
         ->and($warrantyField->getPlaceholder())->toBe('Без гарантии');
+});
+
+it('configures instructions and video as separate rich editors', function (): void {
+    $page = new CreateProduct;
+    $schema = $page->form(Schema::make($page));
+
+    $instructionsField = $schema->getComponentByStatePath('instructions', withHidden: true);
+    $videoField = $schema->getComponentByStatePath('video', withHidden: true);
+
+    expect($instructionsField)->toBeInstanceOf(RichEditor::class)
+        ->and($videoField)->toBeInstanceOf(RichEditor::class);
+
+    /** @var RichEditor $instructionsField */
+    /** @var RichEditor $videoField */
+    expect($instructionsField->isLabelHidden())->toBeTrue()
+        ->and($videoField->isLabelHidden())->toBeTrue();
 });

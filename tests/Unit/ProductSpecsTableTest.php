@@ -15,6 +15,8 @@ beforeEach(function () {
         'product_attribute_values',
         'attribute_options',
         'attributes',
+        'cart_items',
+        'carts',
         'product_categories',
         'products',
         'categories',
@@ -66,6 +68,8 @@ beforeEach(function () {
         $table->text('short')->nullable();
         $table->longText('description')->nullable();
         $table->text('extra_description')->nullable();
+        $table->longText('instructions')->nullable();
+        $table->longText('video')->nullable();
         $table->json('specs')->nullable();
         $table->string('promo_info')->nullable();
         $table->string('image')->nullable();
@@ -81,6 +85,24 @@ beforeEach(function () {
         $table->unsignedBigInteger('category_id');
         $table->boolean('is_primary')->default(false);
         $table->primary(['product_id', 'category_id']);
+    });
+
+    Schema::create('carts', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('user_id')->nullable();
+        $table->string('token', 64)->unique();
+        $table->timestamps();
+    });
+
+    Schema::create('cart_items', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('cart_id');
+        $table->unsignedBigInteger('product_id');
+        $table->unsignedInteger('quantity')->default(1);
+        $table->decimal('price_snapshot', 12, 2)->nullable();
+        $table->json('options')->nullable();
+        $table->string('options_key', 40)->index();
+        $table->timestamps();
     });
 
     Schema::create('attributes', function (Blueprint $table): void {
@@ -134,12 +156,15 @@ beforeEach(function () {
     });
 });
 
-it('renders specs table from product specs field', function () {
+it('renders product tabs and includes specs, description, instructions and video content', function () {
     $product = Product::query()->create([
         'name' => 'Пылесос VT-9000',
         'slug' => 'pylesos-vt-9000',
         'is_active' => true,
         'price_amount' => 360000,
+        'description' => '<p>Описание для вкладки</p>',
+        'instructions' => '<p>Инструкция по запуску</p>',
+        'video' => '<p>Видео по установке</p>',
         'specs' => [
             ['name' => 'Объем бака', 'value' => '60 л', 'source' => 'jsonld'],
             ['name' => 'Мощность', 'value' => '3600 Вт', 'source' => 'dom'],
@@ -151,6 +176,12 @@ it('renders specs table from product specs field', function () {
     $this->get(route('product.show', ['product' => $product]))
         ->assertSuccessful()
         ->assertSee('Характеристики')
+        ->assertSee('Описание')
+        ->assertSee('Инструкции')
+        ->assertSee('Видео')
+        ->assertSee('Описание для вкладки')
+        ->assertSee('Инструкция по запуску')
+        ->assertSee('Видео по установке')
         ->assertSee('Объем бака')
         ->assertSee('60 л')
         ->assertSee('Съемный бак')
@@ -158,7 +189,7 @@ it('renders specs table from product specs field', function () {
         ->assertSee('lg:grid-cols-2', false);
 });
 
-it('renders specs from associative payload and shows placeholder when specs are empty', function () {
+it('hides empty product tabs', function () {
     $mappedSpecsProduct = Product::query()->create([
         'name' => 'Пылесос VT-9100',
         'slug' => 'pylesos-vt-9100',
@@ -180,12 +211,16 @@ it('renders specs from associative payload and shows placeholder when specs are 
 
     $this->get(route('product.show', ['product' => $mappedSpecsProduct]))
         ->assertSuccessful()
+        ->assertSee('Характеристики')
         ->assertSee('Диаметр')
         ->assertSee('360 мм')
         ->assertSee('Вакуум')
-        ->assertSee('26 кПа');
+        ->assertSee('26 кПа')
+        ->assertDontSee('>Описание<', false)
+        ->assertDontSee('>Инструкции<', false)
+        ->assertDontSee('>Видео<', false);
 
     $this->get(route('product.show', ['product' => $emptySpecsProduct]))
         ->assertSuccessful()
-        ->assertSee('Характеристики пока не заполнены.');
+        ->assertDontSee('data-testid="product-tabs"', false);
 });

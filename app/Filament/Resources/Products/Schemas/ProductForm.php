@@ -160,63 +160,13 @@ class ProductForm
                     ->columnSpanFull()
                     ->tabs([
                         Tabs\Tab::make('Описание')->schema([
-                            RichEditor::make('description')
-                                ->label('Описание (визуально)')
-                                ->tools([
-                                    RichEditorTool::make('clearContent')
-                                        ->label('Очистить')
-                                        ->icon(Heroicon::Trash)
-                                        ->activeStyling(false)
-                                        ->jsHandler("confirm('Очистить описание?') && ".'$getEditor'.'()?.chain().focus().clearContent().run()'),
-                                ])
-                                ->toolbarButtons([
-                                    ['bold', 'italic', 'underline', 'textColor', 'strike', 'subscript', 'superscript', 'link'],
-                                    ['h2', 'h3', 'alignStart', 'alignCenter', 'alignEnd'],
-                                    ['blockquote', 'codeBlock', 'bulletList', 'orderedList'],
-                                    ['table', 'attachFiles', 'customBlocks'],
-                                    ['undo', 'redo'],
-                                    ['horizontalRule', 'grid', 'gridDelete', 'clearContent'],
-                                ])
-                                ->fileAttachmentsDisk('public')
-                                ->fileAttachmentsDirectory('pics')
-                                ->fileAttachmentsVisibility('public')
-                                ->customBlocks([
-                                    ImageBlock::class,
-                                    ImageGalleryBlock::class,
-                                    RutubeVideoBlock::class,
-                                    YoutubeVideoBlock::class,
-                                    RawHtmlBlock::class,
-                                ]),
-
+                            self::makeProductContentEditor('description'),
                         ]),
-                        Tabs\Tab::make('Инструкция и видео')->schema([
-                            RichEditor::make('extra_description')
-                                ->label('Доп. описание (визуально)')
-                                ->tools([
-                                    RichEditorTool::make('clearContent')
-                                        ->label('Очистить')
-                                        ->icon(Heroicon::Trash)
-                                        ->activeStyling(false)
-                                        ->jsHandler("confirm('Очистить описание?') && ".'$getEditor'.'()?.chain().focus().clearContent().run()'),
-                                ])
-                                ->toolbarButtons([
-                                    ['bold', 'italic', 'underline', 'textColor', 'strike', 'subscript', 'superscript', 'link'],
-                                    ['h2', 'h3', 'alignStart', 'alignCenter', 'alignEnd'],
-                                    ['blockquote', 'codeBlock', 'bulletList', 'orderedList'],
-                                    ['table', 'attachFiles', 'customBlocks'],
-                                    ['undo', 'redo'],
-                                    ['horizontalRule', 'grid', 'gridDelete', 'clearContent'],
-                                ])
-                                ->fileAttachmentsDisk('public')
-                                ->fileAttachmentsDirectory('pics')
-                                ->fileAttachmentsVisibility('public')
-                                ->customBlocks([
-                                    ImageBlock::class,
-                                    ImageGalleryBlock::class,
-                                    RutubeVideoBlock::class,
-                                    YoutubeVideoBlock::class,
-                                    RawHtmlBlock::class,
-                                ]),
+                        Tabs\Tab::make('Инструкции')->schema([
+                            self::makeProductContentEditor('instructions'),
+                        ]),
+                        Tabs\Tab::make('Видео')->schema([
+                            self::makeProductContentEditor('video'),
                         ]),
                     ]),
                 Repeater::make('specs')
@@ -295,6 +245,37 @@ class ProductForm
                     ->multiple()
                     ->preload()
                     ->columnSpan(['default' => 2, 'lg' => 2]),
+            ]);
+    }
+
+    private static function makeProductContentEditor(string $field): RichEditor
+    {
+        return RichEditor::make($field)
+            ->hiddenLabel()
+            ->tools([
+                RichEditorTool::make('clearContent')
+                    ->label('Очистить')
+                    ->icon(Heroicon::Trash)
+                    ->activeStyling(false)
+                    ->jsHandler("confirm('Очистить описание?') && ".'$getEditor'.'()?.chain().focus().clearContent().run()'),
+            ])
+            ->toolbarButtons([
+                ['bold', 'italic', 'underline', 'textColor', 'strike', 'subscript', 'superscript', 'link'],
+                ['h2', 'h3', 'alignStart', 'alignCenter', 'alignEnd'],
+                ['blockquote', 'codeBlock', 'bulletList', 'orderedList'],
+                ['table', 'attachFiles', 'customBlocks'],
+                ['undo', 'redo'],
+                ['horizontalRule', 'grid', 'gridDelete', 'clearContent'],
+            ])
+            ->fileAttachmentsDisk('public')
+            ->fileAttachmentsDirectory('pics')
+            ->fileAttachmentsVisibility('public')
+            ->customBlocks([
+                ImageBlock::class,
+                ImageGalleryBlock::class,
+                RutubeVideoBlock::class,
+                YoutubeVideoBlock::class,
+                RawHtmlBlock::class,
             ]);
     }
 
