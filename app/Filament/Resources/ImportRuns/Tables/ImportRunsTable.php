@@ -52,6 +52,7 @@ class ImportRunsTable
                         'dry_run' => 'Проверено',
                         'applied' => 'Применено',
                         'failed' => 'Ошибка',
+                        'cancelled' => 'Остановлен',
                         default => (string) $state,
                     })
                     ->badge()
@@ -60,6 +61,7 @@ class ImportRunsTable
                         'info' => 'dry_run',
                         'success' => 'applied',
                         'danger' => 'failed',
+                        'gray' => 'cancelled',
                     ])
                     ->sortable(),
 

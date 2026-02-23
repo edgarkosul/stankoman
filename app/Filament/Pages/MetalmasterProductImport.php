@@ -20,6 +20,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema as DatabaseSchema;
 use Throwable;
 use UnitEnum;
 
@@ -159,6 +160,12 @@ class MetalmasterProductImport extends Page implements HasForms
                                 ->color('danger')
                                 ->requiresConfirmation()
                                 ->action('doImport'),
+                            FormAction::make('stop_import')
+                                ->label('Остановить текущий запуск')
+                                ->color('warning')
+                                ->requiresConfirmation()
+                                ->visible(fn (): bool => $this->hasActiveRun())
+                                ->action('stopActiveImport'),
                         ]),
                     ]),
             ])
@@ -173,6 +180,54 @@ class MetalmasterProductImport extends Page implements HasForms
     public function doImport(): void
     {
         $this->dispatchImport(true);
+    }
+
+    public function stopActiveImport(): void
+    {
+        $run = $this->resolveActiveRun();
+
+        if (! $run) {
+            Notification::make()
+                ->title('Активный запуск не найден')
+                ->body('Для Metalmaster нет запуска со статусом "В ожидании".')
+                ->warning()
+                ->send();
+
+            $this->refreshLastSavedRun();
+
+            return;
+        }
+
+        $totals = is_array($run->totals) ? $run->totals : [];
+
+        $run->status = 'cancelled';
+        $run->finished_at = now();
+        $run->totals = $this->mergeMeta($totals, [
+            'mode' => $this->resolveMode($totals, $run),
+            'is_running' => false,
+            'cancelled_by_user' => true,
+            'cancelled_at' => now()->toIso8601String(),
+        ]);
+        $run->save();
+
+        $run->issues()->create([
+            'row_index' => null,
+            'code' => 'cancelled_by_user',
+            'severity' => 'warning',
+            'message' => 'Импорт остановлен пользователем из панели.',
+            'row_snapshot' => [
+                'user_id' => Auth::id(),
+            ],
+        ]);
+
+        $this->lastRunId = $run->id;
+        $this->refreshLastSavedRun();
+
+        Notification::make()
+            ->title('Запуск остановлен')
+            ->body("Запуск #{$run->id} помечен как остановленный.")
+            ->success()
+            ->send();
     }
 
     public function regenerateBuckets(): void
@@ -495,5 +550,63 @@ class MetalmasterProductImport extends Page implements HasForms
         }
 
         return $bucket;
+    }
+
+    private function hasActiveRun(): bool
+    {
+        return $this->resolveActiveRun() !== null;
+    }
+
+    private function resolveActiveRun(): ?ImportRun
+    {
+        if (! DatabaseSchema::hasTable('import_runs')) {
+            return null;
+        }
+
+        $runQuery = ImportRun::query()
+            ->where('type', 'metalmaster_products')
+            ->where('status', 'pending');
+
+        if ($this->lastRunId !== null) {
+            $lastRun = (clone $runQuery)->whereKey($this->lastRunId)->first();
+
+            if ($lastRun) {
+                return $lastRun;
+            }
+        }
+
+        return $runQuery->latest('id')->first();
+    }
+
+    /**
+     * @param  array<string, mixed>  $totals
+     * @param  array<string, mixed>  $meta
+     * @return array<string, mixed>
+     */
+    private function mergeMeta(array $totals, array $meta): array
+    {
+        $currentMeta = $totals['_meta'] ?? [];
+
+        if (! is_array($currentMeta)) {
+            $currentMeta = [];
+        }
+
+        $totals['_meta'] = array_merge($currentMeta, $meta);
+
+        return $totals;
+    }
+
+    /**
+     * @param  array<string, mixed>  $totals
+     */
+    private function resolveMode(array $totals, ImportRun $run): string
+    {
+        $mode = data_get($totals, '_meta.mode');
+
+        if (is_string($mode) && $mode !== '') {
+            return $mode;
+        }
+
+        return (bool) data_get($run->columns, 'write', false) ? 'write' : 'dry-run';
     }
 }

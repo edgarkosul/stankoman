@@ -44,7 +44,7 @@ test('import completion database notification is sent only to initiator for fina
     expect((string) data_get($initiatorNotification?->data, 'format'))->toBe('filament');
     expect((string) data_get($initiatorNotification?->data, 'title'))->toContain("#{$run->id}");
     expect((string) data_get($initiatorNotification?->data, 'body'))->toContain('Metalmaster');
-})->with(['dry_run', 'applied', 'failed']);
+})->with(['dry_run', 'applied', 'failed', 'cancelled']);
 
 test('database notification is not sent when status remains non-final', function () {
     $initiator = User::factory()->create();

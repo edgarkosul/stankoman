@@ -9,6 +9,7 @@
                     'dry_run' => 'Проверено',
                     'applied' => 'Применено',
                     'failed' => 'Ошибка',
+                    'cancelled' => 'Остановлен',
                     default => (string) ($lastSavedRun['status'] ?? '—'),
                 };
             @endphp

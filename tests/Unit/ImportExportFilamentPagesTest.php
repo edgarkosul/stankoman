@@ -440,3 +440,121 @@ test('metalmaster product import page dispatches queued dry-run job', function (
     expect(data_get($run?->columns, 'buckets_file'))->toBe(storage_path('app/parser/metalmaster-buckets.json'));
     expect(data_get($run?->columns, 'download_images'))->toBeTrue();
 });
+
+test('vactool product import page can stop active queued run', function () {
+    if (! DatabaseSchema::hasTable('import_runs')) {
+        DatabaseSchema::create('import_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->string('type')->default('products');
+            $table->string('status')->default('pending');
+            $table->json('columns')->nullable();
+            $table->json('totals')->nullable();
+            $table->string('source_filename')->nullable();
+            $table->string('stored_path')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    if (! DatabaseSchema::hasTable('import_issues')) {
+        DatabaseSchema::create('import_issues', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('run_id');
+            $table->integer('row_index')->nullable();
+            $table->string('code', 64);
+            $table->string('severity', 16)->default('error');
+            $table->text('message')->nullable();
+            $table->json('row_snapshot')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    $run = ImportRun::query()->create([
+        'type' => 'vactool_products',
+        'status' => 'pending',
+        'columns' => [
+            'write' => true,
+        ],
+        'totals' => [
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => true,
+            ],
+        ],
+        'started_at' => now(),
+    ]);
+
+    $page = new VactoolProductImport;
+    $page->mount();
+    $page->lastRunId = $run->id;
+    $page->stopActiveImport();
+
+    $run->refresh();
+
+    expect($run->status)->toBe('cancelled');
+    expect($run->finished_at)->not->toBeNull();
+    expect((bool) data_get($run->totals, '_meta.is_running'))->toBeFalse();
+    expect((bool) data_get($run->totals, '_meta.cancelled_by_user'))->toBeTrue();
+    expect($run->issues()->where('code', 'cancelled_by_user')->exists())->toBeTrue();
+});
+
+test('metalmaster product import page can stop active queued run', function () {
+    if (! DatabaseSchema::hasTable('import_runs')) {
+        DatabaseSchema::create('import_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->string('type')->default('products');
+            $table->string('status')->default('pending');
+            $table->json('columns')->nullable();
+            $table->json('totals')->nullable();
+            $table->string('source_filename')->nullable();
+            $table->string('stored_path')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    if (! DatabaseSchema::hasTable('import_issues')) {
+        DatabaseSchema::create('import_issues', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('run_id');
+            $table->integer('row_index')->nullable();
+            $table->string('code', 64);
+            $table->string('severity', 16)->default('error');
+            $table->text('message')->nullable();
+            $table->json('row_snapshot')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    $run = ImportRun::query()->create([
+        'type' => 'metalmaster_products',
+        'status' => 'pending',
+        'columns' => [
+            'write' => true,
+        ],
+        'totals' => [
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => true,
+            ],
+        ],
+        'started_at' => now(),
+    ]);
+
+    $page = new MetalmasterProductImport;
+    $page->mount();
+    $page->lastRunId = $run->id;
+    $page->stopActiveImport();
+
+    $run->refresh();
+
+    expect($run->status)->toBe('cancelled');
+    expect($run->finished_at)->not->toBeNull();
+    expect((bool) data_get($run->totals, '_meta.is_running'))->toBeFalse();
+    expect((bool) data_get($run->totals, '_meta.cancelled_by_user'))->toBeTrue();
+    expect($run->issues()->where('code', 'cancelled_by_user')->exists())->toBeTrue();
+});

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\ImportRunCancelledException;
 use App\Models\ImportRun;
 use App\Support\Metalmaster\MetalmasterProductImportService;
 use Illuminate\Bus\Queueable;
@@ -36,14 +37,32 @@ class RunMetalmasterProductImportJob implements ShouldQueue
             return;
         }
 
+        if ($this->isRunCancelled($run)) {
+            $this->finalizeCancelledRun($run);
+
+            return;
+        }
+
         try {
             $result = $service->run(
                 $this->options,
                 null,
                 function (array $progress) use ($run): void {
                     $this->saveProgress($run, $progress);
+
+                    if ($this->isRunCancelled($run)) {
+                        throw new ImportRunCancelledException('Импорт остановлен пользователем.');
+                    }
                 },
             );
+
+            $run->refresh();
+
+            if ($this->isRunCancelled($run)) {
+                $this->finalizeCancelledRun($run);
+
+                return;
+            }
 
             $run->status = $this->resolveRunStatus($result);
             $run->totals = $this->buildFinalTotals($result);
@@ -74,6 +93,9 @@ class RunMetalmasterProductImportJob implements ShouldQueue
                     ],
                 ]);
             }
+        } catch (ImportRunCancelledException) {
+            $run->refresh();
+            $this->finalizeCancelledRun($run);
         } catch (Throwable $exception) {
             $run->status = 'failed';
             $run->finished_at = now();
@@ -98,6 +120,12 @@ class RunMetalmasterProductImportJob implements ShouldQueue
         $run = ImportRun::query()->find($this->runId);
 
         if (! $run) {
+            return;
+        }
+
+        if ($this->isRunCancelled($run)) {
+            $this->finalizeCancelledRun($run);
+
             return;
         }
 
@@ -210,5 +238,29 @@ class RunMetalmasterProductImportJob implements ShouldQueue
         $totals['_meta'] = array_merge($currentMeta, $meta);
 
         return $totals;
+    }
+
+    private function isRunCancelled(ImportRun $run): bool
+    {
+        return (string) ImportRun::query()->whereKey($run->id)->value('status') === 'cancelled';
+    }
+
+    private function finalizeCancelledRun(ImportRun $run): void
+    {
+        $cancelledAt = data_get($run->totals, '_meta.cancelled_at');
+
+        if (! is_string($cancelledAt) || $cancelledAt === '') {
+            $cancelledAt = now()->toIso8601String();
+        }
+
+        $run->status = 'cancelled';
+        $run->finished_at = $run->finished_at ?? now();
+        $run->totals = $this->mergeMeta($run->totals, [
+            'mode' => $this->write ? 'write' : 'dry-run',
+            'is_running' => false,
+            'cancelled_by_user' => true,
+            'cancelled_at' => $cancelledAt,
+        ]);
+        $run->save();
     }
 }

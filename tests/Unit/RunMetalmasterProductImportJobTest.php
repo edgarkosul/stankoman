@@ -117,6 +117,64 @@ it('marks run as failed from queue failed callback for metalmaster import job', 
     expect($run->issues()->first()?->message)->toContain('Queue timeout exceeded');
 });
 
+it('marks run as cancelled when it is stopped during queued metalmaster import job', function () {
+    prepareMetalmasterJobImportTables();
+
+    $options = [
+        'buckets_file' => '/tmp/metalmaster-buckets.json',
+        'bucket' => '',
+        'write' => true,
+    ];
+
+    $run = ImportRun::query()->create([
+        'type' => 'metalmaster_products',
+        'status' => 'pending',
+        'columns' => $options,
+        'totals' => [
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => true,
+            ],
+        ],
+        'started_at' => now(),
+    ]);
+
+    $service = \Mockery::mock(MetalmasterProductImportService::class);
+    $service->shouldReceive('run')
+        ->once()
+        ->andReturnUsing(function (array $options, ?callable $output, ?callable $progress) use ($run): array {
+            $run->status = 'cancelled';
+            $run->save();
+
+            if ($progress !== null) {
+                $progress([
+                    'found_urls' => 7,
+                    'processed' => 3,
+                    'errors' => 0,
+                    'created' => 2,
+                    'updated' => 1,
+                    'skipped' => 0,
+                    'images_downloaded' => 0,
+                    'image_download_failed' => 0,
+                    'derivatives_queued' => 0,
+                    'no_urls' => false,
+                ]);
+            }
+
+            return [];
+        });
+
+    $job = new RunMetalmasterProductImportJob($run->id, $options, true);
+    $job->handle($service);
+
+    $run->refresh();
+
+    expect($run->status)->toBe('cancelled');
+    expect($run->finished_at)->not->toBeNull();
+    expect((bool) data_get($run->totals, '_meta.is_running'))->toBeFalse();
+    expect((bool) data_get($run->totals, '_meta.cancelled_by_user'))->toBeTrue();
+});
+
 function prepareMetalmasterJobImportTables(): void
 {
     Schema::dropIfExists('import_issues');

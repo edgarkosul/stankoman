@@ -16,7 +16,7 @@ class ImportRunObserver
             return;
         }
 
-        if (! in_array((string) $importRun->status, ['dry_run', 'applied', 'failed'], true)) {
+        if (! in_array((string) $importRun->status, ['dry_run', 'applied', 'failed', 'cancelled'], true)) {
             return;
         }
 
@@ -39,6 +39,7 @@ class ImportRunObserver
         match ((string) $importRun->status) {
             'applied' => $notification->success(),
             'dry_run' => $notification->info(),
+            'cancelled' => $notification->warning(),
             default => $notification->danger(),
         };
 
@@ -51,6 +52,7 @@ class ImportRunObserver
             'dry_run' => "Dry-run #{$importRun->id} завершен",
             'applied' => "Импорт #{$importRun->id} завершен",
             'failed' => "Импорт #{$importRun->id} завершился ошибкой",
+            'cancelled' => "Импорт #{$importRun->id} остановлен",
             default => "Импорт #{$importRun->id} обновлен",
         };
     }
@@ -65,6 +67,15 @@ class ImportRunObserver
                 $this->typeLabel((string) $importRun->type),
                 $totals['error'],
                 $importRun->id,
+            );
+        }
+
+        if ($importRun->status === 'cancelled') {
+            return sprintf(
+                'Тип: %s. Запуск остановлен вручную. Обработано: %d. Ошибок: %d.',
+                $this->typeLabel((string) $importRun->type),
+                (int) data_get($importRun->totals, 'scanned', 0),
+                $totals['error'],
             );
         }
 
