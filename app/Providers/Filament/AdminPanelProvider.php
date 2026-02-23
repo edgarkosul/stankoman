@@ -67,6 +67,8 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make('Контент')->collapsed(),
                 NavigationGroup::make('Импорт/Экспорт')->collapsed(),
                 NavigationGroup::make('Меню')->collapsed(),
-            ]);
+            ])
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('10s');
     }
 }
