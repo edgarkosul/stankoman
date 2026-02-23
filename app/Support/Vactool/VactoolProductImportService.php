@@ -3,6 +3,7 @@
 namespace App\Support\Vactool;
 
 use App\Jobs\GenerateImageDerivativesJob;
+use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -501,7 +502,7 @@ class VactoolProductImportService
                 ->where('slug', $slug);
 
             if (Schema::hasColumn('categories', 'parent_id')) {
-                $query->where('parent_id', -1);
+                $query->where('parent_id', Category::defaultParentKey());
             }
 
             $categoryId = $query->value('id');
@@ -520,19 +521,19 @@ class VactoolProductImportService
     {
         try {
             $payload = [
-                'name' => Str::headline($slug),
+                'name' => Category::stagingName(),
                 'slug' => $slug,
             ];
 
             if (Schema::hasColumn('categories', 'parent_id')) {
-                $payload['parent_id'] = -1;
+                $payload['parent_id'] = Category::defaultParentKey();
             }
 
             if (Schema::hasColumn('categories', 'order')) {
                 $payload['order'] = (int) DB::table('categories')
                     ->when(
                         Schema::hasColumn('categories', 'parent_id'),
-                        fn ($query) => $query->where('parent_id', -1)
+                        fn ($query) => $query->where('parent_id', Category::defaultParentKey())
                     )
                     ->max('order') + 1;
             }

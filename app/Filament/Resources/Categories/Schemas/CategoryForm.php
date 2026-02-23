@@ -23,7 +23,7 @@ class CategoryForm
                 Select::make('parent_id')
                     ->label('Родительская категория')
                     ->options(fn () => self::categoryOptions())
-                    ->default(fn () => request()->integer('parent_id', -1))
+                    ->default(fn () => request()->integer('parent_id', Category::defaultParentKey()))
                     ->searchable()
                     ->preload()
                     ->required(),
@@ -98,7 +98,9 @@ class CategoryForm
             ->get()
             ->groupBy('parent_id');
 
-        $out = ['-1' => 'Корень'];
+        $rootKey = Category::defaultParentKey();
+
+        $out = [(string) $rootKey => 'Корень'];
 
         $walk = function (int $parentId, int $depth) use (&$walk, &$out, $all) {
             foreach ($all[$parentId] ?? [] as $cat) {
@@ -107,7 +109,7 @@ class CategoryForm
             }
         };
 
-        $walk(-1, 0);
+        $walk($rootKey, 0);
 
         return $out;
     }

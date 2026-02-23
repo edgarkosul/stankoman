@@ -47,6 +47,7 @@ use SolutionForest\FilamentTree\Concern\ModelTree;
  * @method static Builder<static>|Category ordered(string $direction = 'asc')
  * @method static Builder<static>|Category query()
  * @method static Builder<static>|Category roots()
+ * @method static Builder<static>|Category withoutStaging()
  * @method static Builder<static>|Category whereCreatedAt($value)
  * @method static Builder<static>|Category whereId($value)
  * @method static Builder<static>|Category whereImg($value)
@@ -63,6 +64,10 @@ use SolutionForest\FilamentTree\Concern\ModelTree;
 class Category extends Model
 {
     use ModelTree;
+
+    public const STAGING_FALLBACK_SLUG = 'staging';
+
+    public const STAGING_NAME = 'Импортированные товары';
 
     protected $fillable = [
         'parent_id',
@@ -126,6 +131,23 @@ class Category extends Model
         return -1; // root
     }
 
+    public static function stagingSlug(): string
+    {
+        $slug = trim((string) config('catalog-export.staging_category_slug', self::STAGING_FALLBACK_SLUG));
+
+        return $slug !== '' ? $slug : self::STAGING_FALLBACK_SLUG;
+    }
+
+    public static function stagingName(): string
+    {
+        return self::STAGING_NAME;
+    }
+
+    public function isStaging(): bool
+    {
+        return $this->slug === static::stagingSlug();
+    }
+
     public function isLeaf(): bool
     {
         return ! $this->children()->exists();
@@ -135,12 +157,17 @@ class Category extends Model
 
     public function scopeRoots(Builder $q): Builder
     {
-        return $q->where('parent_id', -1)->orderBy('order');
+        return $q->where('parent_id', static::defaultParentKey())->orderBy('order');
     }
 
     public function scopeActive(Builder $q): Builder
     {
         return $q->where('is_active', true);
+    }
+
+    public function scopeWithoutStaging(Builder $q): Builder
+    {
+        return $q->where('slug', '!=', static::stagingSlug());
     }
 
     public function scopeLeaf(Builder $q): Builder
@@ -150,11 +177,13 @@ class Category extends Model
 
     public function scopeAvailableAsParent(Builder $q): Builder
     {
-        return $q->where(function (Builder $query): void {
-            $query
-                ->whereHas('children')
-                ->orWhereDoesntHave('products');
-        });
+        return $q
+            ->withoutStaging()
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereHas('children')
+                    ->orWhereDoesntHave('products');
+            });
     }
 
     // ===== Навигация =====
@@ -224,6 +253,15 @@ class Category extends Model
 
     protected static function booted(): void
     {
+        static::saving(function (Category $model): void {
+            if (! $model->isStaging()) {
+                return;
+            }
+
+            $model->name = static::stagingName();
+            $model->parent_id = static::defaultParentKey();
+        });
+
         // удаляем старый файл при замене
         static::updating(function (Category $m) {
             if ($m->isDirty('img')) {

@@ -27,7 +27,7 @@
                 @foreach ($tabs as $tab)
                     <button
                         type="button"
-                        class="cursor-pointer border-b-2 px-4 py-3 text-sm font-medium transition"
+                        class="cursor-pointer border-b-2 px-4 py-3 font-medium transition"
                         x-on:click.prevent.stop="switchTab('{{ $tab['key'] }}')"
                         :class="active === '{{ $tab['key'] }}' ? 'border-brand-red text-zinc-900' : 'border-transparent text-zinc-500 hover:text-zinc-700'"
                     >
@@ -37,7 +37,7 @@
             </div>
         </div>
 
-        <div class="rounded border border-zinc-200 bg-white p-4">
+        <div class=" bg-white p-4">
             @foreach ($tabs as $tab)
                 <div x-show="active === '{{ $tab['key'] }}'" x-cloak>
                     @if (($tab['type'] ?? null) === 'specs')

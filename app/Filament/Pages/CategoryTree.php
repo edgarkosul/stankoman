@@ -2,25 +2,24 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Resources\Categories\CategoryResource;
 use App\Models\Category;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Filament\Forms\Components\Hidden;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Toggle;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\FileUpload;
-use Filament\Schemas\Components\Utilities\Get;
-use Filament\Schemas\Components\Utilities\Set;
 use SolutionForest\FilamentTree\Actions\Action;
-use SolutionForest\FilamentTree\Pages\TreePage;
-use SolutionForest\FilamentTree\Actions\EditAction;
-use SolutionForest\FilamentTree\Actions\ViewAction;
 use SolutionForest\FilamentTree\Actions\DeleteAction;
+use SolutionForest\FilamentTree\Pages\TreePage;
 use SolutionForest\FilamentTree\Support\Utils;
-use App\Filament\Resources\Categories\CategoryResource;
 
 class CategoryTree extends TreePage
 {
@@ -32,19 +31,21 @@ class CategoryTree extends TreePage
 
     protected static ?string $navigationLabel = 'Дерево категорий';
 
-    protected static ?string $title           = 'Дерево категорий';
-
+    protected static ?string $title = 'Дерево категорий';
 
     public function getNodeCollapsedState(?\Illuminate\Database\Eloquent\Model $record = null): bool
     {
         return false;
     }
 
-
-
     protected function getTreeToolbarActions(): array
     {
         return [];
+    }
+
+    protected function getTreeQuery(): Builder
+    {
+        return Category::query()->withoutStaging();
     }
 
     protected function getActions(): array
@@ -52,7 +53,7 @@ class CategoryTree extends TreePage
         return [
             $this->getCreateAction(),
             // SAMPLE CODE, CAN DELETE
-            //\Filament\Pages\Actions\Action::make('sampleAction'),
+            // \Filament\Pages\Actions\Action::make('sampleAction'),
         ];
     }
 
@@ -61,8 +62,8 @@ class CategoryTree extends TreePage
         return [
             Select::make('parent_id')
                 ->label('Родительская категория')
-                ->options(fn() => self::categoryOptions())
-                ->default(fn() => request()->integer('parent_id', -1))
+                ->options(fn () => self::categoryOptions())
+                ->default(fn () => request()->integer('parent_id', Category::defaultParentKey()))
                 ->searchable()
                 ->preload()
                 ->required(),
@@ -139,8 +140,6 @@ class CategoryTree extends TreePage
     //     return false;
     // }
 
-
-
     protected function getHeaderWidgets(): array
     {
         return [];
@@ -153,7 +152,9 @@ class CategoryTree extends TreePage
 
     public function getTreeRecordTitle(?\Illuminate\Database\Eloquent\Model $record = null): string
     {
-        if (!$record) return '';
+        if (! $record) {
+            return '';
+        }
 
         return "{$record->name}";
     }
@@ -167,8 +168,7 @@ class CategoryTree extends TreePage
                 ->hiddenLabel()
                 ->tooltip('Создать подкатегорию')
                 ->visible(
-                    fn(Category $record): bool =>
-                    $this->recordDepth($record) < static::$maxDepth - 1
+                    fn (Category $record): bool => $this->recordDepth($record) < static::$maxDepth - 1
                 )
                 ->action(function (Category $record): void {
                     // вычисляем order для нового ребёнка
@@ -179,13 +179,13 @@ class CategoryTree extends TreePage
                     $order = is_null($maxOrder) ? 0 : $maxOrder + 1;
 
                     // простой уникальный временный slug
-                    $slug = Str::slug('new-category-' . Str::random(6));
+                    $slug = Str::slug('new-category-'.Str::random(6));
 
                     Category::create([
                         'parent_id' => $record->getKey(),
-                        'order'     => $order,
-                        'name'      => 'Новая категория',
-                        'slug'      => $slug,
+                        'order' => $order,
+                        'name' => 'Новая категория',
+                        'slug' => $slug,
                         'is_active' => true,
                     ]);
                 }),
@@ -195,8 +195,7 @@ class CategoryTree extends TreePage
                 ->hiddenLabel()  // без текста, останется тултип
                 ->tooltip('Редактировать категорию')
                 ->url(
-                    fn(Category $record): string =>
-                    CategoryResource::getUrl('edit', ['record' => $record])
+                    fn (Category $record): string => CategoryResource::getUrl('edit', ['record' => $record])
                 ),
 
             DeleteAction::make(),
@@ -206,7 +205,7 @@ class CategoryTree extends TreePage
                 ->iconButton()
                 ->tooltip('Открыть на сайте')
                 ->icon('heroicon-o-arrow-top-right-on-square')
-                ->url(fn(Category $record) => route('catalog.leaf', ['path' => $record->slug_path]), true),
+                ->url(fn (Category $record) => route('catalog.leaf', ['path' => $record->slug_path]), true),
 
         ];
     }
@@ -310,21 +309,24 @@ class CategoryTree extends TreePage
     {
         // Заберём всё дерево и развернём в плоский список с depth
         $all = Category::query()
+            ->withoutStaging()
             ->orderBy('parent_id')
             ->orderBy('order')
             ->get()
             ->groupBy('parent_id');
 
-        $out = ['-1' => 'Корень'];
+        $rootKey = Category::defaultParentKey();
+
+        $out = [(string) $rootKey => 'Корень'];
 
         $walk = function (int $parentId, int $depth) use (&$walk, &$out, $all) {
             foreach ($all[$parentId] ?? [] as $cat) {
-                $out[$cat->id] = str_repeat('— ', $depth) . $cat->name;
+                $out[$cat->id] = str_repeat('— ', $depth).$cat->name;
                 $walk($cat->id, $depth + 1);
             }
         };
 
-        $walk(-1, 0);
+        $walk($rootKey, 0);
 
         return $out;
     }
@@ -353,8 +355,6 @@ class CategoryTree extends TreePage
             }
         }
     }
-
-
 
     // CUSTOMIZE ICON OF EACH RECORD, CAN DELETE
     // public function getTreeRecordIcon(?\Illuminate\Database\Eloquent\Model $record = null): ?string
