@@ -75,7 +75,7 @@ class EditProduct extends EditRecord
 
     private function productContentValues(): array
     {
-        $state = $this->form->getState();
+        $state = is_array($this->data) ? $this->data : [];
 
         return [
             $state['image'] ?? $this->record->image,

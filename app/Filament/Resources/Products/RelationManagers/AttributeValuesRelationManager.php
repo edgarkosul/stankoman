@@ -14,19 +14,26 @@ use Filament\Forms\Components\Toggle;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Text;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Columns\TextColumn;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 
 class AttributeValuesRelationManager extends RelationManager
 {
     protected static ?string $title = 'Фильтры — свободные значения';
+
     protected static string $relationship = 'attributeValues';
+
     protected static ?string $inverseRelationship = 'product';
+
     protected static ?string $pluralModelLabel = 'свободные значения';
+
     protected static ?string $modelLabel = 'свободное значение';
 
     private const OPTION_INPUT_TYPES = ['select', 'multiselect'];
@@ -81,13 +88,13 @@ class AttributeValuesRelationManager extends RelationManager
 
                         return $options;
                     })
-                    ->getOptionLabelUsing(fn($value) => ($attr = Attribute::find($value)) ? $this->attributeLabel($attr) : null)
+                    ->getOptionLabelUsing(fn ($value) => ($attr = Attribute::find($value)) ? $this->attributeLabel($attr) : null)
                     ->rule(function (Get $get) {
                         $productId = $this->getOwnerRecord()->getKey();
                         $currentId = $get('id'); // ← из Hidden('id')
 
                         $rule = Rule::unique('product_attribute_values', 'attribute_id')
-                            ->where(fn($q) => $q->where('product_id', $productId));
+                            ->where(fn ($q) => $q->where('product_id', $productId));
 
                         if ($currentId) {
                             $rule->ignore($currentId, 'id'); // игнорим текущую строку
@@ -101,21 +108,82 @@ class AttributeValuesRelationManager extends RelationManager
                     ->searchable()
                     ->preload()
                     ->required()
-                    ->reactive(),
+                    ->reactive()
+                    ->afterStateHydrated(function (mixed $state, Set $set): void {
+                        $attributeId = (int) $state;
+
+                        if (! $this->isNumericAttribute($attributeId)) {
+                            $set('input_unit_id', null);
+
+                            return;
+                        }
+
+                        $set('input_unit_id', $this->defaultInputUnitIdForAttribute($attributeId));
+                    })
+                    ->afterStateUpdated(function (mixed $state, Set $set): void {
+                        $attributeId = (int) $state;
+
+                        if (! $this->isNumericAttribute($attributeId)) {
+                            $set('input_unit_id', null);
+                            $set('value_number', null);
+                            $set('value_min', null);
+                            $set('value_max', null);
+
+                            return;
+                        }
+
+                        $set('input_unit_id', $this->defaultInputUnitIdForAttribute($attributeId));
+                    }),
+
+                Select::make('input_unit_id')
+                    ->label('Единица ввода')
+                    ->options(fn (Get $get): array => $this->inputUnitOptionsForAttribute((int) ($get('attribute_id') ?? 0)))
+                    ->visible(fn (Get $get): bool => in_array((string) self::dataType($get), ['number', 'range'], true))
+                    ->required(fn (Get $get): bool => in_array((string) self::dataType($get), ['number', 'range'], true))
+                    ->native(false)
+                    ->searchable()
+                    ->live()
+                    ->dehydrated(false)
+                    ->afterStateHydrated(function (mixed $state, Get $get, Set $set): void {
+                        $attributeId = (int) ($get('attribute_id') ?? 0);
+
+                        if (! $this->isNumericAttribute($attributeId)) {
+                            $set('input_unit_id', null);
+
+                            return;
+                        }
+
+                        $unitOptions = $this->inputUnitOptionsForAttribute($attributeId);
+                        $selectedUnitId = (int) $state;
+
+                        if ($selectedUnitId > 0 && array_key_exists($selectedUnitId, $unitOptions)) {
+                            return;
+                        }
+
+                        $set('input_unit_id', $this->defaultInputUnitIdForAttribute($attributeId));
+                    })
+                    ->afterStateUpdated(function (mixed $state, mixed $old, Get $get, Set $set): void {
+                        $this->convertNumericStatesForInputUnitSwitch($get, $set, $old, $state);
+                    }),
+
+                Text::make(function (Get $get): string {
+                    return $this->uiDefaultUnitInfoForAttribute((int) ($get('attribute_id') ?? 0));
+                })
+                    ->visible(fn (Get $get): bool => in_array((string) self::dataType($get), ['number', 'range'], true))
+                    ->columnSpanFull(),
 
                 // 2) TEXT
                 TextInput::make('value_text')
                     ->label('Значение')
-                    ->visible(fn(Get $get) => self::dataType($get) === 'text')
+                    ->visible(fn (Get $get) => self::dataType($get) === 'text')
                     ->maxLength(65535),
 
                 // 3) NUMBER (одно число в UI-единице; observer положит *_si)
-                // 3) NUMBER (одно число в UI-единице; observer положит *_si)
                 TextInput::make('value_number')
-                    ->label(fn(Get $get) => $this->labelWithUnit($get, 'Значение'))
+                    ->label(fn (Get $get) => $this->labelWithUnit($get, 'Значение'))
                     ->numeric()
                     ->inputMode('decimal')
-                    ->step(fn(Get $get) => $this->numberStep($get))
+                    ->step(fn (Get $get) => $this->numberStep($get))
                     ->rule(function (Get $get) {
                         return function (string $attribute, $value, $fail) use ($get) {
                             $dec = $this->numberDecimals($get);
@@ -128,6 +196,7 @@ class AttributeValuesRelationManager extends RelationManager
 
                             if (! is_numeric($raw)) {
                                 $fail('Значение должно быть числом.');
+
                                 return;
                             }
 
@@ -170,21 +239,20 @@ class AttributeValuesRelationManager extends RelationManager
                         // К моменту сохранения переведём обратно в базовый юнит атрибута
                         return $this->convertDisplayToBase($value, $baseUnit, $displayUnit);
                     })
-                    ->visible(fn(Get $get) => self::dataType($get) === 'number'),
-
+                    ->visible(fn (Get $get) => self::dataType($get) === 'number'),
 
                 // 4) BOOLEAN
                 Toggle::make('value_boolean')
                     ->label('Нет / Да')
-                    ->visible(fn(Get $get) => self::dataType($get) === 'boolean'),
+                    ->visible(fn (Get $get) => self::dataType($get) === 'boolean'),
 
                 // 5) RANGE (мин/макс в UI; observer положит *_si)
                 Grid::make(2)->schema([
                     TextInput::make('value_min')
-                        ->label(fn(Get $get) => $this->labelWithUnit($get, 'Мин.'))
+                        ->label(fn (Get $get) => $this->labelWithUnit($get, 'Мин.'))
                         ->numeric()
                         ->inputMode('decimal')
-                        ->step(fn(Get $get) => $this->numberStep($get))
+                        ->step(fn (Get $get) => $this->numberStep($get))
                         ->rule(function (Get $get) {
                             return function (string $attribute, $value, $fail) use ($get) {
                                 $dec = $this->numberDecimals($get);
@@ -197,6 +265,7 @@ class AttributeValuesRelationManager extends RelationManager
 
                                 if (! is_numeric($raw)) {
                                     $fail('Значение должно быть числом.');
+
                                     return;
                                 }
 
@@ -245,10 +314,10 @@ class AttributeValuesRelationManager extends RelationManager
                         }),
 
                     TextInput::make('value_max')
-                        ->label(fn(Get $get) => $this->labelWithUnit($get, 'Макс.'))
+                        ->label(fn (Get $get) => $this->labelWithUnit($get, 'Макс.'))
                         ->numeric()
                         ->inputMode('decimal')
-                        ->step(fn(Get $get) => $this->numberStep($get))
+                        ->step(fn (Get $get) => $this->numberStep($get))
                         ->rule(function (Get $get) {
                             return function (string $attribute, $value, $fail) use ($get) {
                                 $dec = $this->numberDecimals($get);
@@ -261,6 +330,7 @@ class AttributeValuesRelationManager extends RelationManager
 
                                 if (! is_numeric($raw)) {
                                     $fail('Значение должно быть числом.');
+
                                     return;
                                 }
 
@@ -307,7 +377,7 @@ class AttributeValuesRelationManager extends RelationManager
                                 }
                             };
                         }),
-                ])->visible(fn(Get $get) => self::dataType($get) === 'range'),
+                ])->visible(fn (Get $get) => self::dataType($get) === 'range'),
 
             ]),
         ]);
@@ -329,11 +399,11 @@ class AttributeValuesRelationManager extends RelationManager
 
                 TextColumn::make('display_value')
                     ->label('Значение')
-                    ->state(fn($record) => $this->formatDisplayValueForCategory($record))
+                    ->state(fn ($record) => $this->formatDisplayValueForCategory($record))
                     ->wrap(),
             ])
             ->modifyQueryUsing(function (Builder $query) {
-                $query->whereHas('attribute', fn(Builder $attrQuery) => $this->applyValueAttributeFilter($attrQuery));
+                $query->whereHas('attribute', fn (Builder $attrQuery) => $this->applyValueAttributeFilter($attrQuery));
             })
             ->headerActions([
                 CreateAction::make()->modalHeading('Добавить значение'),
@@ -363,13 +433,13 @@ class AttributeValuesRelationManager extends RelationManager
     private function filterValueAttributes($attributes)
     {
         return collect($attributes)
-            ->filter(fn(Attribute $attr) => ! $attr->usesOptions());
+            ->filter(fn (Attribute $attr) => ! $attr->usesOptions());
     }
 
     private function mapAttributesWithId($attributes)
     {
         return collect($attributes)
-            ->mapWithKeys(fn(Attribute $attr) => [$attr->id => $this->attributeLabel($attr)]);
+            ->mapWithKeys(fn (Attribute $attr) => [$attr->id => $this->attributeLabel($attr)]);
     }
 
     private function attributeLabel(Attribute $attr): string
@@ -401,9 +471,9 @@ class AttributeValuesRelationManager extends RelationManager
 
         static $cache = [];
 
-        $product   = $this->getOwnerRecord();
+        $product = $this->getOwnerRecord();
         $productId = $product?->getKey() ?? 0;
-        $cacheKey  = "dec:{$productId}:{$attrId}";
+        $cacheKey = "dec:{$productId}:{$attrId}";
 
         if (! array_key_exists($cacheKey, $cache)) {
             $dec = null;
@@ -435,9 +505,9 @@ class AttributeValuesRelationManager extends RelationManager
 
         static $cache = [];
 
-        $product   = $this->getOwnerRecord();
+        $product = $this->getOwnerRecord();
         $productId = $product?->getKey() ?? 0;
-        $cacheKey  = "step:{$productId}:{$attrId}";
+        $cacheKey = "step:{$productId}:{$attrId}";
 
         if (! array_key_exists($cacheKey, $cache)) {
             $step = null;
@@ -460,23 +530,221 @@ class AttributeValuesRelationManager extends RelationManager
         return $cache[$cacheKey];
     }
 
+    protected function isNumericAttribute(int $attributeId): bool
+    {
+        if ($attributeId <= 0) {
+            return false;
+        }
+
+        [, , , , $dataType] = $this->resolveUnitsForAttribute($attributeId);
+
+        return in_array((string) $dataType, ['number', 'range'], true);
+    }
+
+    protected function defaultInputUnitIdForAttribute(int $attributeId): ?int
+    {
+        if ($attributeId <= 0) {
+            return null;
+        }
+
+        [, $baseUnit, $displayUnit, $availableUnits] = $this->resolveUnitsForAttribute($attributeId);
+        $inputUnit = $displayUnit ?: $baseUnit ?: $availableUnits->first();
+
+        return $inputUnit instanceof Unit
+            ? (int) $inputUnit->getKey()
+            : null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function inputUnitOptionsForAttribute(int $attributeId): array
+    {
+        if ($attributeId <= 0) {
+            return [];
+        }
+
+        [, , , $availableUnits] = $this->resolveUnitsForAttribute($attributeId);
+
+        return $availableUnits
+            ->mapWithKeys(fn (Unit $unit): array => [(int) $unit->getKey() => $this->unitOptionLabel($unit)])
+            ->all();
+    }
+
+    protected function convertNumericStatesForInputUnitSwitch(Get $get, Set $set, mixed $oldState, mixed $newState): void
+    {
+        $attributeId = (int) ($get('attribute_id') ?? 0);
+
+        if (! $this->isNumericAttribute($attributeId)) {
+            return;
+        }
+
+        [$attribute, , $displayUnit, $availableUnits] = $this->resolveUnitsForAttribute($attributeId);
+
+        if (! $attribute instanceof Attribute) {
+            return;
+        }
+
+        $fromUnit = $this->resolveInputUnitFromSelection($availableUnits, (int) $oldState, $displayUnit);
+        $toUnit = $this->resolveInputUnitFromSelection($availableUnits, (int) $newState, $displayUnit);
+
+        if (! $fromUnit || ! $toUnit || (int) $fromUnit->getKey() === (int) $toUnit->getKey()) {
+            return;
+        }
+
+        $decimals = $this->numberDecimals($get);
+
+        if ($attribute->data_type === 'number') {
+            $set('value_number', $this->convertInputValueBetweenUnits(
+                $attribute,
+                $get('value_number'),
+                $fromUnit,
+                $toUnit,
+                $decimals,
+            ));
+
+            return;
+        }
+
+        if ($attribute->data_type !== 'range') {
+            return;
+        }
+
+        $set('value_min', $this->convertInputValueBetweenUnits(
+            $attribute,
+            $get('value_min'),
+            $fromUnit,
+            $toUnit,
+            $decimals,
+        ));
+        $set('value_max', $this->convertInputValueBetweenUnits(
+            $attribute,
+            $get('value_max'),
+            $fromUnit,
+            $toUnit,
+            $decimals,
+        ));
+    }
+
+    protected function resolveInputUnitFromSelection(Collection $availableUnits, int $unitId, ?Unit $fallbackUnit = null): ?Unit
+    {
+        if ($unitId > 0) {
+            $selectedUnit = $availableUnits
+                ->first(fn (Unit $unit): bool => (int) $unit->getKey() === $unitId);
+
+            if ($selectedUnit instanceof Unit) {
+                return $selectedUnit;
+            }
+        }
+
+        if ($fallbackUnit instanceof Unit) {
+            return $fallbackUnit;
+        }
+
+        $firstUnit = $availableUnits->first();
+
+        return $firstUnit instanceof Unit ? $firstUnit : null;
+    }
+
+    protected function convertInputValueBetweenUnits(
+        Attribute $attribute,
+        mixed $value,
+        ?Unit $fromUnit,
+        ?Unit $toUnit,
+        ?int $decimals = null,
+    ): mixed {
+        if ($value === null || $value === '') {
+            return $value;
+        }
+
+        $normalizedValue = str_replace(',', '.', (string) $value);
+
+        if (! is_numeric($normalizedValue)) {
+            return $value;
+        }
+
+        $numericValue = (float) $normalizedValue;
+
+        if (! $fromUnit || ! $toUnit || (int) $fromUnit->getKey() === (int) $toUnit->getKey()) {
+            return $this->formatInputNumber($numericValue, $decimals);
+        }
+
+        $siValue = $attribute->toSiWithUnit($numericValue, $fromUnit);
+
+        if ($siValue === null) {
+            return $this->formatInputNumber($numericValue, $decimals);
+        }
+
+        $convertedValue = $attribute->fromSiWithUnit($siValue, $toUnit);
+
+        if ($convertedValue === null) {
+            return $this->formatInputNumber($numericValue, $decimals);
+        }
+
+        return $this->formatInputNumber($convertedValue, $decimals);
+    }
+
+    protected function formatInputNumber(float $value, ?int $decimals = null): string
+    {
+        if ($decimals !== null) {
+            return number_format($value, $decimals, '.', '');
+        }
+
+        $formatted = rtrim(rtrim(number_format($value, 12, '.', ''), '0'), '.');
+
+        return $formatted === '' ? '0' : $formatted;
+    }
+
+    protected function unitOptionLabel(Unit $unit): string
+    {
+        $label = $unit->name;
+
+        if ($unit->symbol) {
+            $label .= ' ('.$unit->symbol.')';
+        }
+
+        return $label;
+    }
+
+    protected function uiDefaultUnitInfoForAttribute(int $attributeId): string
+    {
+        if ($attributeId <= 0) {
+            return 'UI-единица (defaultUnit): —';
+        }
+
+        [$attribute] = $this->resolveUnitsForAttribute($attributeId);
+        $defaultUnit = $attribute?->defaultUnit();
+
+        if (! $defaultUnit instanceof Unit) {
+            return 'UI-единица (defaultUnit): —';
+        }
+
+        return 'UI-единица (defaultUnit): '.$this->unitOptionLabel($defaultUnit);
+    }
 
     /* ===================== Helpers (единицы и конвертация) ===================== */
 
     /**
-     * Вернёт [Attribute|null, Unit|null $baseUnit, Unit|null $displayUnit]
-     * с учётом основной категории товара.
+     * @return array{0:?Attribute,1:?Unit,2:?Unit,3:Collection<int, Unit>,4:?string}
      */
     protected function resolveUnitsForAttribute(int $attrId): array
     {
         if (! $attrId) {
-            return [null, null, null];
+            return [null, null, null, collect(), null];
         }
 
         if (! array_key_exists($attrId, $this->unitCache)) {
-            $attribute = Attribute::with('unit')->find($attrId);
-            $baseUnit  = $attribute?->unit;
+            $attribute = Attribute::with(['unit', 'units'])->find($attrId);
+            $baseUnit = $attribute?->unit;
             $displayUnit = $baseUnit;
+            $availableUnits = $attribute?->units?->values() ?? collect();
+
+            if (
+                $baseUnit instanceof Unit
+                && ! $availableUnits->contains(fn (Unit $unit): bool => (int) $unit->getKey() === (int) $baseUnit->getKey())
+            ) {
+                $availableUnits = $availableUnits->prepend($baseUnit);
+            }
 
             $product = $this->getOwnerRecord();
 
@@ -492,11 +760,34 @@ class AttributeValuesRelationManager extends RelationManager
                 }
             }
 
-            $this->unitCache[$attrId] = [$attribute, $baseUnit, $displayUnit];
+            if (
+                $displayUnit instanceof Unit
+                && ! $availableUnits->contains(fn (Unit $unit): bool => (int) $unit->getKey() === (int) $displayUnit->getKey())
+            ) {
+                $availableUnits = $availableUnits->prepend($displayUnit);
+            }
+
+            $availableUnits = $availableUnits
+                ->filter(fn ($unit): bool => $unit instanceof Unit)
+                ->unique(fn (Unit $unit): int => (int) $unit->getKey())
+                ->values();
+
+            if (! $displayUnit) {
+                $displayUnit = $baseUnit ?: $availableUnits->first();
+            }
+
+            $this->unitCache[$attrId] = [
+                $attribute,
+                $baseUnit,
+                $displayUnit,
+                $availableUnits,
+                $attribute?->data_type,
+            ];
         }
 
         return $this->unitCache[$attrId];
     }
+
     /**
      * Pivot category_attribute для primary-категории текущего товара и заданного атрибута.
      */
@@ -509,11 +800,10 @@ class AttributeValuesRelationManager extends RelationManager
         }
 
         $attrs = $product->getPrimaryCategoryAttributes();
-        $attr  = $attrs?->firstWhere('id', $attrId);
+        $attr = $attrs?->firstWhere('id', $attrId);
 
         return $attr?->pivot;
     }
-
 
     protected function unitSymbol(Get $get): ?string
     {
@@ -522,7 +812,7 @@ class AttributeValuesRelationManager extends RelationManager
             return null;
         }
 
-        [,, $displayUnit] = $this->resolveUnitsForAttribute($attrId);
+        [, , $displayUnit] = $this->resolveUnitsForAttribute($attrId);
 
         return $displayUnit?->symbol;
     }
@@ -530,10 +820,7 @@ class AttributeValuesRelationManager extends RelationManager
     /* ===================== Helpers ===================== */
 
     /**
-     * Находим базовую и display-единицу для выбранного атрибута
-     * (display берём из pivot primary-категории, если есть).
-     *
-     * @return array{0:?Unit,1:?Unit} [baseUnit, displayUnit]
+     * @return array{0:?Unit,1:?Unit} [baseUnit, inputUnit]
      */
     protected function resolveUnits(Get $get): array
     {
@@ -542,38 +829,14 @@ class AttributeValuesRelationManager extends RelationManager
             return [null, null];
         }
 
-        static $cache = [];
+        [, $baseUnit, $displayUnit, $availableUnits] = $this->resolveUnitsForAttribute($attrId);
+        $inputUnit = $this->resolveInputUnitFromSelection(
+            $availableUnits,
+            (int) ($get('input_unit_id') ?? 0),
+            $displayUnit,
+        );
 
-        $product   = $this->getOwnerRecord();
-        $productId = $product?->getKey() ?? 0;
-        $key       = $productId . ':' . $attrId;
-
-        if (array_key_exists($key, $cache)) {
-            return $cache[$key];
-        }
-
-        // Базовый юнит атрибута
-        $attribute = Attribute::with('unit')->find($attrId);
-        $baseUnit  = $attribute?->unit;
-
-        // Display-юнит из primary-категории (если есть)
-        $displayUnit = null;
-
-        if ($product && method_exists($product, 'getPrimaryCategoryAttributes')) {
-            $attrFromPrimary = $product->getPrimaryCategoryAttributes()
-                ->firstWhere('id', $attrId);
-
-            if ($attrFromPrimary && $attrFromPrimary->pivot?->display_unit_id) {
-                $displayUnit = Unit::find($attrFromPrimary->pivot->display_unit_id);
-            }
-        }
-
-        // если display не задан — используем базовый
-        if (! $displayUnit) {
-            $displayUnit = $baseUnit;
-        }
-
-        return $cache[$key] = [$baseUnit, $displayUnit];
+        return [$baseUnit, $inputUnit];
     }
 
     /**
@@ -633,7 +896,6 @@ class AttributeValuesRelationManager extends RelationManager
 
         return $symbol ? "$base, $symbol" : $base;
     }
-
 
     /**
      * При сохранении: из единицы категории (display_unit_id) → в базовую unit_id.
@@ -707,10 +969,10 @@ class AttributeValuesRelationManager extends RelationManager
         }
 
         $keep = [
-            'text'    => ['value_text'],
-            'number'  => ['value_number'],
+            'text' => ['value_text'],
+            'number' => ['value_number'],
             'boolean' => ['value_boolean'],
-            'range'   => ['value_min', 'value_max'],
+            'range' => ['value_min', 'value_max'],
         ][$type] ?? [];
 
         foreach (['value_text', 'value_number', 'value_boolean', 'value_min', 'value_max'] as $field) {
@@ -731,6 +993,7 @@ class AttributeValuesRelationManager extends RelationManager
     {
         return static::pruneByDataType($data);
     }
+
     /**
      * Отформатировать значение PAV с учётом display_unit_id для primary-категории товара.
      * Числа/диапазоны конвертим через наши base↔display юниты,
@@ -758,8 +1021,8 @@ class AttributeValuesRelationManager extends RelationManager
             return $record->display_value;
         }
 
-        $suffix = $displayUnit->symbol ? ' ' . $displayUnit->symbol : '';
-        $dec    = $attr?->numberDecimals();
+        $suffix = $displayUnit->symbol ? ' '.$displayUnit->symbol : '';
+        $dec = $attr?->numberDecimals();
 
         $fmt = function (?float $value) use ($attr, $dec) {
             if ($value === null) {
@@ -794,7 +1057,7 @@ class AttributeValuesRelationManager extends RelationManager
 
             $str = $fmt($display);
 
-            return $str !== null ? $str . $suffix : null;
+            return $str !== null ? $str.$suffix : null;
         }
 
         if ($attribute->data_type === 'range') {
@@ -817,15 +1080,15 @@ class AttributeValuesRelationManager extends RelationManager
             $maxStr = $fmt($maxDisp);
 
             if ($minStr !== null && $maxStr !== null) {
-                return $minStr . '—' . $maxStr . $suffix;
+                return $minStr.'—'.$maxStr.$suffix;
             }
 
             if ($minStr !== null) {
-                return '≥ ' . $minStr . $suffix;
+                return '≥ '.$minStr.$suffix;
             }
 
             if ($maxStr !== null) {
-                return '≤ ' . $maxStr . $suffix;
+                return '≤ '.$maxStr.$suffix;
             }
 
             return null;

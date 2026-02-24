@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Product;
+use App\Models\Unit;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -14,7 +15,9 @@ beforeEach(function () {
         'product_attribute_option',
         'product_attribute_values',
         'attribute_options',
+        'category_attribute',
         'attributes',
+        'units',
         'cart_items',
         'carts',
         'product_categories',
@@ -125,6 +128,32 @@ beforeEach(function () {
         $table->timestamps();
     });
 
+    Schema::create('units', function (Blueprint $table): void {
+        $table->id();
+        $table->string('name');
+        $table->string('symbol', 16)->nullable();
+        $table->decimal('si_factor', 24, 12)->default(1);
+        $table->decimal('si_offset', 20, 10)->default(0);
+        $table->timestamps();
+    });
+
+    Schema::create('category_attribute', function (Blueprint $table): void {
+        $table->unsignedBigInteger('category_id');
+        $table->unsignedBigInteger('attribute_id');
+        $table->unsignedBigInteger('display_unit_id')->nullable();
+        $table->unsignedTinyInteger('number_decimals')->nullable();
+        $table->float('number_step')->nullable();
+        $table->string('number_rounding')->nullable();
+        $table->boolean('is_required')->default(false);
+        $table->unsignedInteger('filter_order')->default(0);
+        $table->unsignedInteger('compare_order')->default(0);
+        $table->boolean('visible_in_specs')->default(true);
+        $table->boolean('visible_in_compare')->default(true);
+        $table->string('group_override')->nullable();
+        $table->timestamps();
+        $table->primary(['category_id', 'attribute_id']);
+    });
+
     Schema::create('attribute_options', function (Blueprint $table): void {
         $table->id();
         $table->unsignedBigInteger('attribute_id');
@@ -223,4 +252,64 @@ it('hides empty product tabs', function () {
     $this->get(route('product.show', ['product' => $emptySpecsProduct]))
         ->assertSuccessful()
         ->assertDontSee('data-testid="product-tabs"', false);
+});
+
+it('renders feature value in primary category display unit', function (): void {
+    $category = \App\Models\Category::query()->create([
+        'name' => 'Тестовая категория',
+        'slug' => 'test-category-specs-units',
+        'parent_id' => -1,
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Товар с единицами',
+        'slug' => 'product-with-display-unit',
+        'is_active' => true,
+        'price_amount' => 1000,
+        'specs' => [],
+    ]);
+
+    $product->categories()->attach($category->id, ['is_primary' => true]);
+
+    $meter = Unit::query()->create([
+        'name' => 'Метр',
+        'symbol' => 'м',
+        'si_factor' => 1,
+        'si_offset' => 0,
+    ]);
+
+    $centimeter = Unit::query()->create([
+        'name' => 'Сантиметр',
+        'symbol' => 'см',
+        'si_factor' => 0.01,
+        'si_offset' => 0,
+    ]);
+
+    $attribute = \App\Models\Attribute::query()->create([
+        'name' => 'Длина',
+        'slug' => 'length',
+        'data_type' => 'number',
+        'value_source' => 'free',
+        'input_type' => 'number',
+        'unit_id' => $meter->id,
+        'number_decimals' => 0,
+    ]);
+
+    $category->attributeDefs()->attach($attribute->id, [
+        'display_unit_id' => $centimeter->id,
+        'visible_in_specs' => true,
+    ]);
+
+    \App\Models\ProductAttributeValue::query()->create([
+        'product_id' => $product->id,
+        'attribute_id' => $attribute->id,
+        'value_number' => 2,
+    ]);
+
+    $this->get(route('product.show', ['product' => $product]))
+        ->assertSuccessful()
+        ->assertSee('Длина:')
+        ->assertSee('200 см');
 });

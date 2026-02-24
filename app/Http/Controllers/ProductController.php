@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Support\ImageDerivativesResolver;
 use Illuminate\Contracts\View\View;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -169,22 +168,22 @@ class ProductController extends Controller
 
     private function buildFeatures(Product $product): array
     {
-        $fromValues = $product->attributeValues
-            ->map(fn ($value): array => [
-                'name' => $value->attribute?->name ?? 'Атрибут',
-                'value' => $value->display_value ?? '—',
-            ]);
+        $displayCategory = $product->categories->firstWhere('pivot.is_primary', true);
 
-        $fromOptions = $product->attributeOptions
-            ->groupBy(fn ($option) => (string) ($option->pivot?->attribute_id ?? ''))
-            ->map(fn (Collection $options): array => [
-                'name' => $options->first()?->attribute?->name ?? 'Опции',
-                'value' => $options->pluck('value')->filter()->join(', '),
-            ])
+        $attributes = $product->attributeValues
+            ->pluck('attribute')
+            ->merge($product->attributeOptions->pluck('attribute'))
+            ->filter()
+            ->unique(fn ($attribute): int => (int) $attribute->getKey())
             ->values();
 
-        return $fromValues
-            ->concat($fromOptions)
+        return $attributes
+            ->map(function ($attribute) use ($product, $displayCategory): array {
+                return [
+                    'name' => $attribute->name ?? 'Атрибут',
+                    'value' => $product->attrLabel($attribute, ' / ', $displayCategory) ?? '—',
+                ];
+            })
             ->filter(fn (array $item) => filled($item['value']))
             ->values()
             ->all();

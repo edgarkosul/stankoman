@@ -30,8 +30,7 @@ class UnitsTable
                     ->label('Измерение')
                     // ВАЖНО: сортируем по реальному полю dimension, а не по accessor’у
                     ->sortable(
-                        query: fn (Builder $query, string $direction): Builder =>
-                            $query->orderBy('dimension', $direction)
+                        query: fn (Builder $query, string $direction): Builder => $query->orderBy('dimension', $direction)
                     ),
 
                 TextColumn::make('base_symbol')
