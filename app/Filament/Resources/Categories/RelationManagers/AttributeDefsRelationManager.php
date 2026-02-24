@@ -169,6 +169,7 @@ class AttributeDefsRelationManager extends RelationManager
             ->headerActions([
                 AttachAction::make()->label('Добавить')
                     ->modalHeading('Добавить фильтр')
+                    ->preloadRecordSelect()
                     ->recordTitle(fn (Attribute $record) => $this->attributeLabel($record))
                     ->schema(fn (AttachAction $action): array => [
                         $action->getRecordSelect()
