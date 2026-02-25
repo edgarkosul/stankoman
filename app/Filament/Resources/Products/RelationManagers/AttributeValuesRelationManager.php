@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Products\RelationManagers;
 
+use App\Filament\Resources\Attributes\AttributeResource;
 use App\Models\Attribute;
 use App\Models\Unit;
 use Filament\Actions\CreateAction;
@@ -395,7 +396,8 @@ class AttributeValuesRelationManager extends RelationManager
                 TextColumn::make('attribute.name')
                     ->label('Атрибут')
                     ->sortable()
-                    ->searchable(),
+                    ->searchable()
+                    ->url(fn ($record) => AttributeResource::getUrl('edit', ['record' => $record->attribute_id]), true),
 
                 TextColumn::make('display_value')
                     ->label('Значение')

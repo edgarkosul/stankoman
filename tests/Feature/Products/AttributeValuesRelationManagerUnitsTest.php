@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Resources\Attributes\AttributeResource;
 use App\Filament\Resources\Products\Pages\EditProduct;
 use App\Filament\Resources\Products\RelationManagers\AttributeValuesRelationManager;
 use App\Models\Attribute;
@@ -10,6 +11,7 @@ use App\Models\Unit;
 use App\Models\User;
 use Filament\Actions\CreateAction;
 use Filament\Actions\Testing\TestAction;
+use Filament\Tables\Columns\TextColumn;
 use Livewire\Livewire;
 
 test('relation manager saves numeric value entered in additional unit as base unit', function (): void {
@@ -142,4 +144,42 @@ test('relation manager shows ui default unit info based on attribute default uni
         ->toContain('UI-единица (defaultUnit):')
         ->toContain('Метр')
         ->toContain('(м)');
+});
+
+test('relation manager attribute name column links to attribute edit page', function (): void {
+    $this->actingAs(User::factory()->create());
+
+    $product = Product::query()->create([
+        'name' => 'Товар для ссылки на редактирование атрибута',
+        'slug' => 'product-attribute-edit-link-relation-manager-test',
+        'price_amount' => 16000,
+    ]);
+
+    $attribute = Attribute::query()->create([
+        'name' => 'Ссылка на атрибут',
+        'slug' => 'attribute-edit-link-relation-manager-test',
+        'data_type' => 'text',
+        'value_source' => 'free',
+        'input_type' => 'text',
+        'is_filterable' => true,
+    ]);
+
+    $attributeValue = ProductAttributeValue::query()->create([
+        'product_id' => $product->id,
+        'attribute_id' => $attribute->id,
+        'value_text' => 'Тестовое значение',
+    ]);
+
+    $expectedUrl = AttributeResource::getUrl('edit', ['record' => $attribute->id]);
+
+    Livewire::test(AttributeValuesRelationManager::class, [
+        'ownerRecord' => $product,
+        'pageClass' => EditProduct::class,
+    ])
+        ->assertCanSeeTableRecords([$attributeValue])
+        ->assertTableColumnExists(
+            'attribute.name',
+            fn (TextColumn $column): bool => $column->getUrl() === $expectedUrl,
+            $attributeValue
+        );
 });
