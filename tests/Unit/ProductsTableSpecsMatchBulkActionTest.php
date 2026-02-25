@@ -615,6 +615,18 @@ it('uses nullable warranty select in mass edit fields mode', function () {
     expect($product->fresh()->warranty)->toBeNull();
 });
 
+it('normalizes warranty values for bulk update payload', function () {
+    $method = new ReflectionMethod(ProductsTable::class, 'normalizeWarrantyForBulkUpdate');
+    $method->setAccessible(true);
+
+    expect($method->invoke(null, 12))->toBe(ProductWarranty::Months12->value)
+        ->and($method->invoke(null, '24'))->toBe(ProductWarranty::Months24->value)
+        ->and($method->invoke(null, ProductWarranty::Months36))->toBe(ProductWarranty::Months36->value)
+        ->and($method->invoke(null, null))->toBeNull()
+        ->and($method->invoke(null, ''))->toBeNull()
+        ->and($method->invoke(null, '999'))->toBe('999');
+});
+
 it('offers link-existing action for all proposals and defaults decisions to ignore', function () {
     $optionsMethod = new ReflectionMethod(ProductsTable::class, 'decisionOptionsForProposal');
     $defaultMethod = new ReflectionMethod(ProductsTable::class, 'defaultDecisionForProposal');

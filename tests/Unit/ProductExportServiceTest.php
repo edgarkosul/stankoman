@@ -91,3 +91,26 @@ it('exports products to xlsx with configured headers', function () {
     $spreadsheet->disconnectWorksheets();
     unlink($result['path']);
 });
+
+it('exports enum-casted warranty field as scalar value', function () {
+    Product::query()->create([
+        'name' => 'Warranty Tool',
+        'sku' => 'WARRANTY-1',
+        'warranty' => '24',
+    ]);
+
+    $service = new ProductExportService;
+    $result = $service->exportToXlsx(Product::query(), ['warranty']);
+
+    expect($result['path'])->toBeFile();
+
+    $spreadsheet = IOFactory::createReader('Xlsx')->load($result['path']);
+    $sheet = $spreadsheet->getActiveSheet();
+
+    expect($sheet->getCell('A1')->getValue())->toBe('Наименование');
+    expect($sheet->getCell('B1')->getValue())->toBe('Гарантия');
+    expect((string) $sheet->getCell('B2')->getValue())->toBe('24');
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($result['path']);
+});

@@ -233,3 +233,51 @@ it('creates new product in safe defaults mode on apply', function () {
 
     unlink($path);
 });
+
+it('handles enum-casted warranty field during dry-run and apply', function () {
+    $product = Product::query()->create([
+        'name' => 'Warranty Import Product',
+        'sku' => 'WIP-1',
+        'brand' => 'Brand',
+        'warranty' => '12',
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'warranty', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        '24',
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service = new ProductImportService;
+
+    $dryRun = $service->dryRunFromXlsx($run, $path);
+    $apply = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($dryRun['totals'])->toMatchArray([
+        'create' => 0,
+        'update' => 1,
+        'same' => 0,
+        'conflict' => 0,
+        'error' => 0,
+        'scanned' => 1,
+    ]);
+
+    expect($apply)->toMatchArray([
+        'created' => 0,
+        'updated' => 1,
+        'same' => 0,
+        'conflict' => 0,
+        'error' => 0,
+        'scanned' => 1,
+    ]);
+
+    expect($product->fresh()->warranty?->value)->toBe('24');
+
+    unlink($path);
+});

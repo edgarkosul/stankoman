@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\Category;
 use App\Models\ImportRun;
 use App\Models\Product;
 use App\Support\Products\ProductExportService;
@@ -10,6 +11,7 @@ use BackedEnum;
 use Filament\Actions\Action as FormAction;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Toggle;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Notifications\Notification;
@@ -18,6 +20,7 @@ use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -40,13 +43,19 @@ class ProductImportExport extends Page implements HasForms
     /** @var array{
      *     export_columns: array<int, string>,
      *     import_file: TemporaryUploadedFile|array<int, TemporaryUploadedFile|string>|string|null,
-     *     import_file_original_name: string|null
+     *     import_file_original_name: string|null,
+     *     filter_category_ids: array<int, int|string>,
+     *     filter_only_active: bool,
+     *     filter_only_stock: bool
      * }|null
      */
     public ?array $data = [
         'export_columns' => [],
         'import_file' => null,
         'import_file_original_name' => null,
+        'filter_category_ids' => [],
+        'filter_only_active' => false,
+        'filter_only_stock' => false,
     ];
 
     /** @var array<string, int>|null */
@@ -77,6 +86,9 @@ class ProductImportExport extends Page implements HasForms
             'export_columns' => $visibleDefaults,
             'import_file' => null,
             'import_file_original_name' => null,
+            'filter_category_ids' => [],
+            'filter_only_active' => false,
+            'filter_only_stock' => false,
         ]);
 
         $this->dryRunTotals = null;
@@ -115,6 +127,20 @@ class ProductImportExport extends Page implements HasForms
 
         return $schema
             ->components([
+                Section::make('Фильтры (экспорт и импорт)')
+                    ->schema([
+                        Select::make('filter_category_ids')
+                            ->label('Категории')
+                            ->multiple()
+                            ->searchable()
+                            ->options(static fn (): array => Category::query()->orderBy('name')->pluck('name', 'id')->all())
+                            ->placeholder('Все категории'),
+                        Toggle::make('filter_only_active')
+                            ->label('Только активные'),
+                        Toggle::make('filter_only_stock')
+                            ->label('Только в наличии'),
+                    ]),
+
                 Section::make('Экспорт в Excel')
                     ->schema([
                         Select::make('export_columns')
@@ -171,7 +197,9 @@ class ProductImportExport extends Page implements HasForms
     public function doExport(ProductExportService $export): void
     {
         $columns = $export->validateColumns($this->data['export_columns'] ?? []);
-        $result = $export->exportToXlsx(Product::query(), $columns);
+
+        $query = $this->applyFiltersToProductQuery(Product::query());
+        $result = $export->exportToXlsx($query, $columns);
 
         $token = bin2hex(random_bytes(8));
         $key = "exports/tmp/{$token}.path";
@@ -251,7 +279,9 @@ class ProductImportExport extends Page implements HasForms
             'started_at' => now(),
         ]);
 
-        $result = $import->dryRunFromXlsx($run, $absPath);
+        $result = $import->dryRunFromXlsx($run, $absPath, [
+            'filters' => $this->buildImportFilters(),
+        ]);
 
         $totals = $result['totals'] ?? [];
         $preview = $result['preview'] ?? ['create' => [], 'update' => [], 'conflict' => []];
@@ -338,6 +368,7 @@ class ProductImportExport extends Page implements HasForms
 
         $totals = $import->applyFromXlsx($run, $absPath, [
             'write' => true,
+            'filters' => $this->buildImportFilters(),
         ]);
 
         Notification::make()
@@ -351,6 +382,67 @@ class ProductImportExport extends Page implements HasForms
             )
             ->success()
             ->send();
+    }
+
+    protected function applyFiltersToProductQuery(Builder $query): Builder
+    {
+        $categoryIds = $this->normalizedCategoryIds();
+
+        if ($categoryIds !== []) {
+            $query->whereHas('categories', function (Builder $categoriesQuery) use ($categoryIds): void {
+                $categoriesQuery->whereIn('categories.id', $categoryIds);
+            });
+        }
+
+        if (! empty($this->data['filter_only_active'])) {
+            $query->where('is_active', true);
+        }
+
+        if (! empty($this->data['filter_only_stock'])) {
+            $query->where('in_stock', true);
+        }
+
+        return $query;
+    }
+
+    /**
+     * @return array{category_ids: array<int, int>, only_active: bool, only_stock: bool}
+     */
+    protected function buildImportFilters(): array
+    {
+        return [
+            'category_ids' => $this->normalizedCategoryIds(),
+            'only_active' => (bool) ($this->data['filter_only_active'] ?? false),
+            'only_stock' => (bool) ($this->data['filter_only_stock'] ?? false),
+        ];
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    protected function normalizedCategoryIds(): array
+    {
+        $rawCategoryIds = $this->data['filter_category_ids'] ?? [];
+
+        if (! is_array($rawCategoryIds)) {
+            return [];
+        }
+
+        $categoryIds = [];
+
+        foreach ($rawCategoryIds as $categoryId) {
+            if ($categoryId === null || $categoryId === '' || ! is_scalar($categoryId)) {
+                continue;
+            }
+
+            $normalizedId = (int) $categoryId;
+
+            if ($normalizedId > 0) {
+                $categoryIds[] = $normalizedId;
+            }
+        }
+
+        return array_values(array_unique($categoryIds));
     }
 
     protected function canApplyLastRun(): bool

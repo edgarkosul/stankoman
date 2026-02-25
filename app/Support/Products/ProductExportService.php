@@ -2,12 +2,16 @@
 
 namespace App\Support\Products;
 
+use BackedEnum;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Stringable;
+use UnitEnum;
 
 class ProductExportService
 {
@@ -133,16 +137,48 @@ class ProductExportService
         );
     }
 
-    protected function extractCellValue($product, string $col)
+    protected function extractCellValue(mixed $product, string $col): string|int|float|bool|null
     {
         if ($col === 'new_name') {
             return null;
         }
+
         if ($col === 'updated_at') {
             return optional($product->updated_at)->format('Y-m-d H:i:s');
         }
 
-        return $product->{$col} ?? null;
+        return $this->normalizeCellValue($product->{$col} ?? null);
+    }
+
+    protected function normalizeCellValue(mixed $value): string|int|float|bool|null
+    {
+        if ($value === null || is_scalar($value)) {
+            return $value;
+        }
+
+        if ($value instanceof BackedEnum) {
+            return $this->normalizeCellValue($value->value);
+        }
+
+        if ($value instanceof UnitEnum) {
+            return $value->name;
+        }
+
+        if ($value instanceof DateTimeInterface) {
+            return $value->format('Y-m-d H:i:s');
+        }
+
+        if ($value instanceof Stringable) {
+            return (string) $value;
+        }
+
+        $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        if ($encoded !== false) {
+            return $encoded;
+        }
+
+        return get_debug_type($value);
     }
 
     /**

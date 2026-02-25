@@ -5,10 +5,14 @@ namespace App\Support\Products;
 use App\Models\ImportRun;
 use App\Models\Product;
 use App\Support\NameNormalizer;
+use BackedEnum;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
+use Stringable;
+use UnitEnum;
 
 class ProductImportService
 {
@@ -483,6 +487,8 @@ class ProductImportService
 
     protected function canonical($v, string $type)
     {
+        $v = $this->normalizeCanonicalValue($v);
+
         if (is_string($v)) {
             $v = trim($v);
             if ($v === '') {
@@ -496,6 +502,37 @@ class ProductImportService
             $type === 'boolean' => $this->canonicalBoolean($v),
             default => ($v === null ? null : (string) $v),
         };
+    }
+
+    protected function normalizeCanonicalValue(mixed $value): mixed
+    {
+        if ($value instanceof BackedEnum) {
+            return $value->value;
+        }
+
+        if ($value instanceof UnitEnum) {
+            return $value->name;
+        }
+
+        if ($value instanceof DateTimeInterface) {
+            return $value->format('Y-m-d H:i:s');
+        }
+
+        if ($value instanceof Stringable) {
+            return (string) $value;
+        }
+
+        if (is_array($value) || is_object($value)) {
+            $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            if ($encoded !== false) {
+                return $encoded;
+            }
+
+            return get_debug_type($value);
+        }
+
+        return $value;
     }
 
     protected function canonicalDecimal($v, string $type)

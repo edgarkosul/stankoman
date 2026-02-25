@@ -930,7 +930,9 @@ class ProductsTable
                                         $q->update(['is_in_yml_feed' => (bool) $data['is_in_yml_feed_value']]);
                                         break;
                                     case 'warranty':
-                                        $q->update(['warranty' => $data['warranty_value'] ?? null]);
+                                        $q->update([
+                                            'warranty' => self::normalizeWarrantyForBulkUpdate($data['warranty_value'] ?? null),
+                                        ]);
                                         break;
                                     case 'promo_info':
                                         $q->update(['promo_info' => $data['promo_info_value']]);
@@ -1246,6 +1248,25 @@ class ProductsTable
     private static function defaultDecisionForProposal(bool $_hasExactMatch): string
     {
         return 'ignore';
+    }
+
+    private static function normalizeWarrantyForBulkUpdate(mixed $value): ?string
+    {
+        if ($value instanceof ProductWarranty) {
+            return $value->value;
+        }
+
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $rawValue = trim((string) $value);
+
+        if ($rawValue === '') {
+            return null;
+        }
+
+        return ProductWarranty::tryFrom($rawValue)?->value ?? $rawValue;
     }
 
     /**
