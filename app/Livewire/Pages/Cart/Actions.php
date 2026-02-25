@@ -60,7 +60,11 @@ class Actions extends Component
         $this->setTooltip();
 
         $this->dispatchCartUpdated($cart);
-        $this->dispatch('cart:added', productId: $this->productId);
+        $this->dispatch(
+            'cart:added',
+            productId: $this->productId,
+            product: $this->modalProductPayload(),
+        );
     }
 
     public function remove(CartService $cart): void
@@ -102,6 +106,40 @@ class Actions extends Component
     protected function count(CartService $cart): int
     {
         return $cart->uniqueProductsCount();
+    }
+
+    /**
+     * @return array{id:int,name:string,url:string,image:?string,webp_srcset:?string,price_formatted:string,price_final_formatted:string,has_discount:bool}
+     */
+    protected function modalProductPayload(): array
+    {
+        $product = Product::query()
+            ->select(['id', 'name', 'slug', 'image', 'price_amount', 'discount_price'])
+            ->find($this->productId);
+
+        if (! $product instanceof Product) {
+            return [
+                'id' => $this->productId,
+                'name' => 'Товар',
+                'url' => route('cart.index', [], false),
+                'image' => null,
+                'webp_srcset' => null,
+                'price_formatted' => price(0),
+                'price_final_formatted' => price(0),
+                'has_discount' => false,
+            ];
+        }
+
+        return [
+            'id' => (int) $product->id,
+            'name' => (string) $product->name,
+            'url' => route('product.show', ['product' => $product->slug], false),
+            'image' => $product->image_url,
+            'webp_srcset' => $product->image_webp_srcset,
+            'price_formatted' => price($product->price_int),
+            'price_final_formatted' => price($product->price_final),
+            'has_discount' => (bool) $product->has_discount,
+        ];
     }
 
     protected function setTooltip(): void

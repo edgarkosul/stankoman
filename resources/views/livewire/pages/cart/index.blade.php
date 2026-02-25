@@ -1,15 +1,18 @@
 <div class="max-w-7xl mx-auto px-4 py-6">
     <div class="flex justify-between">
-        <h1 class="text-2xl font-bold mb-4">Корзина</h1>
+        <h1 class="text-3xl font-bold mb-4">Корзина</h1>
 
         <button
             type="button"
             wire:click="clear"
             wire:loading.attr="disabled"
-            class="inline-flex items-center gap-2 rounded-lg p-2 border bg-white text-red-600 hover:bg-red-50"
+            class="group inline-flex items-center gap-2 p-2"
             title="Очистить корзину"
         >
-            <x-heroicon-o-trash class="h-5 w-5" />
+            <x-icon
+                name="trash"
+                class="h-6 w-6 text-zinc-700 group-hover:[&_.icon-base]:text-brand-gray [&_.icon-accent]:text-red-500 group-hover:[&_.icon-accent]:text-brand-red/50 transition-colors"
+            />
         </button>
     </div>
 

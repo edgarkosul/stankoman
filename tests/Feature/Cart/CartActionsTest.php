@@ -29,7 +29,13 @@ it('adds product to cart and dispatches cart events', function (): void {
         ->assertSet('inCart', true)
         ->assertDispatched("cart:updated.{$product->id}")
         ->assertDispatched('cart:updated')
-        ->assertDispatched('cart:added');
+        ->assertDispatched('cart:added', function (string $event, array $params) use ($product): bool {
+            return $event === 'cart:added'
+                && ($params['productId'] ?? null) === $product->id
+                && ($params['product']['id'] ?? null) === $product->id
+                && ($params['product']['name'] ?? null) === $product->name
+                && ($params['product']['url'] ?? null) === route('product.show', ['product' => $product->slug], false);
+        });
 
     $cart = app(CartService::class);
 

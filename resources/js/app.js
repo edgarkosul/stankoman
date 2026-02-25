@@ -1,4 +1,5 @@
 import tooltip from './plugins/tooltip';
+import cartModalFactory from './alpine/cart-modal';
 import Swiper from 'swiper';
 import { A11y, Autoplay, FreeMode, Mousewheel, Navigation, Pagination, Thumbs } from 'swiper/modules';
 import PhotoSwipeLightbox from 'photoswipe/lightbox';
@@ -983,6 +984,7 @@ const registerAlpineData = () => {
     alpine.data('catalogMenu', catalogMenuFactory);
     alpine.data('compareEqualizer', compareEqualizerFactory);
     alpine.data('prettyNumberInput', prettyNumberInputFactory);
+    alpine.data('cartModal', cartModalFactory);
 };
 
 document.addEventListener('alpine:init', registerAlpineData);

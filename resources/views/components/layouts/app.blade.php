@@ -29,6 +29,8 @@
         <x-layouts.partials.footer />
     </div>
 
+    @include('partials.cart-modal')
+
     <script>
         window.prettyNumberInput = window.prettyNumberInput || function (config = {}) {
             return {
