@@ -528,7 +528,7 @@ class ProductsTable
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
 
                         Toggle::make('auto_create_options')
-                            ->label('Автосоздавать недостающие опции фильтров (select/multiselect)')
+                            ->label('Автосоздавать недостающие опции фильтров (для фильтров типа текст с выбором из опций)')
                             ->default(false)
                             ->visible(fn ($get) => $get('mode') === 'specs_match')
                             ->required(fn ($get) => $get('mode') === 'specs_match'),
