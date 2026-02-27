@@ -23,13 +23,17 @@
         <x-layouts.partials.info />
         <x-layouts.partials.header />
         <x-navigation.breadcrumbs />
-        <main class="flex-1">
+        <main class="flex flex-1 flex-col">
             {{ $slot }}
         </main>
         <x-layouts.partials.footer />
     </div>
 
     @include('partials.cart-modal')
+    <livewire:auth.login-inline />
+    <livewire:auth.register-inline />
+    <livewire:auth.forgot-password-inline />
+    <livewire:auth.verify-email-inline />
 
     <script>
         window.prettyNumberInput = window.prettyNumberInput || function (config = {}) {

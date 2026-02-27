@@ -1,0 +1,145 @@
+<?php
+
+use App\Livewire\Auth\LoginInline;
+use App\Livewire\Header\UserMenu;
+use App\Models\User;
+use Livewire\Livewire;
+
+test('inline login modal can be opened', function () {
+    Livewire::test(LoginInline::class)
+        ->assertSet('open', false)
+        ->call('open')
+        ->assertSet('open', true);
+});
+
+test('inline login form is rendered only when modal is open', function () {
+    Livewire::test(LoginInline::class)
+        ->assertDontSee('login-inline-button')
+        ->call('open')
+        ->assertSee('login-inline-button')
+        ->assertSeeHtml('method="POST"')
+        ->assertSeeHtml('action="'.route('login', absolute: false).'"')
+        ->assertSeeHtml('autocomplete="email"')
+        ->assertSeeHtml('id="inline-login-email"')
+        ->assertSeeHtml('id="inline-login-password"');
+});
+
+test('users can authenticate using inline login modal', function () {
+    $user = User::factory()->create();
+    $referer = rtrim((string) config('app.url', 'http://localhost'), '/').'/cart';
+
+    $response = Livewire::withHeaders([
+        'Referer' => $referer,
+    ])->test(LoginInline::class)
+        ->call('open')
+        ->set('email', $user->email)
+        ->set('password', 'password')
+        ->set('remember', true)
+        ->call('login');
+
+    $response
+        ->assertHasNoErrors()
+        ->assertSet('open', false)
+        ->assertNotDispatched('auth:logged-in')
+        ->assertDispatched('auth:redirect');
+
+    $this->assertAuthenticatedAs($user);
+});
+
+test('unverified users are redirected to verify email modal after inline login', function () {
+    $user = User::factory()->unverified()->create();
+
+    $response = Livewire::test(LoginInline::class)
+        ->call('open')
+        ->set('email', $user->email)
+        ->set('password', 'password')
+        ->call('login');
+
+    $response
+        ->assertHasNoErrors()
+        ->assertSet('open', false)
+        ->assertDispatched('auth:logged-in')
+        ->assertDispatched('showVerifyEmailModal')
+        ->assertNotDispatched('auth:redirect');
+
+    $this->assertAuthenticatedAs($user);
+});
+
+test('users can not authenticate via inline login modal with invalid password', function () {
+    $user = User::factory()->create();
+
+    $response = Livewire::test(LoginInline::class)
+        ->set('email', $user->email)
+        ->set('password', 'wrong-password')
+        ->call('login');
+
+    $response
+        ->assertHasErrors('email')
+        ->assertNotDispatched('auth:redirect');
+
+    $this->assertGuest();
+});
+
+test('guest user menu dispatches login modal event', function () {
+    Livewire::test(UserMenu::class)
+        ->call('openLoginModal')
+        ->assertDispatched('showLoginModal');
+});
+
+test('guest user menu renders login trigger', function () {
+    Livewire::test(UserMenu::class)
+        ->assertSeeHtml('data-test="open-login-modal-button"')
+        ->assertDontSeeHtml('data-test="user-menu-dropdown"');
+});
+
+test('authenticated user menu renders dropdown actions', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test(UserMenu::class)
+        ->assertSeeHtml('data-test="user-menu-button"')
+        ->assertSeeHtml('data-test="user-menu-dropdown"')
+        ->assertSeeHtml('data-test="user-menu-settings-item"')
+        ->assertSeeHtml('data-test="user-menu-logout-item"')
+        ->assertSee($user->name)
+        ->assertSee($user->email)
+        ->assertDontSeeHtml('data-test="open-login-modal-button"')
+        ->assertDontSeeHtml('data-test="user-menu-verify-email-item"');
+});
+
+test('authenticated user menu shortens button label to first 11 chars of first name part', function () {
+    $user = User::factory()->create([
+        'name' => 'VeryLongUsername Person',
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(UserMenu::class)
+        ->assertSeeHtml('<span class="hidden xl:block">VeryLongUse</span>');
+});
+
+test('authenticated user menu enables hover open behavior', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test(UserMenu::class)
+        ->assertSeeHtml('@mouseenter="open = true"')
+        ->assertSeeHtml('@mouseleave="open = false"');
+});
+
+test('unverified user menu renders verify email action', function () {
+    $user = User::factory()->unverified()->create();
+
+    Livewire::actingAs($user)
+        ->test(UserMenu::class)
+        ->assertSeeHtml('data-test="user-menu-verify-email-item"')
+        ->assertSee(__('Verify email'));
+});
+
+test('authenticated user menu can dispatch verify email modal event', function () {
+    $user = User::factory()->unverified()->create();
+
+    Livewire::actingAs($user)
+        ->test(UserMenu::class)
+        ->call('openVerifyEmailModal')
+        ->assertDispatched('showVerifyEmailModal');
+});

@@ -24,6 +24,8 @@
         ->map(function (array $slide) use ($toUrl, $resolver): array {
             $path = is_string($slide['image'] ?? null) ? $slide['image'] : null;
             $src = $toUrl($path);
+            $width = null;
+            $height = null;
             $webpSrcset = null;
 
             if (is_string($path) && $path !== '') {
@@ -38,12 +40,28 @@
                 }
 
                 if (is_string($storagePath) && $storagePath !== '') {
+                    $disk = \Illuminate\Support\Facades\Storage::disk('public');
+
+                    if ($disk->exists($storagePath)) {
+                        $absolutePath = $disk->path($storagePath);
+
+                        if (is_file($absolutePath)) {
+                            $size = getimagesize($absolutePath);
+
+                            if (is_array($size)) {
+                                [$width, $height] = $size;
+                            }
+                        }
+                    }
+
                     $webpSrcset = $resolver->buildWebpSrcset($storagePath);
                 }
             }
 
             return [
                 'src' => $src,
+                'width' => $width,
+                'height' => $height,
                 'webpSrcset' => $webpSrcset,
                 'url' => is_string($slide['url'] ?? null) ? $slide['url'] : null,
                 'alt' => is_string($slide['alt'] ?? null) ? $slide['alt'] : '',
@@ -63,10 +81,28 @@
                             @if ($slide['webpSrcset'])
                                 <picture>
                                     <source type="image/webp" srcset="{{ $slide['webpSrcset'] }}" sizes="100vw">
-                                    <img src="{{ $slide['src'] }}" alt="{{ $slide['alt'] }}" loading="lazy" />
+                                    <img
+                                        src="{{ $slide['src'] }}"
+                                        alt="{{ $slide['alt'] }}"
+                                        loading="{{ $loop->first ? 'eager' : 'lazy' }}"
+                                        @if ($loop->first) fetchpriority="high" @endif
+                                        @if ($slide['width'] && $slide['height'])
+                                            width="{{ $slide['width'] }}"
+                                            height="{{ $slide['height'] }}"
+                                        @endif
+                                    />
                                 </picture>
                             @else
-                                <img src="{{ $slide['src'] }}" alt="{{ $slide['alt'] }}" loading="lazy" />
+                                <img
+                                    src="{{ $slide['src'] }}"
+                                    alt="{{ $slide['alt'] }}"
+                                    loading="{{ $loop->first ? 'eager' : 'lazy' }}"
+                                    @if ($loop->first) fetchpriority="high" @endif
+                                    @if ($slide['width'] && $slide['height'])
+                                        width="{{ $slide['width'] }}"
+                                        height="{{ $slide['height'] }}"
+                                    @endif
+                                />
                             @endif
                         </a>
                     @else
@@ -74,10 +110,28 @@
                             @if ($slide['webpSrcset'])
                                 <picture>
                                     <source type="image/webp" srcset="{{ $slide['webpSrcset'] }}" sizes="100vw">
-                                    <img src="{{ $slide['src'] }}" alt="{{ $slide['alt'] }}" loading="lazy" />
+                                    <img
+                                        src="{{ $slide['src'] }}"
+                                        alt="{{ $slide['alt'] }}"
+                                        loading="{{ $loop->first ? 'eager' : 'lazy' }}"
+                                        @if ($loop->first) fetchpriority="high" @endif
+                                        @if ($slide['width'] && $slide['height'])
+                                            width="{{ $slide['width'] }}"
+                                            height="{{ $slide['height'] }}"
+                                        @endif
+                                    />
                                 </picture>
                             @else
-                                <img src="{{ $slide['src'] }}" alt="{{ $slide['alt'] }}" loading="lazy" />
+                                <img
+                                    src="{{ $slide['src'] }}"
+                                    alt="{{ $slide['alt'] }}"
+                                    loading="{{ $loop->first ? 'eager' : 'lazy' }}"
+                                    @if ($loop->first) fetchpriority="high" @endif
+                                    @if ($slide['width'] && $slide['height'])
+                                        width="{{ $slide['width'] }}"
+                                        height="{{ $slide['height'] }}"
+                                    @endif
+                                />
                             @endif
                         </div>
                     @endif

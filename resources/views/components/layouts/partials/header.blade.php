@@ -56,7 +56,6 @@
                                     <span class="whitespace-nowrap hidden xs:block">Режим работы</span>
                                 </span>
                             </x-slot:trigger>
-                            Любой текст из снипетов в админке
                         </x-tooltip>
                     </div>
                 </div>
@@ -86,13 +85,16 @@
         </div>
         {{-- ИКОНКИ ПРАВЫЕ --}}
         <div class="grid grid-cols-4 gap-6 xl:gap-4 order-1 lg:oreder-2">
-            <div x-data x-tooltip.smart.bottom.offset-10.lt-xl="'Войти'"
-                class="flex-1 flex flex-col items-center text-sm cursor-pointer">
-                <x-icon name="user" class="size-6 xl:size-5 -translate-y-0.5 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red" />
-                <div>
-                    <span class="hidden xl:block">Войти</span>
+            @auth
+                <div class="flex-1 flex flex-col items-center text-sm">
+                    <livewire:header.user-menu />
                 </div>
-            </div>
+            @else
+                <div x-data x-tooltip.smart.bottom.offset-10.lt-xl="'Войти'"
+                    class="flex-1 flex flex-col items-center text-sm">
+                    <livewire:header.user-menu />
+                </div>
+            @endauth
 
             <div x-data x-tooltip.smart.bottom.offset-10.lt-xl="'Сравнение'"
                 class="flex-1 flex flex-col items-center text-sm">

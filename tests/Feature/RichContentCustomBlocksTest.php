@@ -1,10 +1,12 @@
 <?php
 
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\HeroSliderBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
+use App\Models\Slider;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
@@ -62,6 +64,38 @@ it('renders image gallery custom block with photoswipe dimensions when files exi
         ->and($html)->toContain('data-pswp-height="800"')
         ->and($html)->toContain('data-pswp-width="640"')
         ->and($html)->toContain('data-pswp-height="480"');
+});
+
+it('renders hero slider custom block with image dimensions and prioritized first slide', function () {
+    Storage::fake('public');
+    config(['filesystems.disks.public.url' => '/storage']);
+
+    $first = UploadedFile::fake()->image('hero-first.jpg', 1600, 700);
+    $second = UploadedFile::fake()->image('hero-second.jpg', 1200, 675);
+
+    Storage::disk('public')->putFileAs('pics', $first, 'hero-first.jpg');
+    Storage::disk('public')->putFileAs('pics', $second, 'hero-second.jpg');
+
+    $slider = Slider::query()->create([
+        'name' => 'Homepage hero',
+        'slides' => [
+            ['image' => 'pics/hero-first.jpg', 'alt' => 'First', 'url' => '/promo'],
+            ['image' => 'pics/hero-second.jpg', 'alt' => 'Second'],
+        ],
+    ]);
+
+    $html = HeroSliderBlock::toHtml([
+        'slider_id' => $slider->id,
+    ], []);
+
+    expect($html)->toContain('data-hero-slider')
+        ->and($html)->toContain('href="/promo"')
+        ->and($html)->toContain('alt="First"')
+        ->and($html)->toContain('width="1600"')
+        ->and($html)->toContain('height="700"')
+        ->and($html)->toContain('loading="eager"')
+        ->and($html)->toContain('fetchpriority="high"')
+        ->and($html)->toContain('loading="lazy"');
 });
 
 it('renders raw html custom block without modification', function () {

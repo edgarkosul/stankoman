@@ -731,6 +731,15 @@ document.addEventListener('livewire:initialized', () => {
 document.addEventListener('livewire:init', () => {
     if (!window.Livewire) return;
 
+    Livewire.on('auth:redirect', (payload) => {
+        const url = typeof payload === 'string' ? payload : payload?.url;
+        if (typeof url !== 'string' || url === '') {
+            return;
+        }
+
+        window.location.assign(url);
+    });
+
     Livewire.on('filters-cleared', () => {
         requestAnimationFrame(() => resetAllRangeSliders(document));
     });
