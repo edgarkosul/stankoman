@@ -1,11 +1,15 @@
-<section class="w-full">
-    @include('partials.settings-heading')
+<section class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+    <div class="mb-6 w-full border-b border-zinc-200 pb-3 space-y-2">
+        <h1 class="text-3xl font-semibold">Настройки</h1>
+        <div class="text-brand-gray ">Управляйте профилем и настройками учётной записи </div>
+    </div>
 
-    <flux:heading class="sr-only">{{ __('Profile Settings') }}</flux:heading>
+    <div class="sr-only">Настройки</div>
 
-    <x-settings.layout :heading="__('Profile')" :subheading="__('Update your name and email address')">
-        <form wire:submit="updateProfileInformation" class="my-6 w-full space-y-6">
-            <flux:input wire:model="name" :label="__('Name')" type="text" required autofocus autocomplete="name" />
+    <x-settings.layout :heading="'Профиль'" :subheading="'Обновите свое имя и адрес электронной почты'">
+        <form wire:submit="updateProfileInformation" class="my-6 pace-y-6">
+            <flux:input wire:model="name" :label="__('Name')" type="text" required autofocus
+                autocomplete="name"/>
 
             <div>
                 <flux:input wire:model="email" :label="__('Email')" type="email" required autocomplete="email" />
@@ -15,7 +19,8 @@
                         <flux:text class="mt-4">
                             {{ __('Your email address is unverified.') }}
 
-                            <flux:link class="text-sm cursor-pointer" wire:click.prevent="resendVerificationNotification">
+                            <flux:link class="text-sm cursor-pointer"
+                                wire:click.prevent="resendVerificationNotification">
                                 {{ __('Click here to re-send the verification email.') }}
                             </flux:link>
                         </flux:text>
@@ -31,10 +36,10 @@
 
             <div class="flex items-center gap-4">
                 <div class="flex items-center justify-end">
-                    <flux:button variant="primary" type="submit" class="w-full">{{ __('Save') }}</flux:button>
+                    <flux:button variant="primary" type="submit" class="w-full rounded-none">{{ __('Save') }}</flux:button>
                 </div>
 
-                <x-action-message class="me-3" on="profile-updated">
+                <x-action-message class="me-3 rounded-none" on="profile-updated">
                     {{ __('Saved.') }}
                 </x-action-message>
             </div>

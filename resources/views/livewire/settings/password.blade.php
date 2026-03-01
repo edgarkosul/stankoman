@@ -1,7 +1,10 @@
-<section class="w-full">
-    @include('partials.settings-heading')
+<section class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+    <div class="mb-6 w-full border-b border-zinc-200 pb-3 space-y-2">
+        <h1 class="text-3xl font-semibold">Настройки</h1>
+        <div class="text-brand-gray ">Управляйте профилем и настройками учётной записи </div>
+    </div>
 
-    <flux:heading class="sr-only">{{ __('Password Settings') }}</flux:heading>
+    <div class="sr-only">Настройки</div>
 
     <x-settings.layout :heading="__('Update password')" :subheading="__('Ensure your account is using a long, random password to stay secure')">
         <form method="POST" wire:submit="updatePassword" class="mt-6 space-y-6">
