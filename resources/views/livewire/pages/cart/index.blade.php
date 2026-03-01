@@ -12,7 +12,7 @@
             >
                 <x-icon
                     name="trash"
-                    class="h-6 w-6 text-zinc-700 group-hover:[&_.icon-base]:text-brand-gray [&_.icon-accent]:text-red-500 group-hover:[&_.icon-accent]:text-brand-red/50 transition-colors"
+                    class="h-6 w-6 [&_.icon-base]:text-red-600 [&_.icon-accent]:text-red-500 group-hover:[&_.icon-accent]:text-brand-red transition-colors"
                 />
             </button>
         </div>
@@ -124,6 +124,12 @@
             @endif
 
             <div class="mt-4 flex items-center justify-between">
+                <a href="{{ route('checkout.index') }}"
+                    class="inline-flex h-11 items-center gap-2 bg-brand-green px-4 text-sm font-semibold text-white hover:bg-[#1c7731]">
+                    <x-heroicon-o-shopping-bag class="h-5 w-5" />
+                    <span>Оформить заказ</span>
+                </a>
+
                 <div class="text-right ml-auto">
                     <div class="text-sm font-semibold text-zinc-700">Итого ({{ $totalQty }} шт.)</div>
                     @auth

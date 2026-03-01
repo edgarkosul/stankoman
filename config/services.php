@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'dadata' => [
+        'token' => env('DADATA_TOKEN'),
+        'secret' => env('DADATA_SECRET'),
+        'base' => env('DADATA_BASE', 'https://suggestions.dadata.ru/suggestions/api/4_1/rs'),
+        'timeout' => (float) env('DADATA_TIMEOUT', 4.0),
+        'cache_ttl' => (int) env('DADATA_CACHE_TTL', 86400),
+    ],
+
 ];

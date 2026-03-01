@@ -1,5 +1,6 @@
 import tooltip from './plugins/tooltip';
 import cartModalFactory from './alpine/cart-modal';
+import { initRuPhoneMask } from './modules/phone-mask-ru';
 import Swiper from 'swiper';
 import { A11y, Autoplay, FreeMode, Mousewheel, Navigation, Pagination, Thumbs } from 'swiper/modules';
 import PhotoSwipeLightbox from 'photoswipe/lightbox';
@@ -998,3 +999,4 @@ const registerAlpineData = () => {
 
 document.addEventListener('alpine:init', registerAlpineData);
 registerAlpineData();
+initRuPhoneMask();

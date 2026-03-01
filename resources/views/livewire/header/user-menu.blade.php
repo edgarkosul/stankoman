@@ -1,16 +1,16 @@
 <div
     @auth
-        x-data="{ open: false }"
-        @keydown.escape.window="open = false"
-        @mouseenter="open = true"
-        @mouseleave="open = false"
+        x-data="navDropdown()"
+        @keydown.escape.window="close()"
+        @mouseenter="show()"
+        @mouseleave="hide(150)"
     @endauth
     class="relative"
 >
     @auth
         <button
             type="button"
-            @click="open = ! open"
+            @click="toggle()"
             :aria-expanded="open.toString()"
             aria-haspopup="menu"
             class="flex flex-col items-center text-sm cursor-pointer"
@@ -22,14 +22,16 @@
 
         <div
             x-show="open"
-            @click.outside="open = false"
+            @mouseenter="show()"
+            @mouseleave="hide(150)"
+            @click.outside="close()"
             x-transition:enter="transition ease-out duration-150"
             x-transition:enter-start="opacity-0 translate-y-1"
             x-transition:enter-end="opacity-100 translate-y-0"
             x-transition:leave="transition ease-in duration-100"
             x-transition:leave-start="opacity-100 translate-y-0"
             x-transition:leave-end="opacity-0 translate-y-1"
-            class="absolute right-0 top-full z-30 mt-2 w-60 border border-zinc-200 bg-white p-[.3125rem] shadow-sm"
+            class="absolute -right-30 top-full z-30 mt-2 w-60 border border-zinc-200 bg-white p-[.3125rem] shadow-sm"
             style="display:none"
             role="menu"
             data-test="user-menu-dropdown"
@@ -49,9 +51,20 @@
             <div class="-mx-[.3125rem] my-[.3125rem] h-px bg-zinc-200"></div>
 
             <a
+                href="{{ route('user.orders.index') }}"
+                wire:navigate
+                @click="close()"
+                class="flex w-full items-center px-2 py-1.5 text-start text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                role="menuitem"
+                data-test="user-menu-orders-item"
+            >
+                Мои заказы
+            </a>
+
+            <a
                 href="{{ route('profile.edit') }}"
                 wire:navigate
-                @click="open = false"
+                @click="close()"
                 class="flex w-full items-center rounded-md px-2 py-1.5 text-start text-sm font-medium text-zinc-800 hover:bg-zinc-50"
                 role="menuitem"
                 data-test="user-menu-settings-item"
@@ -63,7 +76,7 @@
                 <button
                     type="button"
                     wire:click="openVerifyEmailModal"
-                    @click="open = false"
+                    @click="close()"
                     class="flex w-full items-center rounded-md px-2 py-1.5 text-start text-sm font-medium text-zinc-800 hover:bg-zinc-50"
                     role="menuitem"
                     data-test="user-menu-verify-email-item"
@@ -77,7 +90,7 @@
             <button
                 type="button"
                 wire:click="logout"
-                @click="open = false"
+                @click="close()"
                 class="flex w-full items-center rounded-md px-2 py-1.5 text-start text-sm font-medium text-zinc-800 hover:bg-zinc-50"
                 role="menuitem"
                 data-test="user-menu-logout-item"

@@ -2,10 +2,14 @@
 
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\ProductController;
+use App\Http\Middleware\CartNotEmpty;
+use App\Livewire\Checkout\Wizard as CheckoutWizard;
 use App\Livewire\Pages\Cart\Index as CartIndex;
 use App\Livewire\Pages\Categories\LeafCategoryPage;
 use App\Livewire\Pages\Compare\Page as ComparePage;
 use App\Livewire\Pages\Favorites\Index as FavoritesIndex;
+use App\Livewire\Pages\Orders\Index as OrdersIndex;
+use App\Livewire\Pages\Orders\Show as OrderShow;
 use App\Models\ImportRun;
 use App\Models\Page;
 use Illuminate\Support\Facades\Route;
@@ -39,8 +43,33 @@ Route::get('/compare', ComparePage::class)
 Route::get('/cart', CartIndex::class)
     ->name('cart.index');
 
+Route::get('/checkout', CheckoutWizard::class)
+    ->name('checkout.index')
+    ->middleware(CartNotEmpty::class);
+
+Route::get('/checkout/success/{date}/{seq}', function (string $date, string $seq) {
+    $orderNumber = "{$date}/{$seq}";
+
+    return view('pages.checkout.success', compact('orderNumber'));
+})->where([
+    'date' => '\d{2}-\d{2}-\d{2}',
+    'seq' => '\d+',
+])->name('checkout.success');
+
 Route::get('/favorites', FavoritesIndex::class)
     ->name('favorites.index');
+
+Route::prefix('user')->middleware(['auth'])->group(function (): void {
+    Route::livewire('/orders', OrdersIndex::class)
+        ->name('user.orders.index');
+
+    Route::livewire('/orders/{date}/{seq}', OrderShow::class)
+        ->where([
+            'date' => '\d{2}-\d{2}-\d{2}',
+            'seq' => '\d+',
+        ])
+        ->name('user.orders.show');
+});
 
 Route::middleware(['web', 'auth'])
     ->get('/admin/tools/download-export/{token}/{name}', function (string $token, string $name) {

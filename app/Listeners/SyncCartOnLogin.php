@@ -11,6 +11,11 @@ class SyncCartOnLogin
 
     public function handle(Login $event): void
     {
-        $this->cart->syncWithUser();
+        $token = request()->cookie('cart_token');
+
+        $this->cart->syncWithUser(
+            user: $event->user,
+            guestToken: is_string($token) ? $token : null,
+        );
     }
 }

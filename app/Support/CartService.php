@@ -107,52 +107,61 @@ class CartService
         $this->cart->touch();
     }
 
-    public function syncWithUser(): void
+    public function syncWithUser(?Authenticatable $user = null, ?string $guestToken = null): void
     {
-        if (! Auth::check()) {
+        if (! Auth::check() && ! $user instanceof User) {
             return;
         }
 
-        $user = Auth::user();
-        if (! $user instanceof User) {
+        $resolvedUser = $user instanceof User ? $user : Auth::user();
+
+        if (! $resolvedUser instanceof User) {
             return;
         }
 
-        DB::transaction(function () use ($user): void {
+        DB::transaction(function () use ($guestToken, $resolvedUser): void {
             $userCart = Cart::query()->firstOrCreate(
-                ['user_id' => $user->id],
+                ['user_id' => $resolvedUser->id],
                 ['token' => (string) Str::uuid()]
             );
 
-            if ($this->cart?->is($userCart)) {
-                $this->queueCookie($userCart->token);
+            $guestCart = null;
 
-                return;
-            }
-
-            $this->cart?->loadMissing('items');
-
-            foreach ($this->cart?->items ?? [] as $item) {
-                $existing = $userCart->items()
-                    ->where('product_id', $item->product_id)
-                    ->where('options_key', $item->options_key)
+            if (is_string($guestToken) && $guestToken !== '') {
+                $guestCart = Cart::query()
+                    ->where('token', $guestToken)
+                    ->whereNull('user_id')
+                    ->with('items')
                     ->first();
-
-                if ($existing instanceof CartItem) {
-                    continue;
-                }
-
-                $userCart->items()->create($item->only([
-                    'product_id',
-                    'quantity',
-                    'price_snapshot',
-                    'options',
-                    'options_key',
-                ]));
             }
 
-            if ($this->cart?->user_id === null) {
-                $this->cart?->delete();
+            if (! $guestCart instanceof Cart && $this->cart?->user_id === null) {
+                $guestCart = $this->cart->loadMissing('items');
+            }
+
+            if ($guestCart instanceof Cart && ! $guestCart->is($userCart)) {
+                foreach ($guestCart->items as $item) {
+                    $existing = $userCart->items()
+                        ->where('product_id', $item->product_id)
+                        ->where('options_key', $item->options_key)
+                        ->first();
+
+                    if ($existing instanceof CartItem) {
+                        continue;
+                    }
+
+                    $userCart->items()->create($item->only([
+                        'product_id',
+                        'quantity',
+                        'price_snapshot',
+                        'options',
+                        'options_key',
+                    ]));
+                }
+            }
+
+            if ($guestCart instanceof Cart && $guestCart->user_id === null && ! $guestCart->is($userCart)) {
+                $guestCart->delete();
             }
 
             $this->cart = $userCart->fresh('items');

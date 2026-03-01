@@ -99,6 +99,7 @@ test('authenticated user menu renders dropdown actions', function () {
         ->test(UserMenu::class)
         ->assertSeeHtml('data-test="user-menu-button"')
         ->assertSeeHtml('data-test="user-menu-dropdown"')
+        ->assertSeeHtml('data-test="user-menu-orders-item"')
         ->assertSeeHtml('data-test="user-menu-settings-item"')
         ->assertSeeHtml('data-test="user-menu-logout-item"')
         ->assertSee($user->name)
@@ -122,8 +123,9 @@ test('authenticated user menu enables hover open behavior', function () {
 
     Livewire::actingAs($user)
         ->test(UserMenu::class)
-        ->assertSeeHtml('@mouseenter="open = true"')
-        ->assertSeeHtml('@mouseleave="open = false"');
+        ->assertSeeHtml('x-data="navDropdown()"')
+        ->assertSeeHtml('@mouseenter="show()"')
+        ->assertSeeHtml('@mouseleave="hide(150)"');
 });
 
 test('unverified user menu renders verify email action', function () {
