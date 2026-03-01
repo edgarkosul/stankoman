@@ -18,7 +18,7 @@
     };
 @endphp
 
-<section class="bg-zinc-200 py-10">
+<section class="bg-zinc-200 py-10 flex-1">
     <div class="mx-auto w-full max-w-6xl px-6">
         <header class="mb-5 flex items-end justify-between gap-3">
             <h1 class="text-3xl font-bold text-black">Мои заказы</h1>

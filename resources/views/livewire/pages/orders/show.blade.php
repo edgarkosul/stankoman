@@ -17,7 +17,7 @@
     };
 @endphp
 
-<section class="bg-zinc-200 py-10">
+<section class="bg-zinc-200 py-10 flex-1">
     <div class="mx-auto w-full max-w-6xl px-6">
         <div class="mb-4 flex items-start justify-between gap-4">
             <div>

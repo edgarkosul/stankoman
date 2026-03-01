@@ -1,5 +1,5 @@
 <x-layouts.app :title="$meta['page_title']">
-    <div class="mx-auto max-w-7xl px-4 py-6">
+    <div class="mx-auto w-full min-w-0 max-w-7xl px-4 py-6">
         <header class="space-y-8 border-b border-brand-gray/50 pb-4">
             <h1 class="text-3xl font-semibold">{{ $meta['heading'] }}</h1>
             <div class="flex justify-between items-center">
@@ -24,5 +24,14 @@
 
         </div>
         @include('pages.product.partials.tabs', ['tabs' => $tabs])
+
+        <x-product.similar :product="$product" />
+
+        <livewire:recent-products-slider />
+
+        @php($productId = (int) $product->id)
+        @if ($productId > 0)
+            <div x-data x-init="$store.recent && $store.recent.add({{ $productId }})" class="hidden" aria-hidden="true"></div>
+        @endif
     </div>
 </x-layouts.app>

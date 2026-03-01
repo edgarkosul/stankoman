@@ -71,9 +71,9 @@
 @endphp
 
 <div wire:key="product-card-{{ $product->id }}"
-    class="relative overflow-hidden bg-white flex flex-col justify-between shadow-sm ring-0 ring-transparent transition-shadow duration-200 ease-out hover:shadow-xl hover:ring-6 hover:ring-white">
+    class="relative h-full w-full overflow-hidden bg-white flex flex-col justify-between shadow-sm ring-0 ring-transparent transition-shadow duration-200 ease-out hover:shadow-xl hover:ring-6 hover:ring-white">
     <a href="{{ route('product.show', $product->slug) }}" rel="noopener noreferrer"
-        class="relative flex h-full flex-col" aria-label="Открыть товар">
+        class="relative flex min-h-0 flex-1 flex-col" aria-label="Открыть товар">
         @if ($pct)
             <div
                 class="absolute left-0 inline-flex items-center justify-center text-lg py-2 px-3 font-medium bg-brand-red/70 text-white z-30">
@@ -109,8 +109,8 @@
             />
         </div>
 
-        <div class="flex h-full flex-1 flex-col justify-start min-w-0">
-            <div class="swiper product-card__swiper h-48 w-full min-w-0" style="height: 12rem;">
+        <div class="flex min-h-0 flex-1 flex-col justify-start min-w-0">
+            <div class="swiper product-card__swiper h-48 w-full min-w-0 flex-none">
                 <div class="swiper-wrapper h-full">
                     @foreach ($images as $image)
                         <div class="swiper-slide h-full w-full">
@@ -151,7 +151,7 @@
             @endif
 
             @if ($cardAttributes->isNotEmpty())
-                <dl class="grid w-full grid-cols-[max-content_max-content] justify-between px-4 py-1 text-sm text-zinc-700 mb-3">
+                <dl class="grid grow content-start w-full grid-cols-[max-content_max-content] justify-between px-4 py-1 text-sm text-zinc-700 mb-3">
                     @foreach ($cardAttributes as $attribute)
                         <div class="col-span-2 grid grid-cols-subgrid justify-between border-b border-zinc-200/80">
                             <dt class="py-1 pr-2 text-zinc-500">{{ $attribute['name'] }}:</dt>

@@ -526,6 +526,19 @@ select:focus[data-flux-control] {
         }
     }
 
+    .action-product-slider .swiper-wrapper {
+        @apply items-stretch;
+    }
+
+    .action-product-slider .swiper-slide {
+        @apply flex h-full self-stretch min-w-0 px-1 pt-2 pb-3;
+        box-sizing: border-box;
+    }
+
+    .action-product-slider .swiper-slide > * {
+        @apply h-full w-full min-w-0;
+    }
+
     .product-card__swiper {
         @apply relative h-48;
         --swiper-pagination-bullet-size: 6px;
@@ -574,6 +587,16 @@ select:focus[data-flux-control] {
 .product-image-gallery .swiper-button-disabled {
     pointer-events: auto !important;
     cursor: default;
+}
+
+.action-product-slider [data-nav].swiper-button-disabled {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.product-slider .swiper-button-disabled {
+    pointer-events: auto !important;
+    cursor: not-allowed;
 }
 
 /* noUiSlider vendor CSS is imported as unlayered CSS.

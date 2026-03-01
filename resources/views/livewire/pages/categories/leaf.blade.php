@@ -1,4 +1,4 @@
-<section class="mx-auto max-w-7xl px-4 py-6 space-y-4 bg-zinc-100/80">
+<section class="mx-auto max-w-7xl px-4 py-6 space-y-4 bg-zinc-100/80 flex-1">
     <h1 class="text-3xl font-bold">{{ $category->name }}</h1>
 
     <div class="flex flex-col md:flex-row gap-4">

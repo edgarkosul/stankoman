@@ -1,11 +1,18 @@
 <section class="space-y-4 bg-white p-4 shadow-[0_0_18px_rgba(0,0,0,0.12)]">
+    @php($finalPrice = (int) data_get($summary, 'price.final', 0))
+    @php($hasDiscount = (bool) data_get($summary, 'price.has_discount'))
+
     <div class="flex flex-col gap-3">
         <div class="flex items-end gap-3">
-            <div class="text-3xl wght-700 wdth-70">{{ price(data_get($summary, 'price.final')) }}</div>
-            @if (data_get($summary, 'price.has_discount'))
-                <p class="text-xl text-zinc-500 wght-500 wdth-70 line-through decoration-2 decoration-brand-red">
-                    {{ price(data_get($summary, 'price.base')) }}
-                </p>
+            @if ($finalPrice === 0)
+                <div class="text-3xl wght-700 wdth-70 text-brand-700">Цена по запросу</div>
+            @else
+                <div class="text-3xl wght-700 wdth-70">{{ price($finalPrice) }}</div>
+                @if ($hasDiscount)
+                    <p class="text-xl text-zinc-500 wght-500 wdth-70 line-through decoration-2 decoration-brand-red">
+                        {{ price(data_get($summary, 'price.base')) }}
+                    </p>
+                @endif
             @endif
         </div>
         <div class="my-4">

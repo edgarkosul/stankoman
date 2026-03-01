@@ -174,6 +174,87 @@ const initHeroSliders = () => {
     });
 };
 
+const equalizeProductSliderHeights = (slider) => {
+    if (!(slider instanceof Element)) {
+        return;
+    }
+
+    const cards = Array.from(slider.querySelectorAll('.swiper-slide > *'))
+        .filter((node) => node instanceof HTMLElement);
+
+    if (!cards.length) {
+        return;
+    }
+
+    cards.forEach((card) => {
+        card.style.height = '';
+        card.style.minHeight = '';
+    });
+
+    let maxHeight = 0;
+    cards.forEach((card) => {
+        maxHeight = Math.max(maxHeight, card.getBoundingClientRect().height);
+    });
+
+    if (maxHeight <= 0) {
+        return;
+    }
+
+    const normalizedHeight = `${Math.ceil(maxHeight)}px`;
+    cards.forEach((card) => {
+        card.style.minHeight = normalizedHeight;
+    });
+};
+
+const scheduleProductSliderEqualize = (slider) => {
+    requestAnimationFrame(() => {
+        equalizeProductSliderHeights(slider);
+        slider.swiper?.update();
+    });
+};
+
+const initProductSliders = (root = document) => {
+    const sliderSelector = '.product-slider, .action-product-slider';
+    const sliderElements = root instanceof Element && root.matches(sliderSelector)
+        ? [root, ...root.querySelectorAll(sliderSelector)]
+        : Array.from(root.querySelectorAll(sliderSelector));
+
+    sliderElements.forEach((slider) => {
+        const isActionSlider = slider.classList.contains('action-product-slider');
+
+        if (slider.swiper) {
+            slider.swiper.update();
+            scheduleProductSliderEqualize(slider);
+            return;
+        }
+
+        const swiper = new Swiper(slider, {
+            modules: [A11y, FreeMode, Mousewheel, Navigation],
+            slidesPerView: 2,
+            spaceBetween: isActionSlider ? 2 : 10,
+            breakpoints: {
+                // 480: { slidesPerView: 2 },
+                640: { slidesPerView: 2 },
+                768: { slidesPerView: 3 },
+                1024: { slidesPerView: 4 },
+                1280: { slidesPerView: 5 },
+            },
+            navigation: {
+                prevEl: slider.querySelector('[data-nav="prev"]'),
+                nextEl: slider.querySelector('[data-nav="next"]'),
+            },
+            freeMode: { enabled: true },
+            mousewheel: { forceToAxis: true },
+        });
+
+        swiper.on('resize', () => scheduleProductSliderEqualize(slider));
+        swiper.on('breakpoint', () => scheduleProductSliderEqualize(slider));
+        swiper.on('slideChangeTransitionEnd', () => scheduleProductSliderEqualize(slider));
+
+        scheduleProductSliderEqualize(slider);
+    });
+};
+
 const initProductCardSwipers = () => {
     document.querySelectorAll('.product-card__swiper').forEach((swiperEl) => {
         if (swiperEl.dataset.productCardSwiperInitialized === 'true') {
@@ -705,6 +786,8 @@ document.addEventListener('DOMContentLoaded', initImageGalleries);
 document.addEventListener('livewire:navigated', initImageGalleries);
 document.addEventListener('DOMContentLoaded', initHeroSliders);
 document.addEventListener('livewire:navigated', initHeroSliders);
+document.addEventListener('DOMContentLoaded', () => initProductSliders(document));
+document.addEventListener('livewire:navigated', () => initProductSliders(document));
 document.addEventListener('DOMContentLoaded', initImageGalleryLightbox);
 document.addEventListener('livewire:navigated', initImageGalleryLightbox);
 document.addEventListener('DOMContentLoaded', initProductCardSwipers);
@@ -724,6 +807,7 @@ document.addEventListener('livewire:initialized', () => {
 
     if (window.Livewire?.hook) {
         window.Livewire.hook('morph.added', () => {
+            initProductSliders();
             initProductCardSwipers();
         });
     }
@@ -759,6 +843,7 @@ document.addEventListener('livewire:init', () => {
     Livewire.hook('morph.updated', ({ el }) => {
         const scope = el || document;
 
+        initProductSliders(scope);
         initNouisliderOnRange(scope);
 
         const compareScope = scope.closest?.('.compare-page') || document.querySelector('.compare-page');
@@ -980,6 +1065,82 @@ const compareEqualizerFactory = () => ({
     },
 });
 
+const registerRecentProductsStore = (alpine) => {
+    if (!alpine?.store) {
+        return;
+    }
+
+    if (alpine.store('recent')) {
+        return;
+    }
+
+    const storageKey = 'stankoman:recent:v1';
+    const emptyState = { v: 1, ids: [], updatedAt: 0 };
+
+    const readState = () => {
+        try {
+            const raw = window.localStorage.getItem(storageKey);
+            if (!raw) {
+                return { ...emptyState };
+            }
+
+            const parsed = JSON.parse(raw);
+            if (!parsed || !Array.isArray(parsed.ids)) {
+                return { ...emptyState };
+            }
+
+            const ids = parsed.ids
+                .map((value) => Number(value))
+                .filter((value) => Number.isInteger(value) && value > 0)
+                .slice(0, 20);
+
+            return {
+                v: 1,
+                ids,
+                updatedAt: Number(parsed.updatedAt ?? 0) || 0,
+            };
+        } catch {
+            return { ...emptyState };
+        }
+    };
+
+    const persistState = (state) => {
+        try {
+            window.localStorage.setItem(storageKey, JSON.stringify(state));
+        } catch {
+            //
+        }
+    };
+
+    alpine.store('recent', {
+        state: readState(),
+        add(id) {
+            const numericId = Number(id);
+            if (!Number.isInteger(numericId) || numericId <= 0) {
+                return;
+            }
+
+            const currentIds = Array.isArray(this.state?.ids) ? this.state.ids : [];
+            const ids = [numericId, ...currentIds.filter((value) => value !== numericId)].slice(0, 20);
+
+            this.state = {
+                v: 1,
+                ids,
+                updatedAt: Math.floor(Date.now() / 1000),
+            };
+
+            persistState(this.state);
+        },
+        ids() {
+            return Array.isArray(this.state?.ids) ? this.state.ids : [];
+        },
+        clear() {
+            this.state = { ...emptyState };
+            persistState(this.state);
+        },
+    });
+};
+
 const registerAlpineData = () => {
     if (typeof window === 'undefined') return;
 
@@ -995,6 +1156,7 @@ const registerAlpineData = () => {
     alpine.data('compareEqualizer', compareEqualizerFactory);
     alpine.data('prettyNumberInput', prettyNumberInputFactory);
     alpine.data('cartModal', cartModalFactory);
+    registerRecentProductsStore(alpine);
 };
 
 document.addEventListener('alpine:init', registerAlpineData);
