@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Filament\Forms\Components\RichEditor\TipTapExtensions\ImageExtension as AppImageExtension;
 use App\Listeners\CloneCartOnLogout;
 use App\Listeners\SyncCartOnLogin;
 use App\Listeners\SyncFavoritesOnLogin;
@@ -11,6 +12,7 @@ use App\Support\CartService;
 use App\Support\CompareService;
 use App\Support\FavoritesService;
 use Carbon\CarbonImmutable;
+use Filament\Forms\Components\RichEditor\TipTapExtensions\ImageExtension as FilamentImageExtension;
 use Filament\Support\Assets\Js;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\Support\Facades\FilamentTimezone;
@@ -36,6 +38,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(CompareService::class, fn (): CompareService => new CompareService);
         $this->app->singleton(CartService::class, fn (): CartService => new CartService);
         $this->app->scoped(FavoritesService::class, fn (): FavoritesService => new FavoritesService);
+        $this->app->bind(FilamentImageExtension::class, AppImageExtension::class);
     }
 
     /**
