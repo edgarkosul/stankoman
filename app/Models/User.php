@@ -27,6 +27,16 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         'email',
         'phone',
         'password',
+        'shipping_country',
+        'shipping_region',
+        'shipping_city',
+        'shipping_street',
+        'shipping_house',
+        'shipping_postcode',
+        'is_company',
+        'company_name',
+        'inn',
+        'kpp',
     ];
 
     /**
@@ -49,6 +59,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_company' => 'bool',
         ];
     }
 

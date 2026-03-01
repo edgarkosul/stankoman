@@ -1,8 +1,8 @@
 @php
     $statusColor = static function (?string $status): string {
         return match ($status) {
-            'submitted' => 'border-brand-green/30 bg-brand-green/10 text-brand-gray',
-            'processing' => 'border-brand-red/30 bg-brand-red/10 text-brand-gray',
+            'submitted' => 'border-brand-green/30 bg-brand-green/10 text-black',
+            'processing' => 'border-brand-red/30 bg-brand-red/10 text-black',
             'completed' => 'border-emerald-300 bg-emerald-50 text-emerald-700',
             'cancelled' => 'border-zinc-300 bg-zinc-100 text-zinc-600',
             default => 'border-zinc-300 bg-zinc-100 text-zinc-600',
@@ -21,7 +21,7 @@
 <section class="bg-zinc-200 py-10">
     <div class="mx-auto w-full max-w-6xl px-6">
         <header class="mb-5 flex items-end justify-between gap-3">
-            <h1 class="text-3xl font-bold text-brand-gray">Мои заказы</h1>
+            <h1 class="text-3xl font-bold text-black">Мои заказы</h1>
             <div class="text-sm text-zinc-500">Всего: {{ $orders->total() }}</div>
         </header>
 
@@ -124,7 +124,7 @@
                                 $seq = str_pad((string) $order->seq, 2, '0', STR_PAD_LEFT);
                             @endphp
                             <tr class="hover:bg-zinc-50">
-                                <td class="px-4 py-3 font-semibold text-brand-gray">{{ $order->order_number ?? '#'.$order->id }}</td>
+                                <td class="px-4 py-3 font-semibold text-black">{{ $order->order_number ?? '#'.$order->id }}</td>
                                 <td class="px-4 py-3">{{ optional($order->created_at)->format('d.m.Y') }}</td>
                                 <td class="px-4 py-3 font-semibold">{{ price($order->grand_total ?? 0) }}</td>
                                 <td class="px-4 py-3">

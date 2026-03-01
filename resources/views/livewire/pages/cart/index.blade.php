@@ -12,7 +12,7 @@
             >
                 <x-icon
                     name="trash"
-                    class="h-6 w-6 [&_.icon-base]:text-red-600 [&_.icon-accent]:text-red-500 group-hover:[&_.icon-accent]:text-brand-red transition-colors"
+                    class="h-6 w-6 [&_.icon-base]:text-gray-800 [&_.icon-accent]:text-brand-red group-hover:[&_.icon-accent]:text-brand-red/50 group-hover:[&_.icon-base]:text-gray-100 transition-colors"
                 />
             </button>
         </div>

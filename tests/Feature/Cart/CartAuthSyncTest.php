@@ -1,8 +1,10 @@
 <?php
 
+use App\Listeners\SyncCartOnLogin;
 use App\Models\Cart;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\CartService;
 use Illuminate\Support\Str;
 
 it('merges guest cart into user cart on login and keeps user quantity on conflicts', function (): void {
@@ -74,6 +76,79 @@ it('merges guest cart into user cart on login and keeps user quantity on conflic
     expect($syncedUserCart->items()->count())->toBe(2)
         ->and((int) $syncedUserCart->items()->where('product_id', $conflictProduct->id)->value('quantity'))->toBe(5)
         ->and((int) $syncedUserCart->items()->where('product_id', $guestOnlyProduct->id)->value('quantity'))->toBe(3);
+
+    $response->assertCookie('cart_token', $syncedUserCart->token);
+
+    $this->assertDatabaseMissing('carts', [
+        'id' => $guestCart->id,
+    ]);
+});
+
+it('replaces user cart with guest cart on login when checkout preserve mode is enabled', function (): void {
+    $user = User::factory()->create([
+        'email' => 'checkout-preserve-cart@example.test',
+    ]);
+
+    $userOnlyProduct = Product::query()->create([
+        'name' => 'Товар личной корзины',
+        'slug' => 'checkout-preserve-user-product',
+        'is_active' => true,
+        'in_stock' => true,
+        'price_amount' => 90000,
+    ]);
+
+    $guestProduct = Product::query()->create([
+        'name' => 'Товар корзины чекаута',
+        'slug' => 'checkout-preserve-guest-product',
+        'is_active' => true,
+        'in_stock' => true,
+        'price_amount' => 120000,
+    ]);
+
+    $userCart = Cart::query()->create([
+        'user_id' => $user->id,
+        'token' => (string) Str::uuid(),
+    ]);
+
+    $userCart->items()->create([
+        'product_id' => $userOnlyProduct->id,
+        'quantity' => 5,
+        'price_snapshot' => 90000,
+        'options' => [],
+    ]);
+
+    $guestCart = Cart::query()->create([
+        'user_id' => null,
+        'token' => (string) Str::uuid(),
+    ]);
+
+    $guestCart->items()->create([
+        'product_id' => $guestProduct->id,
+        'quantity' => 2,
+        'price_snapshot' => 120000,
+        'options' => [],
+    ]);
+
+    $response = $this
+        ->withSession([
+            SyncCartOnLogin::CHECKOUT_SYNC_MODE_SESSION_KEY => CartService::SYNC_MODE_PRESERVE_GUEST,
+        ])
+        ->withCookie('cart_token', $guestCart->token)
+        ->post(route('login.store'), [
+            'email' => $user->email,
+            'password' => 'password',
+        ]);
+
+    $response->assertSessionHasNoErrors();
+    $this->assertAuthenticatedAs($user);
+
+    $syncedUserCart = Cart::query()
+        ->where('user_id', $user->id)
+        ->firstOrFail();
+
+    expect($syncedUserCart->items()->count())->toBe(1)
+        ->and((int) $syncedUserCart->items()->where('product_id', $guestProduct->id)->value('quantity'))->toBe(2)
+        ->and((int) $syncedUserCart->items()->where('product_id', $userOnlyProduct->id)->count())->toBe(0);
 
     $response->assertCookie('cart_token', $syncedUserCart->token);
 

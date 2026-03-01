@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Checkout;
 
+use App\Listeners\SyncCartOnLogin;
 use App\Models\User;
 use App\Rules\ValidInn;
 use App\Rules\ValidKpp;
@@ -15,6 +16,8 @@ use Livewire\Component;
 
 class Wizard extends Component
 {
+    private const CHECKOUT_REDIRECT_SESSION_KEY = 'url.intended';
+
     public int $currentStep = 1;
 
     public array $contact = [
@@ -59,6 +62,7 @@ class Wizard extends Component
     {
         $this->items = collect();
         $this->prefillContactFromAuthenticatedUser();
+        $this->prefillDeliveryFromAuthenticatedUser();
         $this->refreshFromCart($cart);
     }
 
@@ -123,6 +127,16 @@ class Wizard extends Component
     public function previous(): void
     {
         $this->currentStep = max(1, $this->currentStep - 1);
+    }
+
+    public function openLoginModal(): void
+    {
+        session([
+            self::CHECKOUT_REDIRECT_SESSION_KEY => route('checkout.index', absolute: false),
+            SyncCartOnLogin::CHECKOUT_SYNC_MODE_SESSION_KEY => CartService::SYNC_MODE_PRESERVE_GUEST,
+        ]);
+
+        $this->dispatch('showLoginModal');
     }
 
     public function confirm(CheckoutService $checkout)
@@ -198,10 +212,10 @@ class Wizard extends Component
     protected function deliveryRules(): array
     {
         return [
-            'delivery.shipping_method' => ['required', 'in:pickup,delivery'],
+            'delivery.shipping_method' => ['required', 'in:delivery'],
             'delivery.shipping_country' => ['nullable', 'string', 'max:64'],
             'delivery.shipping_region' => ['nullable', 'string', 'max:128'],
-            'delivery.shipping_city' => ['nullable', 'required_if:delivery.shipping_method,delivery', 'string', 'min:2', 'max:128'],
+            'delivery.shipping_city' => ['nullable', 'string', 'max:128'],
             'delivery.shipping_street' => ['nullable', 'string', 'max:255'],
             'delivery.shipping_house' => ['nullable', 'string', 'max:32'],
             'delivery.shipping_postcode' => ['nullable', 'string', 'max:16'],
@@ -231,7 +245,6 @@ class Wizard extends Component
             'contact.kpp.required' => 'Укажите КПП для организации.',
             'contact.kpp.regex' => 'КПП должен содержать 9 цифр.',
             'delivery.shipping_method.required' => 'Выберите способ доставки.',
-            'delivery.shipping_city.required_if' => 'Укажите город доставки.',
             'review.payment_method.required' => 'Выберите способ оплаты.',
             'review.accept_terms.accepted' => 'Необходимо принять условия соглашения.',
         ];
@@ -324,7 +337,45 @@ class Wizard extends Component
             $this->contact['customer_phone'] = (string) $user->phone;
         }
 
+        if (($this->contact['is_company'] ?? false) === false && (bool) ($user->is_company ?? false)) {
+            $this->contact['is_company'] = true;
+        }
+
+        if (($this->contact['company_name'] ?? null) === null && filled($user->company_name ?? null)) {
+            $this->contact['company_name'] = (string) $user->company_name;
+        }
+
+        if (($this->contact['inn'] ?? null) === null && filled($user->inn ?? null)) {
+            $this->contact['inn'] = (string) $user->inn;
+        }
+
+        if (($this->contact['kpp'] ?? null) === null && filled($user->kpp ?? null)) {
+            $this->contact['kpp'] = (string) $user->kpp;
+        }
+
         $this->contact['create_account'] = false;
+    }
+
+    private function prefillDeliveryFromAuthenticatedUser(): void
+    {
+        $user = Auth::user();
+
+        if (! $user instanceof User) {
+            return;
+        }
+
+        foreach ([
+            'shipping_country',
+            'shipping_region',
+            'shipping_city',
+            'shipping_street',
+            'shipping_house',
+            'shipping_postcode',
+        ] as $key) {
+            if (blank($this->delivery[$key] ?? null) && filled($user->{$key} ?? null)) {
+                $this->delivery[$key] = (string) $user->{$key};
+            }
+        }
     }
 
     private function normalizeContactPayload(): void

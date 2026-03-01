@@ -16,7 +16,7 @@ const normalizeRuDigits = (value) => {
     }
 
     if (digits.length === 10) {
-        return `7${digits}`;
+        return digits.startsWith('7') ? digits : `7${digits}`;
     }
 
     if (digits.length === 11 && digits.startsWith('8')) {

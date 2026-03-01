@@ -1,7 +1,7 @@
 <x-layouts.app :title="'Заказ оформлен'">
     <div class="bg-zinc-200 py-14">
         <div class="mx-auto w-full max-w-3xl border border-zinc-200 bg-white p-10 text-center">
-            <h1 class="text-3xl font-bold text-brand-gray">Заказ принят</h1>
+            <h1 class="text-3xl font-bold text-black">Заказ принят</h1>
             <p class="mt-4 text-base text-zinc-700">Номер заказа: <span class="font-semibold">{{ $orderNumber }}</span></p>
             @auth
                 @php([$od, $os] = array_pad(explode('/', (string) ($orderNumber ?? ''), 2), 2, null))

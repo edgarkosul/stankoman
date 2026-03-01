@@ -39,6 +39,12 @@ class CheckoutService
         $order = Cache::lock($lockKey, 10)->block(5, function () use ($cart, $cartService, $contact, $delivery, $review): Order {
             return DB::transaction(function () use ($cart, $cartService, $contact, $delivery, $review): Order {
                 [$userId, $applyDiscounts] = $this->resolveCheckoutUser($contact);
+                $canUpdateShippingProfile = $userId !== null && (Auth::check() || (bool) ($contact['create_account'] ?? false));
+
+                if ($canUpdateShippingProfile) {
+                    $this->syncUserDeliveryProfile((int) $userId, $delivery);
+                    $this->syncUserCompanyProfile((int) $userId, $contact);
+                }
 
                 $items = $cart->items()->with('product')->get();
 
@@ -254,6 +260,84 @@ class CheckoutService
 
         if ($phone !== '' && $user->phone !== $phone) {
             $updates['phone'] = $phone;
+        }
+
+        if ($updates !== []) {
+            $user->forceFill($updates)->save();
+        }
+    }
+
+    private function syncUserDeliveryProfile(int $userId, array $delivery): void
+    {
+        $user = User::query()->find($userId);
+
+        if (! $user instanceof User) {
+            return;
+        }
+
+        $updates = [];
+
+        foreach ([
+            'shipping_country',
+            'shipping_region',
+            'shipping_city',
+            'shipping_street',
+            'shipping_house',
+            'shipping_postcode',
+        ] as $key) {
+            $value = trim((string) ($delivery[$key] ?? ''));
+
+            if ($value !== '') {
+                $updates[$key] = $value;
+            }
+        }
+
+        if ($updates !== []) {
+            $user->forceFill($updates)->save();
+        }
+    }
+
+    private function syncUserCompanyProfile(int $userId, array $contact): void
+    {
+        $user = User::query()->find($userId);
+
+        if (! $user instanceof User) {
+            return;
+        }
+
+        $isCompany = (bool) ($contact['is_company'] ?? false);
+        $companyName = trim((string) ($contact['company_name'] ?? ''));
+        $inn = preg_replace('/\D+/', '', (string) ($contact['inn'] ?? '')) ?? '';
+        $kpp = preg_replace('/\D+/', '', (string) ($contact['kpp'] ?? '')) ?? '';
+
+        $updates = [];
+
+        if ((bool) ($user->is_company ?? false) !== $isCompany) {
+            $updates['is_company'] = $isCompany;
+        }
+
+        if (! $isCompany) {
+            if ($updates !== []) {
+                $user->forceFill($updates)->save();
+            }
+
+            return;
+        }
+
+        if ($companyName !== '' && $user->company_name !== $companyName) {
+            $updates['company_name'] = $companyName;
+        }
+
+        if ($inn !== '' && $user->inn !== $inn) {
+            $updates['inn'] = $inn;
+        }
+
+        if (strlen($inn) === 12) {
+            if ($user->kpp !== null) {
+                $updates['kpp'] = null;
+            }
+        } elseif ($kpp !== '' && $user->kpp !== $kpp) {
+            $updates['kpp'] = $kpp;
         }
 
         if ($updates !== []) {

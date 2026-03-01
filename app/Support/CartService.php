@@ -14,6 +14,10 @@ use Illuminate\Support\Str;
 
 class CartService
 {
+    public const SYNC_MODE_MERGE = 'merge';
+
+    public const SYNC_MODE_PRESERVE_GUEST = 'preserve_guest';
+
     protected ?Cart $cart = null;
 
     protected string $cookieKey = 'cart_token';
@@ -107,8 +111,11 @@ class CartService
         $this->cart->touch();
     }
 
-    public function syncWithUser(?Authenticatable $user = null, ?string $guestToken = null): void
-    {
+    public function syncWithUser(
+        ?Authenticatable $user = null,
+        ?string $guestToken = null,
+        string $mode = self::SYNC_MODE_MERGE,
+    ): void {
         if (! Auth::check() && ! $user instanceof User) {
             return;
         }
@@ -119,7 +126,7 @@ class CartService
             return;
         }
 
-        DB::transaction(function () use ($guestToken, $resolvedUser): void {
+        DB::transaction(function () use ($guestToken, $resolvedUser, $mode): void {
             $userCart = Cart::query()->firstOrCreate(
                 ['user_id' => $resolvedUser->id],
                 ['token' => (string) Str::uuid()]
@@ -140,23 +147,37 @@ class CartService
             }
 
             if ($guestCart instanceof Cart && ! $guestCart->is($userCart)) {
-                foreach ($guestCart->items as $item) {
-                    $existing = $userCart->items()
-                        ->where('product_id', $item->product_id)
-                        ->where('options_key', $item->options_key)
-                        ->first();
+                if ($mode === self::SYNC_MODE_PRESERVE_GUEST) {
+                    $userCart->items()->delete();
 
-                    if ($existing instanceof CartItem) {
-                        continue;
+                    foreach ($guestCart->items as $item) {
+                        $userCart->items()->create($item->only([
+                            'product_id',
+                            'quantity',
+                            'price_snapshot',
+                            'options',
+                            'options_key',
+                        ]));
                     }
+                } else {
+                    foreach ($guestCart->items as $item) {
+                        $existing = $userCart->items()
+                            ->where('product_id', $item->product_id)
+                            ->where('options_key', $item->options_key)
+                            ->first();
 
-                    $userCart->items()->create($item->only([
-                        'product_id',
-                        'quantity',
-                        'price_snapshot',
-                        'options',
-                        'options_key',
-                    ]));
+                        if ($existing instanceof CartItem) {
+                            continue;
+                        }
+
+                        $userCart->items()->create($item->only([
+                            'product_id',
+                            'quantity',
+                            'price_snapshot',
+                            'options',
+                            'options_key',
+                        ]));
+                    }
                 }
             }
 
