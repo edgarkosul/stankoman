@@ -6,7 +6,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-D4Uhh64g.css",
+    "file": "assets/app-4pjTwTDO.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -32,7 +32,7 @@
     "src": "resources/fonts/roboto-flex/roboto-flex-latin.woff2"
   },
   "resources/js/app.js": {
-    "file": "assets/app-oBcJ8pDh.js",
+    "file": "assets/app-DaNivMRl.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
