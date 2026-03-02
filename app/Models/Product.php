@@ -15,6 +15,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Laravel\Scout\Searchable;
 
 /**
  * Модель товара (ядро каталога).
@@ -54,6 +55,7 @@ use Illuminate\Support\Str;
  */
 class Product extends Model
 {
+    use Searchable;
     /* ======================================================================
      |  Атрибуты/касты
      | ====================================================================== */
@@ -106,6 +108,40 @@ class Product extends Model
         'is_in_yml_feed' => 'bool',
         'warranty' => ProductWarranty::class,
     ];
+
+    public function searchableAs(): string
+    {
+        return 'stankoman_products';
+    }
+
+    public function toSearchableArray(): array
+    {
+        // Оригиналы
+        $name = (string) $this->name;
+        $sku = (string) ($this->sku ?? '');
+        $brand = (string) ($this->brand ?? '');
+        // Латиница (для кросс-скриптового поиска)
+        $nameLatin = $this->toLatin($name);
+        $brandLatin = $this->toLatin($brand);
+
+        // Можно добавить что-то ещё, что полезно для поиска
+        return [
+            'id' => (int) $this->id,
+            'name' => $name,
+            'name_latin' => $nameLatin,
+            'brand' => $brand,
+            'brand_latin' => $brandLatin,
+            'sku' => $sku,
+            'price' => (float) $this->price,
+            'discount_price' => (float) ($this->discount_price ?? 0),
+            // при желании: category_id, in_stock, и т. п.
+        ];
+    }
+
+    public function shouldBeSearchable(): bool
+    {
+        return (bool) ($this->is_active ?? true);
+    }
 
     /* ======================================================================
      |  Маршрутизация
@@ -896,5 +932,28 @@ class Product extends Model
         return \App\Models\Attribute::query()
             ->whereIn('id', $missingIds)
             ->get(['id', 'name', 'slug', 'input_type', 'data_type']);
+    }
+
+    private function toLatin(?string $text): string
+    {
+        $text = (string) $text;
+        if ($text === '') {
+            return '';
+        }
+
+        // Если есть intl — используем максимально корректную транслитерацию
+        if (function_exists('transliterator_transliterate')) {
+            // Any-Latin → Latin-ASCII → убираем диакритику → в нижний регистр
+            $latin = transliterator_transliterate('Any-Latin; Latin-ASCII; NFD; [:Nonspacing Mark:] Remove; NFC; Lower()', $text);
+        } else {
+            // Фолбэк Laravel (portable-ascii)
+            $latin = Str::ascii($text);
+            $latin = Str::lower($latin);
+        }
+
+        // Нормализуем пробелы
+        $latin = trim(preg_replace('/\s+/u', ' ', $latin));
+
+        return $latin;
     }
 }
