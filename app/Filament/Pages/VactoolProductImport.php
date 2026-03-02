@@ -35,6 +35,8 @@ class VactoolProductImport extends Page implements HasForms
 
     protected static string|UnitEnum|null $navigationGroup = 'Импорт/Экспорт';
 
+    protected static ?int $navigationSort = 3;
+
     protected static ?string $navigationLabel = 'Импорт Vactool';
 
     protected static ?string $title = 'Импорт товаров из Vactool';

@@ -20,6 +20,7 @@ use SolutionForest\FilamentTree\Actions\Action;
 use SolutionForest\FilamentTree\Actions\DeleteAction;
 use SolutionForest\FilamentTree\Pages\TreePage;
 use SolutionForest\FilamentTree\Support\Utils;
+use UnitEnum;
 
 class CategoryTree extends TreePage
 {
@@ -28,6 +29,10 @@ class CategoryTree extends TreePage
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-queue-list';
 
     protected static int $maxDepth = 5;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Категории';
+
+    protected static ?int $navigationSort = 2;
 
     protected static ?string $navigationLabel = 'Дерево категорий';
 

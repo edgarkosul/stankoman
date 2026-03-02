@@ -24,11 +24,11 @@ class SettingResource extends Resource
 
     protected static ?string $modelLabel = 'настройкy';
 
+    protected static string|UnitEnum|null $navigationGroup = 'Настройки';
+
     protected static ?string $pluralModelLabel = 'Настройки';
 
     protected static ?string $recordTitleAttribute = 'key';
-
-    protected static string|UnitEnum|null $navigationGroup = 'Контент';
 
     protected static ?int $navigationSort = 7;
 

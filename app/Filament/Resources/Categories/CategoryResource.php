@@ -2,22 +2,21 @@
 
 namespace App\Filament\Resources\Categories;
 
-use UnitEnum;
-use BackedEnum;
-use App\Models\Category;
-use Filament\Tables\Table;
-use Filament\Schemas\Schema;
-use Filament\Resources\Resource;
-use Filament\Support\Icons\Heroicon;
-use Illuminate\Database\Eloquent\Model;
-use App\Filament\Resources\Categories\Pages\EditCategory;
 use App\Filament\Resources\Categories\Pages\CreateCategory;
+use App\Filament\Resources\Categories\Pages\EditCategory;
 use App\Filament\Resources\Categories\Pages\ListCategories;
+use App\Filament\Resources\Categories\RelationManagers\AttributeDefsRelationManager;
+use App\Filament\Resources\Categories\RelationManagers\ProductsRelationManager;
 use App\Filament\Resources\Categories\Schemas\CategoryForm;
 use App\Filament\Resources\Categories\Tables\CategoriesTable;
 use App\Filament\Resources\Categories\Widgets\CategoryTreeWidget;
-use App\Filament\Resources\Categories\RelationManagers\ProductsRelationManager;
-use App\Filament\Resources\Categories\RelationManagers\AttributeDefsRelationManager;
+use App\Models\Category;
+use BackedEnum;
+use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
+use UnitEnum;
 
 class CategoryResource extends Resource
 {
@@ -27,9 +26,15 @@ class CategoryResource extends Resource
     // protected static string | UnitEnum | null $navigationGroup = 'Категории';
 
     protected static ?string $recordTitleAttribute = 'name';
+
+    protected static string|UnitEnum|null $navigationGroup = 'Категории';
+
     protected static ?string $navigationLabel = 'Список категорий';
 
+    protected static ?int $navigationSort = 1;
+
     protected static ?string $modelLabel = 'категории';
+
     protected static ?string $pluralModelLabel = 'категории';
 
     // protected static bool $shouldRegisterNavigation = false;
@@ -65,6 +70,7 @@ class CategoryResource extends Resource
             'edit' => EditCategory::route('/{record}/edit'),
         ];
     }
+
     public static function getWidgets(): array
     {
         return [
@@ -72,11 +78,10 @@ class CategoryResource extends Resource
         ];
     }
 
-
     public static function getGlobalSearchResultDetails(Model $record): array
     {
         return [
-            'Адрес'   => $record->slug,
+            'Адрес' => $record->slug,
         ];
     }
 }

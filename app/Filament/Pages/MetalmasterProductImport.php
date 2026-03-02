@@ -34,6 +34,8 @@ class MetalmasterProductImport extends Page implements HasForms
 
     protected static string|UnitEnum|null $navigationGroup = 'Импорт/Экспорт';
 
+    protected static ?int $navigationSort = 4;
+
     protected static ?string $navigationLabel = 'Импорт Metalmaster';
 
     protected static ?string $title = 'Импорт товаров из Metalmaster';

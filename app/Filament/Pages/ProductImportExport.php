@@ -34,6 +34,8 @@ class ProductImportExport extends Page implements HasForms
 
     protected static string|UnitEnum|null $navigationGroup = 'Импорт/Экспорт';
 
+    protected static ?int $navigationSort = 1;
+
     protected static ?string $navigationLabel = 'Импорт/Экспорт товаров';
 
     protected static ?string $title = 'Импорт/Экспорт товаров в Excel';

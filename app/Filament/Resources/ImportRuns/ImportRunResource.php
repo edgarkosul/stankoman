@@ -18,6 +18,8 @@ class ImportRunResource extends Resource
 
     protected static string|UnitEnum|null $navigationGroup = 'Импорт/Экспорт';
 
+    protected static ?int $navigationSort = 99;
+
     protected static ?string $navigationLabel = 'История импортов';
 
     protected static ?string $pluralModelLabel = 'История импортов';

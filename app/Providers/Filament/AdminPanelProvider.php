@@ -63,11 +63,13 @@ class AdminPanelProvider extends PanelProvider
             ->favicon(asset('favicon.svg'))
             ->sidebarCollapsibleOnDesktop()
             ->navigationGroups([
+                NavigationGroup::make('Категории')->collapsed(),
                 NavigationGroup::make('Продажи')->collapsed(),
+                NavigationGroup::make('Импорт/Экспорт')->collapsed(),
                 NavigationGroup::make('Фильтры')->collapsed(),
                 NavigationGroup::make('Контент')->collapsed(),
-                NavigationGroup::make('Импорт/Экспорт')->collapsed(),
                 NavigationGroup::make('Меню')->collapsed(),
+                NavigationGroup::make('Настройки')->collapsed(),
             ])
             ->databaseNotifications()
             ->databaseNotificationsPolling('10s');
