@@ -23,10 +23,6 @@ Route::get('/', function () {
     ]);
 })->name('home');
 
-Route::view('dashboard', 'dashboard')
-    ->middleware(['auth', 'verified'])
-    ->name('dashboard');
-
 Route::get('/page/{page:slug}', PageController::class)
     ->name('page.show');
 

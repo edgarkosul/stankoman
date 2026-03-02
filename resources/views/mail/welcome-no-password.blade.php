@@ -9,6 +9,6 @@
 Установить пароль
 </x-mail::button>
 
-Thanks,<br>
+С уважением,<br>
 {{ config('app.name') }}
 </x-mail::message>

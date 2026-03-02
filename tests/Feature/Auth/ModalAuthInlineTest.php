@@ -128,6 +128,19 @@ test('verify email inline can resend verification email', function () {
     Notification::assertSentTo($user, VerifyEmail::class);
 });
 
+test('verify email inline shows correct initial text and resend button loading attributes', function () {
+    $user = User::factory()->unverified()->create();
+
+    Livewire::actingAs($user)
+        ->test(VerifyEmailInline::class)
+        ->call('open')
+        ->assertSee('Для продолжения подтвердите адрес электронной почты')
+        ->assertSee('Нажмите кнопку ниже, чтобы отправить письмо с ссылкой для подтверждения.')
+        ->assertDontSee('Мы отправили ссылку для подтверждения')
+        ->assertSeeHtml('wire:loading.attr="disabled"')
+        ->assertSeeHtml('wire:target="resendVerificationNotification"');
+});
+
 test('verify email inline blocks continue action for unverified user', function () {
     $user = User::factory()->unverified()->create();
 

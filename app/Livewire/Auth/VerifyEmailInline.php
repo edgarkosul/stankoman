@@ -79,7 +79,7 @@ class VerifyEmailInline extends Component
         $user = Auth::user();
 
         if ($user instanceof MustVerifyEmail && ! $user->hasVerifiedEmail()) {
-            $this->addError('verification', __('Please verify your email address before continuing.'));
+            $this->addError('verification', __('Подтвердите адрес электронной почты перед продолжением.'));
 
             return;
         }
