@@ -137,6 +137,18 @@ class Breadcrumbs extends Component
             }
         }
 
+        if ($name === 'profile.edit') {
+            return [
+                ['title' => 'Профиль', 'url' => null],
+            ];
+        }
+
+        if ($name === 'user-password.edit') {
+            return [
+                ['title' => 'Пароль', 'url' => null],
+            ];
+        }
+
         return [];
     }
 

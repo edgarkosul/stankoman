@@ -5,6 +5,15 @@ use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Livewire;
 
+test('password page is displayed', function () {
+    $this->actingAs($user = User::factory()->create());
+
+    $this->get('/settings/password')
+        ->assertOk()
+        ->assertSee('data-test="settings-password-form"', false)
+        ->assertSee('class="font-semibold">Пароль</span>', false);
+});
+
 test('password can be updated', function () {
     $user = User::factory()->create([
         'password' => Hash::make('password'),
