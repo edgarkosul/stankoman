@@ -591,6 +591,10 @@ class ProductImportService
 
     protected function rowHasChanges(Product $product, array $data, array $headers, array $whitelist): bool
     {
+        $newName = trim((string) ($data['new_name'] ?? ''));
+        if ($newName !== '' && NameNormalizer::normalize($newName) !== (string) $product->name_normalized) {
+            return true;
+        }
 
         foreach ($headers as $h) {
 

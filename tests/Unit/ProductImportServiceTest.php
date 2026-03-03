@@ -149,6 +149,49 @@ it('builds dry-run summary for existing product update', function () {
     unlink($path);
 });
 
+it('counts rename-only row as update in dry-run summary', function () {
+    $product = Product::query()->create([
+        'name' => 'Rename Source Product',
+        'sku' => 'REN-1',
+        'brand' => 'Brand',
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'new_name', 'sku', 'brand', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        'Rename Target Product',
+        'REN-1',
+        'Brand',
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service = new ProductImportService;
+    $result = $service->dryRunFromXlsx($run, $path);
+
+    expect($result['totals'])->toMatchArray([
+        'create' => 0,
+        'update' => 1,
+        'same' => 0,
+        'conflict' => 0,
+        'error' => 0,
+        'scanned' => 1,
+    ]);
+
+    expect($result['preview']['update'])->toHaveCount(1);
+    expect($result['preview']['update'][0])->toMatchArray([
+        'id' => $product->id,
+        'name' => 'Rename Source Product',
+        'new_name' => 'Rename Target Product',
+    ]);
+
+    unlink($path);
+});
+
 it('applies rename and field update by name_normalized key', function () {
     $product = Product::query()->create([
         'name' => 'Old Product Name',
