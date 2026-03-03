@@ -16,7 +16,7 @@ class ImportRunResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-clock';
 
-    protected static string|UnitEnum|null $navigationGroup = 'Импорт/Экспорт';
+    protected static string|UnitEnum|null $navigationGroup = 'Экспорт/Импорт';
 
     protected static ?int $navigationSort = 99;
 

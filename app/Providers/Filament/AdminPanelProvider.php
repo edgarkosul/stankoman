@@ -65,7 +65,7 @@ class AdminPanelProvider extends PanelProvider
             ->navigationGroups([
                 NavigationGroup::make('Категории')->collapsed(),
                 NavigationGroup::make('Продажи')->collapsed(),
-                NavigationGroup::make('Импорт/Экспорт')->collapsed(),
+                NavigationGroup::make('Экспорт/Импорт')->collapsed(),
                 NavigationGroup::make('Фильтры')->collapsed(),
                 NavigationGroup::make('Контент')->collapsed(),
                 NavigationGroup::make('Меню')->collapsed(),

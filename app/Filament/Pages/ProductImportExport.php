@@ -32,13 +32,13 @@ class ProductImportExport extends Page implements HasForms
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-arrow-up-on-square-stack';
 
-    protected static string|UnitEnum|null $navigationGroup = 'Импорт/Экспорт';
+    protected static string|UnitEnum|null $navigationGroup = 'Экспорт/Импорт';
 
     protected static ?int $navigationSort = 1;
 
-    protected static ?string $navigationLabel = 'Импорт/Экспорт товаров';
+    protected static ?string $navigationLabel = 'Экспорт/Импорт товаров';
 
-    protected static ?string $title = 'Импорт/Экспорт товаров в Excel';
+    protected static ?string $title = 'Экспорт/Иморт товаров в Excel';
 
     protected string $view = 'filament.pages.product-import-export';
 

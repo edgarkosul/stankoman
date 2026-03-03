@@ -8,7 +8,10 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Protection as CellProtection;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Stringable;
 use UnitEnum;
@@ -147,7 +150,112 @@ class ProductExportService
             return optional($product->updated_at)->format('Y-m-d H:i:s');
         }
 
+        if ($this->isBooleanColumn($col)) {
+            return $this->toExcelBooleanLiteral($product->{$col} ?? null);
+        }
+
         return $this->normalizeCellValue($product->{$col} ?? null);
+    }
+
+    protected function isBooleanColumn(string $column): bool
+    {
+        $fields = $this->availableFields();
+
+        return ($fields[$column]['type'] ?? null) === 'boolean';
+    }
+
+    protected function toExcelBooleanLiteral(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'ИСТИНА' : 'ЛОЖЬ';
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return ((float) $value) !== 0.0 ? 'ИСТИНА' : 'ЛОЖЬ';
+        }
+
+        $normalized = function_exists('mb_strtolower')
+            ? mb_strtolower(trim((string) $value), 'UTF-8')
+            : strtolower(trim((string) $value));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        return in_array($normalized, ['1', 'true', 'yes', 'y', 'on', 'да', 'истина', 'верно'], true)
+            ? 'ИСТИНА'
+            : 'ЛОЖЬ';
+    }
+
+    protected function applyBooleanValidation(Worksheet $sheet, array $columns, int $lastDataRow): void
+    {
+        $booleanColumnIndexes = [];
+
+        foreach ($columns as $index => $columnKey) {
+            if ($this->isBooleanColumn($columnKey)) {
+                $booleanColumnIndexes[] = $index + 1;
+            }
+        }
+
+        if ($booleanColumnIndexes === []) {
+            return;
+        }
+
+        $validation = new DataValidation;
+        $validation->setType(DataValidation::TYPE_LIST);
+        $validation->setErrorStyle(DataValidation::STYLE_STOP);
+        $validation->setAllowBlank(true);
+        $validation->setShowInputMessage(true);
+        $validation->setShowErrorMessage(true);
+        $validation->setShowDropDown(true);
+        $validation->setPromptTitle('Булево значение');
+        $validation->setPrompt('Выберите ИСТИНА или ЛОЖЬ.');
+        $validation->setErrorTitle('Недопустимое значение');
+        $validation->setError('Разрешены только ИСТИНА или ЛОЖЬ.');
+        $validation->setFormula1('"ИСТИНА,ЛОЖЬ"');
+
+        $validationEndRow = max($lastDataRow, 2);
+
+        for ($row = 2; $row <= $validationEndRow; $row++) {
+            foreach ($booleanColumnIndexes as $columnIndex) {
+                $sheet->getCell([$columnIndex, $row])->setDataValidation(clone $validation);
+            }
+        }
+    }
+
+    protected function applyServiceColumnsProtection(Worksheet $sheet, array $columns, int $lastDataRow): void
+    {
+        if ($columns === []) {
+            return;
+        }
+
+        $firstDataRow = 2;
+        $protectionEndRow = max($lastDataRow, $firstDataRow);
+        $lastColumnLetter = Coordinate::stringFromColumnIndex(count($columns));
+
+        $sheet->getStyle("A{$firstDataRow}:{$lastColumnLetter}{$protectionEndRow}")
+            ->getProtection()
+            ->setLocked(CellProtection::PROTECTION_UNPROTECTED);
+
+        foreach ($columns as $index => $columnKey) {
+            if (! in_array($columnKey, ['name', 'updated_at'], true)) {
+                continue;
+            }
+
+            $columnLetter = Coordinate::stringFromColumnIndex($index + 1);
+
+            $sheet->getStyle("{$columnLetter}{$firstDataRow}:{$columnLetter}{$protectionEndRow}")
+                ->getProtection()
+                ->setLocked(CellProtection::PROTECTION_PROTECTED);
+        }
+
+        $protection = $sheet->getProtection();
+        $protection->setSheet(true);
+        $protection->setFormatColumns(false);
     }
 
     protected function normalizeCellValue(mixed $value): string|int|float|bool|null
@@ -219,6 +327,8 @@ class ProductExportService
             $rowNum++;
         }
 
+        $this->applyBooleanValidation($sheet, $dataset['columns'], $rowNum - 1);
+
         $lastColumn = $sheet->getHighestColumn(); // напр. 'K'
         $sheet->getStyle("A1:{$lastColumn}1")
             ->getFont()
@@ -230,6 +340,8 @@ class ProductExportService
             $columnLetter = Coordinate::stringFromColumnIndex($col);
             $sheet->getColumnDimension($columnLetter)->setAutoSize(true);
         }
+
+        $this->applyServiceColumnsProtection($sheet, $dataset['columns'], $rowNum - 1);
 
         // (опционально) Автофильтр по шапке
         // $lastRow = $rowNum - 1;

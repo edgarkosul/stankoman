@@ -586,7 +586,15 @@ class ProductImportService
             ? mb_strtolower(trim((string) $v), 'UTF-8')
             : strtolower(trim((string) $v));
 
-        return in_array($s, ['1', 'true', 'yes', 'y', 'on', 'да', 'истина', 'верно'], true) ? '1' : '0';
+        if (in_array($s, ['1', 'true', 'yes', 'y', 'on', 'да', 'истина', 'верно'], true)) {
+            return '1';
+        }
+
+        if (in_array($s, ['0', 'false', 'no', 'n', 'off', 'нет', 'ложь', 'неверно'], true)) {
+            return '0';
+        }
+
+        return '0';
     }
 
     protected function rowHasChanges(Product $product, array $data, array $headers, array $whitelist): bool

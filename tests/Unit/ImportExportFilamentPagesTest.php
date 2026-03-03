@@ -29,18 +29,18 @@ use Tests\TestCase;
 pest()->extend(TestCase::class);
 
 test('product import export page metadata is configured', function () {
-    expect(ProductImportExport::getNavigationGroup())->toBe('Импорт/Экспорт');
-    expect(ProductImportExport::getNavigationLabel())->toBe('Импорт/Экспорт товаров');
+    expect(ProductImportExport::getNavigationGroup())->toBe('Экспорт/Импорт');
+    expect(ProductImportExport::getNavigationLabel())->toBe('Экспорт/Импорт товаров');
     expect(ProductImportExport::getNavigationIcon())->toBe('heroicon-o-arrow-up-on-square-stack');
 
     $defaults = (new ReflectionClass(ProductImportExport::class))->getDefaultProperties();
 
     expect($defaults['view'])->toBe('filament.pages.product-import-export');
-    expect($defaults['title'])->toBe('Импорт/Экспорт товаров в Excel');
+    expect($defaults['title'])->toBe('Экспорт/Иморт товаров в Excel');
 });
 
 test('category filters import export page metadata and route are configured', function () {
-    expect(CategoryFiltersImportExport::getNavigationGroup())->toBe('Импорт/Экспорт');
+    expect(CategoryFiltersImportExport::getNavigationGroup())->toBe('Экспорт/Импорт');
     expect(CategoryFiltersImportExport::getNavigationLabel())->toBe('Фильтры (экспорт и импорт)');
     expect(CategoryFiltersImportExport::getNavigationIcon())->toBe('heroicon-o-funnel');
 
@@ -61,7 +61,7 @@ test('import export help page metadata and route are configured', function () {
 });
 
 test('vactool product import page metadata and route are configured', function () {
-    expect(VactoolProductImport::getNavigationGroup())->toBe('Импорт/Экспорт');
+    expect(VactoolProductImport::getNavigationGroup())->toBe('Экспорт/Импорт');
     expect(VactoolProductImport::getNavigationLabel())->toBe('Импорт Vactool');
     expect(VactoolProductImport::getNavigationIcon())->toBe('heroicon-o-cloud-arrow-down');
 
@@ -73,7 +73,7 @@ test('vactool product import page metadata and route are configured', function (
 });
 
 test('metalmaster product import page metadata and route are configured', function () {
-    expect(MetalmasterProductImport::getNavigationGroup())->toBe('Импорт/Экспорт');
+    expect(MetalmasterProductImport::getNavigationGroup())->toBe('Экспорт/Импорт');
     expect(MetalmasterProductImport::getNavigationLabel())->toBe('Импорт Metalmaster');
     expect(MetalmasterProductImport::getNavigationIcon())->toBe('heroicon-o-cloud-arrow-down');
 
@@ -129,7 +129,7 @@ test('metalmaster product import page has expected header actions', function () 
 });
 
 test('import runs resource metadata is configured', function () {
-    expect(ImportRunResource::getNavigationGroup())->toBe('Импорт/Экспорт');
+    expect(ImportRunResource::getNavigationGroup())->toBe('Экспорт/Импорт');
     expect(ImportRunResource::getNavigationLabel())->toBe('История импортов');
 });
 

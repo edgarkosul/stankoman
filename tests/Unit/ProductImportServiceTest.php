@@ -277,6 +277,57 @@ it('creates new product in safe defaults mode on apply', function () {
     unlink($path);
 });
 
+it('applies ИСТИНА/ЛОЖЬ literals to boolean fields', function () {
+    $product = Product::query()->create([
+        'name' => 'Boolean Import Product',
+        'in_stock' => true,
+        'is_active' => false,
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'is_active', 'in_stock', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        'ИСТИНА',
+        'ЛОЖЬ',
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service = new ProductImportService;
+
+    $dryRun = $service->dryRunFromXlsx($run, $path);
+    $apply = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($dryRun['totals'])->toMatchArray([
+        'create' => 0,
+        'update' => 1,
+        'same' => 0,
+        'conflict' => 0,
+        'error' => 0,
+        'scanned' => 1,
+    ]);
+
+    expect($apply)->toMatchArray([
+        'created' => 0,
+        'updated' => 1,
+        'same' => 0,
+        'conflict' => 0,
+        'error' => 0,
+        'scanned' => 1,
+    ]);
+
+    $product->refresh();
+
+    expect($product->is_active)->toBeTrue();
+    expect($product->in_stock)->toBeFalse();
+
+    unlink($path);
+});
+
 it('handles enum-casted warranty field during dry-run and apply', function () {
     $product = Product::query()->create([
         'name' => 'Warranty Import Product',

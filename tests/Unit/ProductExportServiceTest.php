@@ -4,7 +4,9 @@ use App\Models\Product;
 use App\Support\Products\ProductExportService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Style\Protection as CellProtection;
 use Tests\TestCase;
 
 pest()->extend(TestCase::class);
@@ -110,6 +112,64 @@ it('exports enum-casted warranty field as scalar value', function () {
     expect($sheet->getCell('A1')->getValue())->toBe('Наименование');
     expect($sheet->getCell('B1')->getValue())->toBe('Гарантия');
     expect((string) $sheet->getCell('B2')->getValue())->toBe('24');
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($result['path']);
+});
+
+it('exports boolean columns as ИСТИНА/ЛОЖЬ with dropdown validation', function () {
+    Product::query()->create([
+        'name' => 'Boolean Tool',
+        'in_stock' => true,
+        'is_active' => false,
+    ]);
+
+    $service = new ProductExportService;
+    $result = $service->exportToXlsx(Product::query(), ['in_stock', 'is_active']);
+
+    expect($result['path'])->toBeFile();
+
+    $spreadsheet = IOFactory::createReader('Xlsx')->load($result['path']);
+    $sheet = $spreadsheet->getActiveSheet();
+
+    expect($sheet->getCell('B1')->getValue())->toBe('В наличии');
+    expect($sheet->getCell('C1')->getValue())->toBe('Показывать на сайте');
+    expect((string) $sheet->getCell('B2')->getValue())->toBe('ИСТИНА');
+    expect((string) $sheet->getCell('C2')->getValue())->toBe('ЛОЖЬ');
+
+    $b2Validation = $sheet->getCell('B2')->getDataValidation();
+    $c2Validation = $sheet->getCell('C2')->getDataValidation();
+
+    expect($b2Validation->getType())->toBe(DataValidation::TYPE_LIST);
+    expect($b2Validation->getFormula1())->toBe('"ИСТИНА,ЛОЖЬ"');
+    expect($c2Validation->getType())->toBe(DataValidation::TYPE_LIST);
+    expect($c2Validation->getFormula1())->toBe('"ИСТИНА,ЛОЖЬ"');
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($result['path']);
+});
+
+it('locks service columns and keeps other columns editable', function () {
+    Product::query()->create([
+        'name' => 'Locked Service Columns Product',
+        'sku' => 'LOCK-1',
+        'is_active' => true,
+    ]);
+
+    $service = new ProductExportService;
+    $result = $service->exportToXlsx(Product::query(), ['sku', 'is_active']);
+
+    expect($result['path'])->toBeFile();
+
+    $spreadsheet = IOFactory::createReader('Xlsx')->load($result['path']);
+    $sheet = $spreadsheet->getActiveSheet();
+
+    expect($sheet->getProtection()->getSheet())->toBeTrue();
+    expect($sheet->getProtection()->getFormatColumns())->toBeFalse();
+    expect($sheet->getStyle('A2')->getProtection()->getLocked())->toBe(CellProtection::PROTECTION_PROTECTED);
+    expect($sheet->getStyle('B2')->getProtection()->getLocked())->toBe(CellProtection::PROTECTION_UNPROTECTED);
+    expect($sheet->getStyle('C2')->getProtection()->getLocked())->toBe(CellProtection::PROTECTION_UNPROTECTED);
+    expect($sheet->getStyle('D2')->getProtection()->getLocked())->toBe(CellProtection::PROTECTION_PROTECTED);
 
     $spreadsheet->disconnectWorksheets();
     unlink($result['path']);
