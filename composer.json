@@ -25,6 +25,7 @@
         "meilisearch/meilisearch-php": "^1.16",
         "mews/purifier": "^3.4",
         "phpoffice/phpspreadsheet": "^2.0",
+        "siteko/filament-restic-backups": "^0.2.5",
         "solution-forest/filament-tree": "^4.0",
         "symfony/css-selector": "^8.0",
         "symfony/dom-crawler": "^8.0"
@@ -116,5 +117,11 @@
         }
     },
     "minimum-stability": "stable",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "repositories": {
+        "siteko-restic-backups": {
+            "type": "vcs",
+            "url": "git@github.com:siteko-net/filament-restic-backups.git"
+        }
+    }
 }

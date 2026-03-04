@@ -14,3 +14,6 @@ Schedule::command(CartsCleanupCommand::class, ['30'])->dailyAt('03:30');
 Schedule::command('images:webp-backfill', ['--limit' => 500])
     ->dailyAt('03:30')
     ->withoutOverlapping();
+Schedule::command('restic-backups:run --trigger=schedule')->dailyAt('02:00');
+Schedule::command('restic-backups:cleanup-exports --hours=24')->daily();
+Schedule::command('restic-backups:cleanup-rollbacks --hours=24')->daily();
