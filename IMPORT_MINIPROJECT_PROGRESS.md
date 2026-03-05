@@ -39,6 +39,8 @@ Metalmaster (`app/Support/Metalmaster/*`)
 - В `write`-режиме выполняет upsert в `products` по ключу `slug` (из URL). При `skip_existing=true` существующий `slug` пропускается.
 - Все созданные/обновленные товары привязываются к категории `Staged` через `syncWithoutDetaching()` (категория при необходимости создается по `config('catalog-export.staging_category_slug')`).
 - При `download_images=true` скачивает изображения в `storage/app/public/pics`, подменяет URL в `gallery/image/thumb`, и дополнительно “локализует” `<img>` внутри `description` (подменяет `src` на `/storage/...`). Для каждого уникального файла ставит в очередь `GenerateImageDerivativesJob`.
+- Пишет в `products` (основные поля): `name`, `title`, `sku`, `brand`, `country`, `price_amount`, `discount_price`, `currency`, `in_stock`, `qty`, `is_active`, `short`, `description`, `extra_description`, `specs` (JSON), `promo_info`, `image`, `thumb`, `gallery` (JSON), `meta_title`, `meta_description`.
+- Пишет в `products` только при создании: `slug` (из URL), `is_in_yml_feed=true`, `with_dns=true`.
 - Выход: массив статистики (`found_urls/processed/errors/created/updated/skipped/...`), + `url_errors`, + `samples` (в dry-run).
 - Ограничения/особенности:
 - Для старта нужен актуальный buckets-файл (если файл отсутствует/битый, run падает с `fatal_error`).
@@ -57,6 +59,8 @@ Vactool (`app/Support/Vactool/*`)
 - В `write`-режиме выполняет upsert по эвристическому ключу `name + brand` (см. `findExistingProduct()`). При `skip_existing=true` найденный товар пропускается.
 - Созданные/обновленные товары привязываются к `Staged` через `syncWithoutDetaching()`.
 - При `download_images=true` скачивает изображения в `storage/app/public/pics` и ставит `GenerateImageDerivativesJob` (в отличие от Metalmaster, не переписывает `<img>` внутри `description`).
+- Пишет в `products` (основные поля): `name`, `title`, `brand`, `price_amount`, `currency`, `in_stock`, `qty`, `is_active`, `description`, `specs` (JSON), `image`, `thumb`, `gallery` (JSON), `meta_title`, `meta_description`.
+- `slug` не задается явно и генерируется в `Product::saving()` автоматически.
 - Выход: массив статистики (`found_urls/processed/errors/created/updated/skipped/...`), + `url_errors`, + `samples` (в dry-run).
 - Ограничения/особенности:
 - Ключ `name + brand` не является стабильным внешним ID: переименование товара в источнике приведет к созданию нового товара в БД (дубль).
