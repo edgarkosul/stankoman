@@ -16,7 +16,7 @@ class ImportRunObserver
             return;
         }
 
-        if (! in_array((string) $importRun->status, ['dry_run', 'applied', 'failed', 'cancelled'], true)) {
+        if (! in_array((string) $importRun->status, ['dry_run', 'applied', 'completed', 'failed', 'cancelled'], true)) {
             return;
         }
 
@@ -38,6 +38,7 @@ class ImportRunObserver
 
         match ((string) $importRun->status) {
             'applied' => $notification->success(),
+            'completed' => $notification->success(),
             'dry_run' => $notification->info(),
             'cancelled' => $notification->warning(),
             default => $notification->danger(),
@@ -51,6 +52,7 @@ class ImportRunObserver
         return match ((string) $importRun->status) {
             'dry_run' => "Dry-run #{$importRun->id} завершен",
             'applied' => "Импорт #{$importRun->id} завершен",
+            'completed' => "Импорт #{$importRun->id} завершен",
             'failed' => "Импорт #{$importRun->id} завершился ошибкой",
             'cancelled' => "Импорт #{$importRun->id} остановлен",
             default => "Импорт #{$importRun->id} обновлен",
@@ -79,7 +81,7 @@ class ImportRunObserver
             );
         }
 
-        if ($importRun->status === 'applied') {
+        if (in_array((string) $importRun->status, ['applied', 'completed'], true)) {
             return sprintf(
                 'Тип: %s. Создано: %d, обновлено: %d, без изменений: %d, конфликтов: %d, ошибок: %d.',
                 $this->typeLabel((string) $importRun->type),

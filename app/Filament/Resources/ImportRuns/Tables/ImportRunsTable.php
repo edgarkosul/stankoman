@@ -49,8 +49,10 @@ class ImportRunsTable
                     ->label('Статус')
                     ->formatStateUsing(fn ($state): string => match ($state) {
                         'pending' => 'В ожидании',
+                        'running' => 'Выполняется',
                         'dry_run' => 'Проверено',
                         'applied' => 'Применено',
+                        'completed' => 'Завершен',
                         'failed' => 'Ошибка',
                         'cancelled' => 'Остановлен',
                         default => (string) $state,
@@ -58,8 +60,9 @@ class ImportRunsTable
                     ->badge()
                     ->colors([
                         'warning' => 'pending',
+                        'primary' => 'running',
                         'info' => 'dry_run',
-                        'success' => 'applied',
+                        'success' => ['applied', 'completed'],
                         'danger' => 'failed',
                         'gray' => 'cancelled',
                     ])

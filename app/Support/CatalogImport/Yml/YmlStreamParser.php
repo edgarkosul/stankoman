@@ -2,11 +2,22 @@
 
 namespace App\Support\CatalogImport\Yml;
 
+use App\Support\CatalogImport\Contracts\RecordParserInterface;
+use App\Support\CatalogImport\DTO\ResolvedSource;
 use RuntimeException;
 use XMLReader;
 
-class YmlStreamParser
+class YmlStreamParser implements RecordParserInterface
 {
+    /**
+     * @param  array<string, mixed>  $options
+     * @return \Generator<int, mixed>
+     */
+    public function parse(ResolvedSource $source, array $options = []): \Generator
+    {
+        return $this->open($source->resolvedPath)->offers;
+    }
+
     public function open(string $path): YmlStream
     {
         $reader = new XMLReader;

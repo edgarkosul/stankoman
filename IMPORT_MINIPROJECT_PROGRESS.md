@@ -4,8 +4,8 @@
 
 ## Статусы этапов
 - [x] Этап 0. Discovery и фиксация текущего состояния
-- [ ] Этап 1. Контракты и DTO
-- [ ] Этап 2. Import Run и логирование
+- [x] Этап 1. Контракты и DTO
+- [x] Этап 2. Import Run и логирование
 - [ ] Этап 3. Источники и парсеры форматов
 - [ ] Этап 4. Нормализация и upsert
 - [ ] Этап 5. Медиа-пайплайн
@@ -24,6 +24,15 @@
 - Начата реализация YML-импорта: добавлены `YmlStreamParser` + `YandexMarketFeedAdapter` + базовые DTO и unit-тесты.
 - Изменения по YML (парсер/адаптер/DTO/тесты) закоммичены.
 - Выполнен Этап 0 (discovery): описаны текущие импорты Metalmaster/Vactool, текущие точки входа, обязательные поля `Product`, список рисков.
+- Выполнен Этап 1 (контракты и DTO): добавлены интерфейсы `SourceResolverInterface`, `RecordParserInterface`, `SupplierAdapterInterface`, `ImportProcessorInterface`.
+- Добавлены DTO/enum-контракты `ResolvedSource`, `ImportError`, `RecordMappingResult`, `ImportProcessResult`, `ImportErrorLevel`, `ImportRunStatus`.
+- `YmlStreamParser` и `YandexMarketFeedAdapter` переведены на новые контракты; удалены устаревшие `AdapterIssue`/`AdapterResult`.
+- Добавлены/обновлены unit-тесты (`CatalogImportContractsTest`, `YmlStreamParserTest`) для проверки Этапа 1.
+- Выполнен Этап 2 (Import Run и логирование): добавлен общий сервис оркестрации `ImportRunOrchestrator` (start/progress/success/fail/cancel + mergeMeta + threshold-check).
+- Existing Vactool/Metalmaster интегрированы с новым run-orchestration без смены legacy-статусов (`pending`/`dry_run`/`applied`/`failed`/`cancelled`), что сохраняет текущую работу UI и job-ов.
+- В `RunVactoolProductImportJob` и `RunMetalmasterProductImportJob` убрано дублирование lifecycle-логики, добавлен опциональный порог остановки по ошибкам (`error_threshold_count` / `error_threshold_percent`) с issue-кодом `error_threshold_exceeded`.
+- Обновлены поддерживаемые статусы для нового import core: `ImportRunStatus` расширен (legacy + `running`/`completed`), `ImportRunObserver` и `ImportRunsTable` теперь понимают `completed`.
+- Добавлены/обновлены тесты: `ImportRunOrchestratorTest`, `RunVactoolProductImportJobTest` (включая threshold case), `RunMetalmasterProductImportJobTest`, `ImportRunDatabaseNotificationTest`.
 
 ## Этап 0. Discovery (зафиксировано)
 
@@ -127,6 +136,6 @@ Vactool (`app/Support/Vactool/*`)
 - Какие типы offer YML поддерживаем сверх “упрощенный” и `vendor.model` и какая стратегия до поддержки: пропуск с ошибкой или частичный маппинг.
 
 ## Ближайшие шаги
-1. Зафиксировать итоговый контракт DTO и интерфейсов (Этап 1) с учетом того, что `ImportRun/ImportIssue` уже есть.
-2. Начать реализацию оркестратора запуска поверх существующих `import_runs/import_issues` (Этап 2).
-3. Продолжить слой источников и парсеров форматов (Этап 3), интегрируя уже сделанный YML-стриминг.
+1. Продолжить слой источников и парсеров форматов (Этап 3), интегрируя уже сделанный YML-стриминг.
+2. Добавить `SourceResolver` (local file / URL download / cache) и связать его с `RecordParserInterface` в новом import core pipeline.
+3. Начать перенос Vactool/Metalmaster в parser+adapter-профили поверх общего pipeline (без удаления текущих рабочих entrypoint до полного parity).

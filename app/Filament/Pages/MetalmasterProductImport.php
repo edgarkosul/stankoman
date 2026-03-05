@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Jobs\RunMetalmasterProductImportJob;
 use App\Models\ImportRun;
+use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
 use BackedEnum;
 use Filament\Actions\Action as FormAction;
 use Filament\Forms\Components\Select;
@@ -187,6 +188,7 @@ class MetalmasterProductImport extends Page implements HasForms
     public function stopActiveImport(): void
     {
         $run = $this->resolveActiveRun();
+        $runs = app(ImportRunOrchestrator::class);
 
         if (! $run) {
             Notification::make()
@@ -200,17 +202,7 @@ class MetalmasterProductImport extends Page implements HasForms
             return;
         }
 
-        $totals = is_array($run->totals) ? $run->totals : [];
-
-        $run->status = 'cancelled';
-        $run->finished_at = now();
-        $run->totals = $this->mergeMeta($totals, [
-            'mode' => $this->resolveMode($totals, $run),
-            'is_running' => false,
-            'cancelled_by_user' => true,
-            'cancelled_at' => now()->toIso8601String(),
-        ]);
-        $run->save();
+        $runs->markCancelled($run, $runs->resolveMode($run));
 
         $run->issues()->create([
             'row_index' => null,
@@ -277,34 +269,14 @@ class MetalmasterProductImport extends Page implements HasForms
     {
         $options = $this->buildOptions($write);
         $mode = $write ? 'write' : 'dry-run';
-
-        $run = ImportRun::query()->create([
-            'type' => 'metalmaster_products',
-            'status' => 'pending',
-            'columns' => $options,
-            'totals' => [
-                'create' => 0,
-                'update' => 0,
-                'same' => 0,
-                'conflict' => 0,
-                'error' => 0,
-                'scanned' => 0,
-                '_meta' => [
-                    'mode' => $mode,
-                    'found_urls' => 0,
-                    'images_downloaded' => 0,
-                    'image_download_failed' => 0,
-                    'derivatives_queued' => 0,
-                    'no_urls' => false,
-                    'is_running' => true,
-                ],
-                '_samples' => [],
-            ],
-            'source_filename' => $options['buckets_file'],
-            'stored_path' => null,
-            'user_id' => Auth::id(),
-            'started_at' => now(),
-        ]);
+        $runs = app(ImportRunOrchestrator::class);
+        $run = $runs->start(
+            type: 'metalmaster_products',
+            columns: $options,
+            mode: $mode,
+            sourceFilename: $options['buckets_file'],
+            userId: Auth::id(),
+        );
 
         RunMetalmasterProductImportJob::dispatch($run->id, $options, $write);
 
@@ -578,37 +550,5 @@ class MetalmasterProductImport extends Page implements HasForms
         }
 
         return $runQuery->latest('id')->first();
-    }
-
-    /**
-     * @param  array<string, mixed>  $totals
-     * @param  array<string, mixed>  $meta
-     * @return array<string, mixed>
-     */
-    private function mergeMeta(array $totals, array $meta): array
-    {
-        $currentMeta = $totals['_meta'] ?? [];
-
-        if (! is_array($currentMeta)) {
-            $currentMeta = [];
-        }
-
-        $totals['_meta'] = array_merge($currentMeta, $meta);
-
-        return $totals;
-    }
-
-    /**
-     * @param  array<string, mixed>  $totals
-     */
-    private function resolveMode(array $totals, ImportRun $run): string
-    {
-        $mode = data_get($totals, '_meta.mode');
-
-        if (is_string($mode) && $mode !== '') {
-            return $mode;
-        }
-
-        return (bool) data_get($run->columns, 'write', false) ? 'write' : 'dry-run';
     }
 }

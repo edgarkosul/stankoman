@@ -2,57 +2,77 @@
 
 namespace App\Support\CatalogImport\Yml;
 
-use App\Support\CatalogImport\DTO\AdapterIssue;
-use App\Support\CatalogImport\DTO\AdapterResult;
+use App\Support\CatalogImport\Contracts\SupplierAdapterInterface;
+use App\Support\CatalogImport\DTO\ImportError;
 use App\Support\CatalogImport\DTO\ProductPayload;
+use App\Support\CatalogImport\DTO\RecordMappingResult;
+use App\Support\CatalogImport\Enums\ImportErrorLevel;
 use SimpleXMLElement;
 
-final class YandexMarketFeedAdapter
+final class YandexMarketFeedAdapter implements SupplierAdapterInterface
 {
-    public function mapOffer(YmlOfferRecord $offer): AdapterResult
+    public function mapRecord(mixed $record): RecordMappingResult
     {
-        $issues = [];
+        if (! $record instanceof YmlOfferRecord) {
+            return new RecordMappingResult(
+                payload: null,
+                errors: [
+                    new ImportError(
+                        code: 'invalid_record_type',
+                        message: 'Expected YmlOfferRecord instance.',
+                        level: ImportErrorLevel::Fatal,
+                    ),
+                ],
+            );
+        }
+
+        return $this->mapOffer($record);
+    }
+
+    public function mapOffer(YmlOfferRecord $offer): RecordMappingResult
+    {
+        $errors = [];
 
         $externalId = trim($offer->id);
 
         if ($externalId === '') {
-            $issues[] = new AdapterIssue(
+            $errors[] = new ImportError(
                 code: 'missing_offer_id',
                 message: 'Offer attribute "id" is required.',
             );
 
-            return new AdapterResult(payload: null, issues: $issues);
+            return new RecordMappingResult(payload: null, errors: $errors);
         }
 
-        $xml = $this->loadOfferXml($offer->xml, $issues);
+        $xml = $this->loadOfferXml($offer->xml, $errors);
 
         if ($xml === null) {
-            return new AdapterResult(payload: null, issues: $issues);
+            return new RecordMappingResult(payload: null, errors: $errors);
         }
 
         $offerType = $offer->type;
 
         if ($offerType === 'vendor.model') {
-            return $this->mapVendorModelOffer($externalId, $offer, $xml, $issues);
+            return $this->mapVendorModelOffer($externalId, $offer, $xml, $errors);
         }
 
-        return $this->mapSimplifiedOffer($externalId, $offer, $xml, $issues);
+        return $this->mapSimplifiedOffer($externalId, $offer, $xml, $errors);
     }
 
     /**
-     * @param  array<int, AdapterIssue>  $issues
+     * @param  array<int, ImportError>  $errors
      */
-    private function mapSimplifiedOffer(string $externalId, YmlOfferRecord $offer, SimpleXMLElement $xml, array $issues): AdapterResult
+    private function mapSimplifiedOffer(string $externalId, YmlOfferRecord $offer, SimpleXMLElement $xml, array $errors): RecordMappingResult
     {
         $name = $this->textOrNull($xml->name ?? null);
 
         if ($name === null) {
-            $issues[] = new AdapterIssue(
+            $errors[] = new ImportError(
                 code: 'missing_name',
                 message: 'Simplified offers require <name>.',
             );
 
-            return new AdapterResult(payload: null, issues: $issues);
+            return new RecordMappingResult(payload: null, errors: $errors);
         }
 
         $priceAmount = $this->parsePriceAmount($this->textOrNull($xml->price ?? null));
@@ -60,7 +80,7 @@ final class YandexMarketFeedAdapter
         $vendor = $this->textOrNull($xml->vendor ?? null);
         $description = $this->textOrNull($xml->description ?? null);
 
-        return new AdapterResult(
+        return new RecordMappingResult(
             payload: new ProductPayload(
                 externalId: $externalId,
                 name: $name,
@@ -74,35 +94,35 @@ final class YandexMarketFeedAdapter
                     'offer_type' => $offer->type,
                 ],
             ),
-            issues: $issues,
+            errors: $errors,
         );
     }
 
     /**
-     * @param  array<int, AdapterIssue>  $issues
+     * @param  array<int, ImportError>  $errors
      */
-    private function mapVendorModelOffer(string $externalId, YmlOfferRecord $offer, SimpleXMLElement $xml, array $issues): AdapterResult
+    private function mapVendorModelOffer(string $externalId, YmlOfferRecord $offer, SimpleXMLElement $xml, array $errors): RecordMappingResult
     {
         $typePrefix = $this->textOrNull($xml->typePrefix ?? null);
         $vendor = $this->textOrNull($xml->vendor ?? null);
         $model = $this->textOrNull($xml->model ?? null);
 
         if ($vendor === null) {
-            $issues[] = new AdapterIssue(
+            $errors[] = new ImportError(
                 code: 'missing_vendor',
                 message: 'vendor.model offers require <vendor>.',
             );
         }
 
         if ($model === null) {
-            $issues[] = new AdapterIssue(
+            $errors[] = new ImportError(
                 code: 'missing_model',
                 message: 'vendor.model offers require <model>.',
             );
         }
 
-        if ($issues !== []) {
-            return new AdapterResult(payload: null, issues: $issues);
+        if ($errors !== []) {
+            return new RecordMappingResult(payload: null, errors: $errors);
         }
 
         $nameParts = [];
@@ -120,7 +140,7 @@ final class YandexMarketFeedAdapter
         $currency = $this->textOrNull($xml->currencyId ?? null);
         $description = $this->textOrNull($xml->description ?? null);
 
-        return new AdapterResult(
+        return new RecordMappingResult(
             payload: new ProductPayload(
                 externalId: $externalId,
                 name: $name,
@@ -134,19 +154,19 @@ final class YandexMarketFeedAdapter
                     'offer_type' => $offer->type,
                 ],
             ),
-            issues: $issues,
+            errors: $errors,
         );
     }
 
     /**
-     * @param  array<int, AdapterIssue>  $issues
+     * @param  array<int, ImportError>  $errors
      */
-    private function loadOfferXml(string $xml, array &$issues): ?SimpleXMLElement
+    private function loadOfferXml(string $xml, array &$errors): ?SimpleXMLElement
     {
         $xml = trim($xml);
 
         if ($xml === '') {
-            $issues[] = new AdapterIssue(
+            $errors[] = new ImportError(
                 code: 'empty_offer_xml',
                 message: 'Offer XML is empty.',
             );
@@ -160,7 +180,7 @@ final class YandexMarketFeedAdapter
             $node = simplexml_load_string($xml);
 
             if (! $node) {
-                $issues[] = new AdapterIssue(
+                $errors[] = new ImportError(
                     code: 'invalid_offer_xml',
                     message: 'Offer XML is not a valid XML document.',
                 );
@@ -197,7 +217,7 @@ final class YandexMarketFeedAdapter
             return null;
         }
 
-        $normalized = str_replace(["\xc2\xa0", ' '], '', $raw); // nbsp + spaces
+        $normalized = str_replace(["\xc2\xa0", ' '], '', $raw);
         $normalized = str_replace(',', '.', $normalized);
 
         if ($normalized === '' || ! is_numeric($normalized)) {

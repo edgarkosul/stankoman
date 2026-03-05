@@ -2,6 +2,7 @@
 
 use App\Jobs\RunMetalmasterProductImportJob;
 use App\Models\ImportRun;
+use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
 use App\Support\Metalmaster\MetalmasterProductImportService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Http;
@@ -67,7 +68,7 @@ it('updates import run totals and status while handling queued metalmaster impor
 
     try {
         $job = new RunMetalmasterProductImportJob($run->id, $options, false);
-        $job->handle(app(MetalmasterProductImportService::class));
+        $job->handle(app(MetalmasterProductImportService::class), app(ImportRunOrchestrator::class));
 
         $run->refresh();
 
@@ -165,7 +166,7 @@ it('marks run as cancelled when it is stopped during queued metalmaster import j
         });
 
     $job = new RunMetalmasterProductImportJob($run->id, $options, true);
-    $job->handle($service);
+    $job->handle($service, app(ImportRunOrchestrator::class));
 
     $run->refresh();
 

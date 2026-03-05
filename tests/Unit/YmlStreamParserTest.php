@@ -149,7 +149,7 @@ XML;
 
         expect($result->isSuccess())->toBeFalse();
         expect($result->payload)->toBeNull();
-        expect(collect($result->issues)->pluck('code')->all())->toContain('missing_vendor');
+        expect(collect($result->errors)->pluck('code')->all())->toContain('missing_vendor');
     } finally {
         @unlink($path);
     }
@@ -182,7 +182,7 @@ XML;
 
         expect($result->isSuccess())->toBeFalse();
         expect($result->payload)->toBeNull();
-        expect(collect($result->issues)->pluck('code')->all())->toContain('missing_name');
+        expect(collect($result->errors)->pluck('code')->all())->toContain('missing_name');
     } finally {
         @unlink($path);
     }

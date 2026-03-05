@@ -2,6 +2,7 @@
 
 use App\Jobs\RunVactoolProductImportJob;
 use App\Models\ImportRun;
+use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
 use App\Support\Vactool\VactoolProductImportService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Http;
@@ -57,7 +58,7 @@ it('updates import run totals and status while handling queued vactool import jo
     ]);
 
     $job = new RunVactoolProductImportJob($run->id, $options, false);
-    $job->handle(app(VactoolProductImportService::class));
+    $job->handle(app(VactoolProductImportService::class), app(ImportRunOrchestrator::class));
 
     $run->refresh();
 
@@ -152,7 +153,7 @@ it('marks run as cancelled when it is stopped during queued vactool import job',
         });
 
     $job = new RunVactoolProductImportJob($run->id, $options, true);
-    $job->handle($service);
+    $job->handle($service, app(ImportRunOrchestrator::class));
 
     $run->refresh();
 
@@ -160,6 +161,61 @@ it('marks run as cancelled when it is stopped during queued vactool import job',
     expect($run->finished_at)->not->toBeNull();
     expect((bool) data_get($run->totals, '_meta.is_running'))->toBeFalse();
     expect((bool) data_get($run->totals, '_meta.cancelled_by_user'))->toBeTrue();
+});
+
+it('marks run as failed when error threshold is exceeded in vactool job', function () {
+    prepareVactoolJobImportTables();
+
+    $options = [
+        'sitemap' => 'https://vactool.ru/sitemap.xml',
+        'match' => '/catalog/product-',
+        'write' => true,
+        'error_threshold_count' => 1,
+    ];
+
+    $run = ImportRun::query()->create([
+        'type' => 'vactool_products',
+        'status' => 'pending',
+        'columns' => $options,
+        'totals' => [
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => true,
+            ],
+        ],
+        'started_at' => now(),
+    ]);
+
+    $service = \Mockery::mock(VactoolProductImportService::class);
+    $service->shouldReceive('run')
+        ->once()
+        ->andReturnUsing(function (array $options, ?callable $output, ?callable $progress): array {
+            if ($progress !== null) {
+                $progress([
+                    'found_urls' => 5,
+                    'processed' => 1,
+                    'errors' => 1,
+                    'created' => 0,
+                    'updated' => 0,
+                    'skipped' => 0,
+                    'images_downloaded' => 0,
+                    'image_download_failed' => 0,
+                    'derivatives_queued' => 0,
+                    'no_urls' => false,
+                ]);
+            }
+
+            return [];
+        });
+
+    $job = new RunVactoolProductImportJob($run->id, $options, true);
+    $job->handle($service, app(ImportRunOrchestrator::class));
+
+    $run->refresh();
+
+    expect($run->status)->toBe('failed');
+    expect((bool) data_get($run->totals, '_meta.error_threshold_exceeded'))->toBeTrue();
+    expect($run->issues()->where('code', 'error_threshold_exceeded')->exists())->toBeTrue();
 });
 
 function prepareVactoolJobImportTables(): void
