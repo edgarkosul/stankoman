@@ -58,11 +58,13 @@ final class YandexMarketFeedAdapter
         $priceAmount = $this->parsePriceAmount($this->textOrNull($xml->price ?? null));
         $currency = $this->textOrNull($xml->currencyId ?? null);
         $vendor = $this->textOrNull($xml->vendor ?? null);
+        $description = $this->textOrNull($xml->description ?? null);
 
         return new AdapterResult(
             payload: new ProductPayload(
                 externalId: $externalId,
                 name: $name,
+                description: $description,
                 brand: $vendor,
                 priceAmount: $priceAmount,
                 currency: $currency,
@@ -116,11 +118,13 @@ final class YandexMarketFeedAdapter
 
         $priceAmount = $this->parsePriceAmount($this->textOrNull($xml->price ?? null));
         $currency = $this->textOrNull($xml->currencyId ?? null);
+        $description = $this->textOrNull($xml->description ?? null);
 
         return new AdapterResult(
             payload: new ProductPayload(
                 externalId: $externalId,
                 name: $name,
+                description: $description,
                 brand: $vendor,
                 priceAmount: $priceAmount,
                 currency: $currency,

@@ -73,6 +73,7 @@ it('maps simplified and vendor.model offers into product payloads', function () 
     <offers>
       <offer id="A1" available="true">
         <name>Simple Product</name>
+        <description>Simple description.</description>
         <price>123</price>
         <currencyId>RUB</currencyId>
       </offer>
@@ -80,6 +81,7 @@ it('maps simplified and vendor.model offers into product payloads', function () 
         <typePrefix>Пылесос</typePrefix>
         <vendor>Vactool</vendor>
         <model>VT-9000</model>
+        <description>Vendor model description.</description>
         <price>999</price>
         <currencyId>RUB</currencyId>
       </offer>
@@ -101,6 +103,7 @@ XML;
         expect($simple->isSuccess())->toBeTrue();
         expect($simple->payload?->externalId)->toBe('A1');
         expect($simple->payload?->name)->toBe('Simple Product');
+        expect($simple->payload?->description)->toBe('Simple description.');
         expect($simple->payload?->priceAmount)->toBe(123);
         expect($simple->payload?->currency)->toBe('RUB');
         expect($simple->payload?->inStock)->toBeTrue();
@@ -109,6 +112,7 @@ XML;
         expect($vendorModel->isSuccess())->toBeTrue();
         expect($vendorModel->payload?->externalId)->toBe('A2');
         expect($vendorModel->payload?->name)->toBe('Пылесос Vactool VT-9000');
+        expect($vendorModel->payload?->description)->toBe('Vendor model description.');
         expect($vendorModel->payload?->brand)->toBe('Vactool');
         expect($vendorModel->payload?->priceAmount)->toBe(999);
         expect($vendorModel->payload?->currency)->toBe('RUB');

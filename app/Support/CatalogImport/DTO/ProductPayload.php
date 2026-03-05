@@ -12,6 +12,7 @@ final readonly class ProductPayload
     public function __construct(
         public string $externalId,
         public string $name,
+        public ?string $description = null,
         public ?string $brand = null,
         public ?int $priceAmount = null,
         public ?string $currency = null,
