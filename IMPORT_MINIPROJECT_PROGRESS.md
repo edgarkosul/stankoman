@@ -3,7 +3,7 @@
 Связанный план: `IMPORT_MINIPROJECT_PLAN.md`
 
 ## Статусы этапов
-- [ ] Этап 0. Discovery и фиксация текущего состояния
+- [x] Этап 0. Discovery и фиксация текущего состояния
 - [ ] Этап 1. Контракты и DTO
 - [ ] Этап 2. Import Run и логирование
 - [ ] Этап 3. Источники и парсеры форматов
@@ -23,10 +23,81 @@
 - Зафиксирован подход к YML (Yandex Market Language): потоковый парсинг, strict adapter, поддержка двух типов offer.
 - Начата реализация YML-импорта: добавлены `YmlStreamParser` + `YandexMarketFeedAdapter` + базовые DTO и unit-тесты.
 - Изменения по YML (парсер/адаптер/DTO/тесты) закоммичены.
+- Выполнен Этап 0 (discovery): описаны текущие импорты Metalmaster/Vactool, текущие точки входа, обязательные поля `Product`, список рисков.
+
+## Этап 0. Discovery (зафиксировано)
+
+### Текущие 2 парсера/импорта товаров
+
+Metalmaster (`app/Support/Metalmaster/*`)
+- Тип источника: HTML-карточки товаров, URL берутся из “buckets” (сгенерированных из sitemap).
+- Вход:
+- `buckets_file` (по умолчанию `storage/app/parser/metalmaster-buckets.json`), генерируется командой `parser:sitemap-buckets`.
+- Опции: `bucket` (фильтр категории), `limit`, `timeout`, `delay_ms`, `write|dry-run`, `publish`, `download_images`, `skip_existing`, `show_samples`.
+- Обработка:
+- `MetalmasterProductImportService::run()` загружает список URL из buckets JSON, затем последовательно делает HTTP GET по каждому URL и парсит HTML через `MetalmasterProductParser` (DOMDocument + XPath + JSON-LD Product).
+- В `write`-режиме выполняет upsert в `products` по ключу `slug` (из URL). При `skip_existing=true` существующий `slug` пропускается.
+- Все созданные/обновленные товары привязываются к категории `Staged` через `syncWithoutDetaching()` (категория при необходимости создается по `config('catalog-export.staging_category_slug')`).
+- При `download_images=true` скачивает изображения в `storage/app/public/pics`, подменяет URL в `gallery/image/thumb`, и дополнительно “локализует” `<img>` внутри `description` (подменяет `src` на `/storage/...`). Для каждого уникального файла ставит в очередь `GenerateImageDerivativesJob`.
+- Выход: массив статистики (`found_urls/processed/errors/created/updated/skipped/...`), + `url_errors`, + `samples` (в dry-run).
+- Ограничения/особенности:
+- Для старта нужен актуальный buckets-файл (если файл отсутствует/битый, run падает с `fatal_error`).
+- Парсинг не потоковый: на каждый товар загружается HTML страницы целиком, строится DOM.
+- `is_active` выставляется в значение опции `publish` на каждом write-upsert (может деактивировать ранее активные товары при `publish=false`).
+- Политики “missing” (исчезнувшие товары) нет: товары, пропавшие с сайта, сами по себе не деактивируются.
+
+Vactool (`app/Support/Vactool/*`)
+- Тип источника: HTML-карточки товаров, URL берутся из sitemap (рекурсивно, с поддержкой `.gz`).
+- Вход:
+- `sitemap` (по умолчанию `https://vactool.ru/sitemap.xml`) + `match` (фрагмент URL для карточек, по умолчанию `/catalog/product-`).
+- Опции: `limit`, `delay_ms`, `write|dry-run`, `publish`, `download_images`, `skip_existing`, `show_samples`.
+- Обработка:
+- `VactoolSitemapCrawler` скачивает sitemap, при необходимости распаковывает `.gz`, и собирает URL рекурсивно (sitemapindex → urlset).
+- `VactoolProductImportService::run()` фильтрует URL по `match`, затем последовательно делает HTTP GET и парсит HTML через `VactoolProductParser` (Symfony DomCrawler + JSON-LD + Inertia `#app[data-page]` + HTML fallback).
+- В `write`-режиме выполняет upsert по эвристическому ключу `name + brand` (см. `findExistingProduct()`). При `skip_existing=true` найденный товар пропускается.
+- Созданные/обновленные товары привязываются к `Staged` через `syncWithoutDetaching()`.
+- При `download_images=true` скачивает изображения в `storage/app/public/pics` и ставит `GenerateImageDerivativesJob` (в отличие от Metalmaster, не переписывает `<img>` внутри `description`).
+- Выход: массив статистики (`found_urls/processed/errors/created/updated/skipped/...`), + `url_errors`, + `samples` (в dry-run).
+- Ограничения/особенности:
+- Ключ `name + brand` не является стабильным внешним ID: переименование товара в источнике приведет к созданию нового товара в БД (дубль).
+- `is_active` выставляется в значение опции `publish` на каждом write-upsert.
+- Политики “missing” нет.
+
+### Текущие точки входа импорта
+- UI (Filament):
+- `app/Filament/Pages/ProductImportExport.php` (Excel import/export; dry-run + apply; использует `ImportRun` и `ProductImportService`).
+- `app/Filament/Pages/VactoolProductImport.php` (Vactool, запуск в очередь, создание `ImportRun`, остановка run через статус `cancelled`).
+- `app/Filament/Pages/MetalmasterProductImport.php` (Metalmaster, запуск в очередь, buckets regeneration, остановка run через статус `cancelled`).
+- `app/Filament/Resources/ImportRuns/*` (история импортов `ImportRunResource`).
+- CLI:
+- `php artisan parser:sitemap-buckets` (Metalmaster: генерация buckets JSON из sitemap).
+- `php artisan parser:parse-products` (Metalmaster: импорт страниц; по умолчанию пишет в БД, если не указан legacy-флаг `--dry-run=1`).
+- `php artisan products:parse-vactool` (Vactool: импорт страниц; пишет в БД только при `--write`).
+- Jobs/Queue:
+- `app/Jobs/RunMetalmasterProductImportJob.php`, `app/Jobs/RunVactoolProductImportJob.php` (обновляют `ImportRun->totals`, пишут `ImportIssue` на ошибки; поддерживают остановку через `status=cancelled`).
+- `app/Jobs/GenerateImageDerivativesJob.php` (деривативы изображений, вызывается из обоих импортов при `download_images`).
+
+### Обязательные поля внутренней модели Product (как сейчас в БД/домене)
+- Минимум для записи в БД: `name` (NOT NULL).
+- Технически обязательные NOT NULL поля: `name`, `slug`, `name_normalized` (но `slug` и `name_normalized` генерируются в `Product::saving()` автоматически, если не заданы).
+- Дополнительно NOT NULL с дефолтами (не требуют данных из источника “для вставки”, но влияют на поведение): `price_amount` (0), `currency` ('RUB'), `in_stock` (1), `is_active` (1), `is_in_yml_feed` (1), `with_dns` (1), `popularity` (0).
+
+### Риски/техдолг, выявленные в текущей реализации
+- Изменение HTML/JSON-LD/Inertia структуры на стороне поставщика ломает парсинг (логика hardcoded, не конфигурируется профилем).
+- Дубликаты и неверные обновления:
+- Metalmaster ключится по `slug` (стабилен, но зависит от URL и buckets).
+- Vactool ключится по `name + brand` (нестабилен; переименование создает дубль).
+- `is_active` перезаписывается опцией `publish` на каждом upsert (при `publish=false` можно массово “снять с витрины” уже активные товары).
+- Нет механизма “missing finalize”: исчезнувшие из источника товары остаются как были (активность/остатки не пересчитываются).
+- Медиа грузится синхронно внутри импорта (дольше run, больше точек отказа); нет явных лимитов на размер/типы файлов; картинка читается целиком в память; возможен рост диска `storage/app/public/pics`.
+- Разные дефолты CLI vs UI:
+- Metalmaster CLI по умолчанию в write-режиме; Vactool CLI по умолчанию в dry-run.
+- `Staged`-категория проставляется `syncWithoutDetaching()` и для обновлений тоже: “staged” может разрастаться и включать уже разнесенные по категориям товары.
 
 ## Принятые решения
 - Поддерживаем общий import core и отдельные supplier adapters/profiles.
 - Поддерживаем разные форматы через слой парсеров (`XmlStreamParser`, `HtmlDomParser` и т.д.).
+- В качестве базы логирования/истории переиспользуем существующие `import_runs` + `import_issues` (без создания новых таблиц для run/errors).
 - MetalMaster рассматривается как HTML-источник внутри общей архитектуры, а не как исключение.
 - `Source` определяется выбранным `SupplierAdapter/Profile` (поставщик/профиль). Конкретный файл/URL относится к конкретному run и не обязан быть “полным снимком”.
 - Вводим режимы прогона: `partial_import` (по умолчанию, без деактивации “отсутствующих”) и `full_sync_authoritative` (полный снимок, после прогона выполняем finalize “missing”).
@@ -52,6 +123,6 @@
 - Какие типы offer YML поддерживаем сверх “упрощенный” и `vendor.model` и какая стратегия до поддержки: пропуск с ошибкой или частичный маппинг.
 
 ## Ближайшие шаги
-1. Пройти Этап 0 и зафиксировать текущие контракты двух существующих парсеров.
-2. Зафиксировать итоговый контракт DTO и интерфейсов (Этап 1).
-3. Начать реализацию `import_runs` и оркестратора запуска (Этап 2).
+1. Зафиксировать итоговый контракт DTO и интерфейсов (Этап 1) с учетом того, что `ImportRun/ImportIssue` уже есть.
+2. Начать реализацию оркестратора запуска поверх существующих `import_runs/import_issues` (Этап 2).
+3. Продолжить слой источников и парсеров форматов (Этап 3), интегрируя уже сделанный YML-стриминг.
