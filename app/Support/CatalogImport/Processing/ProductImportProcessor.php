@@ -10,6 +10,7 @@ use App\Support\CatalogImport\DTO\ImportError;
 use App\Support\CatalogImport\DTO\ImportProcessResult;
 use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\Enums\ImportErrorLevel;
+use App\Support\CatalogImport\Media\ProductImportMediaService;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -22,7 +23,10 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
     private ?int $stagingCategoryId = null;
 
-    public function __construct(private readonly ProductPayloadNormalizer $normalizer = new ProductPayloadNormalizer) {}
+    public function __construct(
+        private readonly ProductPayloadNormalizer $normalizer = new ProductPayloadNormalizer,
+        private readonly ProductImportMediaService $mediaService = new ProductImportMediaService,
+    ) {}
 
     public function process(ProductPayload $payload, array $options = []): ImportProcessResult
     {
@@ -159,6 +163,8 @@ final class ProductImportProcessor implements ImportProcessorInterface
     {
         $normalizedItems = [];
         $summary = $this->emptySummary();
+        $queueMedia = ($options['download_media'] ?? false) === true;
+        $pendingMediaIds = [];
 
         foreach ($payloads as $payload) {
             $normalized = $this->normalizer->normalize($payload);
@@ -210,7 +216,9 @@ final class ProductImportProcessor implements ImportProcessorInterface
             $references,
             $canCreate,
             $canUpdate,
+            $queueMedia,
             $options,
+            &$pendingMediaIds,
             &$summary,
         ): void {
             $referenceUpserts = [];
@@ -222,11 +230,16 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
                 if (! $product instanceof Product) {
                     $reference = null;
-                    $product = null;
+                    $product = $this->resolveLegacyProduct($payload, $options);
                 }
 
                 $operation = 'skipped';
                 $errors = [];
+                $mediaQueueStats = [
+                    'queued' => 0,
+                    'reused' => 0,
+                    'deduplicated' => 0,
+                ];
 
                 if ($product instanceof Product) {
                     if ($canUpdate) {
@@ -254,6 +267,22 @@ final class ProductImportProcessor implements ImportProcessorInterface
                 }
 
                 if ($product instanceof Product) {
+                    if ($queueMedia && $payload->images !== []) {
+                        $mediaQueueResult = $this->mediaService->enqueueProductMedia(
+                            product: $product,
+                            sourceUrls: $payload->images,
+                            runId: $runId,
+                        );
+
+                        $pendingMediaIds = array_merge($pendingMediaIds, $mediaQueueResult['pending_media_ids']);
+
+                        $mediaQueueStats = [
+                            'queued' => (int) ($mediaQueueResult['queued'] ?? 0),
+                            'reused' => (int) ($mediaQueueResult['reused'] ?? 0),
+                            'deduplicated' => (int) ($mediaQueueResult['deduplicated'] ?? 0),
+                        ];
+                    }
+
                     $referenceUpserts[] = [
                         'supplier' => $supplier,
                         'external_id' => $payload->externalId,
@@ -274,6 +303,9 @@ final class ProductImportProcessor implements ImportProcessorInterface
                     meta: [
                         'external_id' => $payload->externalId,
                         'product_id' => $product?->id,
+                        'media_queued' => $mediaQueueStats['queued'],
+                        'media_reused' => $mediaQueueStats['reused'],
+                        'media_deduplicated' => $mediaQueueStats['deduplicated'],
                     ],
                 );
             }
@@ -286,6 +318,10 @@ final class ProductImportProcessor implements ImportProcessorInterface
                 );
             }
         });
+
+        if ($queueMedia && $pendingMediaIds !== []) {
+            $this->mediaService->dispatchPendingMedia($pendingMediaIds);
+        }
 
         return $summary;
     }
@@ -321,25 +357,36 @@ final class ProductImportProcessor implements ImportProcessorInterface
     private function buildProductAttributes(ProductPayload $payload, array $options, bool $isNew): array
     {
         $description = $this->normalizeDescription($payload->description);
+        $sourceSlug = $this->sourceString($payload, 'slug');
 
         $attributes = [
             'name' => $this->limit($payload->name, 255) ?? 'Imported product',
-            'title' => $this->limit($payload->name, 255),
+            'title' => $this->limit($payload->title, 255) ?? $this->limit($payload->name, 255),
+            'sku' => $this->limit($payload->sku, 255),
             'brand' => $this->limit($payload->brand, 255),
+            'country' => $this->limit($payload->country, 255),
             'price_amount' => $payload->priceAmount ?? 0,
+            'discount_price' => $payload->discountPrice,
             'currency' => $payload->currency ?? 'RUB',
             'in_stock' => $this->resolveInStock($payload->inStock, $payload->qty),
             'qty' => $payload->qty,
+            'short' => $this->limit($payload->short, 1000),
             'description' => $description,
+            'extra_description' => $this->normalizeDescription($payload->extraDescription),
             'specs' => $this->normalizeSpecs($payload->attributes),
+            'promo_info' => $this->limit($payload->promoInfo, 255),
             'image' => $payload->images[0] ?? null,
             'thumb' => $payload->images[0] ?? null,
             'gallery' => $payload->images === [] ? null : $payload->images,
-            'meta_title' => $this->limit($payload->name, 255),
-            'meta_description' => $this->metaDescriptionFromText($description),
+            'meta_title' => $this->limit($payload->metaTitle, 255) ?? $this->limit($payload->name, 255),
+            'meta_description' => $this->limit($payload->metaDescription, 255) ?? $this->metaDescriptionFromText($description),
         ];
 
         if ($isNew) {
+            if ($sourceSlug !== null && ($options['use_source_slug'] ?? false) === true) {
+                $attributes['slug'] = $sourceSlug;
+            }
+
             $attributes['is_active'] = ($options['publish_created'] ?? true) === true;
             $attributes['is_in_yml_feed'] = ($options['is_in_yml_feed'] ?? true) === true;
             $attributes['with_dns'] = ($options['with_dns'] ?? true) === true;
@@ -596,6 +643,63 @@ final class ProductImportProcessor implements ImportProcessorInterface
         $supplier = preg_replace('/\s+/u', '_', mb_strtolower($supplier)) ?? $supplier;
 
         return $supplier;
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function resolveLegacyProduct(ProductPayload $payload, array $options): ?Product
+    {
+        $legacyMatch = $this->legacyMatchMode($options['legacy_match'] ?? null);
+
+        if ($legacyMatch === null) {
+            return null;
+        }
+
+        if ($legacyMatch === 'slug') {
+            $slug = $this->sourceString($payload, 'slug');
+
+            if ($slug === null) {
+                return null;
+            }
+
+            return Product::query()->where('slug', $slug)->first();
+        }
+
+        $name = $this->limit($payload->name, 255);
+
+        if ($name === null) {
+            return null;
+        }
+
+        $brand = $this->limit($payload->brand, 255);
+
+        return Product::query()
+            ->where('name', $name)
+            ->when(
+                $brand !== null,
+                fn ($query) => $query->where('brand', $brand),
+                fn ($query) => $query->whereNull('brand')
+            )
+            ->first();
+    }
+
+    private function legacyMatchMode(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $normalized = mb_strtolower(trim($value));
+
+        return in_array($normalized, ['name_brand', 'slug'], true) ? $normalized : null;
+    }
+
+    private function sourceString(ProductPayload $payload, string $key): ?string
+    {
+        $value = $payload->source[$key] ?? null;
+
+        return $this->limit($value, 255);
     }
 
     private function normalizeRunId(mixed $runId): ?int

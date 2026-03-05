@@ -8,8 +8,8 @@
 - [x] Этап 2. Import Run и логирование
 - [x] Этап 3. Источники и парсеры форматов
 - [x] Этап 4. Нормализация и upsert
-- [ ] Этап 5. Медиа-пайплайн
-- [ ] Этап 6. Адаптеры поставщиков
+- [x] Этап 5. Медиа-пайплайн
+- [x] Этап 6. Адаптеры поставщиков
 - [ ] Этап 7. Точки запуска и эксплуатация
 - [ ] Этап 8. Тестирование и приемка
 
@@ -51,6 +51,24 @@
   - зафиксирована стратегия категорий в процессоре: новые товары автоматически привязываются к `Staged`, существующие обновляются без смены категорий;
   - реализован finalize для “missing” (`finalizeMissing`): деактивация выполняется только в `full_sync_authoritative`; в `partial_import` finalize пропускается;
   - добавлены unit-тесты `ProductImportProcessorTest` (normalization, stable key update, batch processing, missing-policy).
+- Выполнен Этап 5 (медиа-пайплайн):
+  - добавлены таблицы `product_import_media` (очередь/состояния медиа) и `import_media_issues` (отдельный журнал медиа-ошибок);
+  - добавлены модели `ProductImportMedia` и `ImportMediaIssue` + связи с `Product` и `ImportRun`;
+  - реализован сервис `ProductImportMediaService`: постановка медиа в очередь, дедупликация по URL на этапе enqueue, переиспользование уже скачанных файлов по URL/hash, синхронизация `image/thumb/gallery`;
+  - реализован job `DownloadProductImportMediaJob`: асинхронная загрузка медиа, `timeout`/HTTP-retry, лимит размера, allowlist MIME-типов, дедупликация по content hash, запуск `GenerateImageDerivativesJob` для изображений;
+  - `ProductImportProcessor` интегрирован с media pipeline через флаг `download_media`: upsert не блокируется загрузкой файлов, медиа обрабатываются в отдельной очереди;
+  - добавлен конфиг `config/catalog-import.php` с параметрами media pipeline (queue, disk, folder, retries, timeout, max size, allowlist MIME);
+  - добавлены unit-тесты `ProductImportMediaPipelineTest` (queue non-blocking, URL dedupe, content-hash dedupe, отдельное логирование media errors).
+- Выполнен Этап 6 (адаптеры поставщиков):
+  - добавлен документ-уровень HTML parser `HtmlDocumentParser` + `HtmlDocumentRecord` для шага `parser` в новом pipeline;
+  - добавлены supplier profile + adapter для `Vactool` и `Metalmaster` (`SupplierAdapterInterface`);
+  - существующие `VactoolProductParser` / `MetalmasterProductParser` перенесены в роль custom extractor внутри новых adapter-ов;
+  - `VactoolProductImportService` и `MetalmasterProductImportService` переключены на новый проход `resolver -> parser -> adapter -> processor` с сохранением legacy shape результата (`processed/errors/created/updated/skipped/fatal_error/url_errors/samples/no_urls`);
+  - в `RunVactoolProductImportJob` и `RunMetalmasterProductImportJob` прокинут `run_id` в options pipeline для корректного `last_seen_run_id` / finalize-политик;
+  - расширен `ProductPayload` (title/sku/country/discount/seo и др.) и обновлены `ProductPayloadNormalizer` + `ProductImportProcessor` для полного field mapping профилей;
+  - добавлен legacy-fallback matching в процессоре (`slug` / `name_brand`) для безопасного перехода со старых ключей на `supplier + external_id`;
+  - добавлен профиль `YandexMarketFeedProfile` и строгая `record-level` валидация обязательных полей в `YandexMarketFeedAdapter` (упрощенный + `vendor.model`);
+  - обновлены/добавлены unit-тесты: `VactoolSupplierAdapterTest`, `MetalmasterSupplierAdapterTest`, обновлены `YmlStreamParserTest`, `CatalogImportContractsTest`, а также CLI/job тесты под новый pipeline.
 
 ## Этап 0. Discovery (зафиксировано)
 
@@ -154,7 +172,7 @@ Vactool (`app/Support/Vactool/*`)
 - Какие типы offer YML поддерживаем сверх “упрощенный” и `vendor.model` и какая стратегия до поддержки: пропуск с ошибкой или частичный маппинг.
 
 ## Ближайшие шаги
-1. Перейти к Этапу 5: медиа-пайплайн (вынести загрузку медиа из основного потока импорта в очередь).
-2. Начать перенос Vactool/Metalmaster в parser+adapter-профили поверх общего pipeline (перенос raw-парсинга в `RecordParserInterface` + `SupplierAdapterInterface`).
-3. До завершения миграции сохранить legacy shape прогресса/результата (`processed/errors/created/updated/skipped/fatal_error/url_errors/samples/no_urls`) для совместимости UI и текущих entrypoint.
-4. После достижения parity и прохождения тестов переключить новый core-поток на run-статусы `running`/`completed`.
+1. Перейти к Этапу 6: перенос Vactool/Metalmaster в parser+adapter-профили поверх общего pipeline (`resolver -> parser -> adapter -> processor`).
+2. До завершения миграции сохранить legacy shape прогресса/результата (`processed/errors/created/updated/skipped/fatal_error/url_errors/samples/no_urls`) для совместимости UI и текущих entrypoint.
+3. После достижения parity и прохождения тестов переключить новый core-поток на run-статусы `running`/`completed`.
+4. Подготовить Этап 7: унифицированные точки запуска (CLI/Filament) с режимами `partial_import`/`full_sync_authoritative` и media-флагами.

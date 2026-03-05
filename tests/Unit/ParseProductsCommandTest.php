@@ -1,13 +1,13 @@
 <?php
 
-use App\Jobs\GenerateImageDerivativesJob;
+use App\Jobs\DownloadProductImportMediaJob;
 use App\Models\Product;
+use App\Models\ProductImportMedia;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -72,7 +72,6 @@ it('imports metalmaster products into database and attaches staging category', f
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
 
     try {
-        Storage::fake('public');
         Queue::fake();
 
         $stagingCategoryId = DB::table('categories')->insertGetId([
@@ -93,9 +92,6 @@ it('imports metalmaster products into database and attaches staging category', f
                 price: 1049972,
                 imageUrl: $imageUrl,
             ), 200),
-            $imageUrl => Http::response('fake-image-binary', 200, [
-                'Content-Type' => 'image/jpeg',
-            ]),
         ]);
 
         $this->artisan('parser:parse-products', [
@@ -117,9 +113,8 @@ it('imports metalmaster products into database and attaches staging category', f
         expect($product->price_amount)->toBe(1049972);
         expect($product->brand)->toBe('MetalMaster');
         expect($product->is_active)->toBeTrue();
-        expect(str_starts_with((string) $product->image, 'pics/'))->toBeTrue();
-        expect(str_ends_with((string) $product->image, '.jpg'))->toBeTrue();
-        expect($product->gallery)->toBe([$product->image]);
+        expect((string) $product->image)->toBe($imageUrl);
+        expect($product->gallery)->toBe([$imageUrl]);
         expect($rawSpecs)->toBeString();
         expect($rawSpecs)->toContain('Мощность');
         expect($rawSpecs)->not->toContain('\\u');
@@ -130,18 +125,16 @@ it('imports metalmaster products into database and attaches staging category', f
                 ->exists()
         )->toBeTrue();
 
-        Storage::disk('public')->assertExists($product->image);
-
-        Queue::assertPushed(GenerateImageDerivativesJob::class, function (GenerateImageDerivativesJob $job) use ($product): bool {
-            return $job->sourcePath === $product->image;
-        });
+        expect(ProductImportMedia::query()->count())->toBe(1);
+        expect(ProductImportMedia::query()->first()?->source_url)->toBe($imageUrl);
+        Queue::assertPushed(DownloadProductImportMediaJob::class);
     } finally {
         @unlink($bucketsFile);
         dropMetalmasterParserSchemas();
     }
 });
 
-it('downloads description images and rewrites them to local storage paths', function () {
+it('keeps description html unchanged and queues main media in async pipeline', function () {
     rebuildMetalmasterParserSchemas();
 
     $productUrl = 'https://metalmaster.ru/promyshlennye/z50100-dro/';
@@ -157,7 +150,6 @@ it('downloads description images and rewrites them to local storage paths', func
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
 
     try {
-        Storage::fake('public');
         Queue::fake();
 
         DB::table('categories')->insert([
@@ -180,12 +172,6 @@ it('downloads description images and rewrites them to local storage paths', func
                 imageUrl: $mainImageUrl,
                 descriptionImageUrl: $descriptionImageUrl,
             ), 200),
-            $mainImageUrl => Http::response('main-image-binary', 200, [
-                'Content-Type' => 'image/jpeg',
-            ]),
-            $descriptionImageUrl => Http::response('description-image-binary', 200, [
-                'Content-Type' => 'image/jpeg',
-            ]),
         ]);
 
         $this->artisan('parser:parse-products', [
@@ -201,25 +187,12 @@ it('downloads description images and rewrites them to local storage paths', func
         $product = Product::query()->firstOrFail();
         $description = (string) $product->description;
 
-        expect($description)->toContain('/storage/pics/');
-        expect($description)->not->toContain('white.gif');
-        expect($description)->not->toContain('data-src=');
+        expect($description)->toContain($descriptionImageUrl);
+        expect($description)->toContain('data-src=');
 
-        preg_match('/\/storage\/(pics\/[^"\']+)/', $description, $matches);
-        $descriptionImagePath = $matches[1] ?? null;
-
-        expect($descriptionImagePath)->toBeString();
-        expect($descriptionImagePath)->not->toBeEmpty();
-
-        Storage::disk('public')->assertExists($product->image);
-        Storage::disk('public')->assertExists((string) $descriptionImagePath);
-
-        Queue::assertPushed(GenerateImageDerivativesJob::class, function (GenerateImageDerivativesJob $job) use ($product): bool {
-            return $job->sourcePath === $product->image;
-        });
-        Queue::assertPushed(GenerateImageDerivativesJob::class, function (GenerateImageDerivativesJob $job) use ($descriptionImagePath): bool {
-            return $job->sourcePath === (string) $descriptionImagePath;
-        });
+        expect(ProductImportMedia::query()->count())->toBe(1);
+        expect(ProductImportMedia::query()->first()?->source_url)->toBe($mainImageUrl);
+        Queue::assertPushed(DownloadProductImportMediaJob::class);
     } finally {
         @unlink($bucketsFile);
         dropMetalmasterParserSchemas();
@@ -340,10 +313,57 @@ function rebuildMetalmasterParserSchemas(): void
         $table->boolean('is_primary')->default(false);
         $table->primary(['product_id', 'category_id']);
     });
+
+    Schema::create('product_supplier_references', function (Blueprint $table): void {
+        $table->id();
+        $table->string('supplier', 120);
+        $table->string('external_id');
+        $table->unsignedBigInteger('product_id');
+        $table->unsignedBigInteger('first_seen_run_id')->nullable();
+        $table->unsignedBigInteger('last_seen_run_id')->nullable();
+        $table->timestamp('last_seen_at')->nullable();
+        $table->timestamps();
+        $table->unique(['supplier', 'external_id']);
+        $table->index(['supplier', 'product_id']);
+        $table->index(['supplier', 'last_seen_run_id']);
+    });
+
+    Schema::create('product_import_media', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('run_id')->nullable();
+        $table->unsignedBigInteger('product_id');
+        $table->text('source_url');
+        $table->string('source_url_hash', 64);
+        $table->string('source_kind', 32)->default('image');
+        $table->string('status', 32)->default('pending');
+        $table->string('mime_type', 120)->nullable();
+        $table->unsignedBigInteger('bytes')->nullable();
+        $table->string('content_hash', 64)->nullable();
+        $table->string('local_path')->nullable();
+        $table->unsignedInteger('attempts')->default(0);
+        $table->text('last_error')->nullable();
+        $table->timestamp('processed_at')->nullable();
+        $table->json('meta')->nullable();
+        $table->timestamps();
+    });
+
+    Schema::create('import_media_issues', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('media_id');
+        $table->unsignedBigInteger('run_id')->nullable();
+        $table->unsignedBigInteger('product_id')->nullable();
+        $table->string('code', 64);
+        $table->text('message');
+        $table->json('context')->nullable();
+        $table->timestamps();
+    });
 }
 
 function dropMetalmasterParserSchemas(): void
 {
+    Schema::dropIfExists('import_media_issues');
+    Schema::dropIfExists('product_import_media');
+    Schema::dropIfExists('product_supplier_references');
     Schema::dropIfExists('product_categories');
     Schema::dropIfExists('categories');
     Schema::dropIfExists('products');

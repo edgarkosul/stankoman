@@ -1,13 +1,13 @@
 <?php
 
-use App\Jobs\GenerateImageDerivativesJob;
+use App\Jobs\DownloadProductImportMediaJob;
 use App\Models\Product;
+use App\Models\ProductImportMedia;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -45,7 +45,6 @@ it('generates local slug and downloads image to pics with queued derivatives', f
     rebuildVactoolParserSchemas();
 
     try {
-        Storage::fake('public');
         Queue::fake();
 
         $stagingCategoryId = DB::table('categories')->insertGetId([
@@ -90,9 +89,8 @@ it('generates local slug and downloads image to pics with queued derivatives', f
 
         expect($product->slug)->toBe(Str::slug($title));
         expect($product->slug)->not->toBe($donorSlug);
-        expect(str_starts_with((string) $product->image, 'pics/'))->toBeTrue();
-        expect(str_ends_with((string) $product->image, '.jpg'))->toBeTrue();
-        expect($product->gallery)->toBe([$product->image]);
+        expect((string) $product->image)->toBe($imageUrl);
+        expect($product->gallery)->toBe([$imageUrl]);
         expect($rawSpecs)->toBeString();
         expect($rawSpecs)->toContain('Мощность');
         expect($rawSpecs)->not->toContain('\\u');
@@ -103,17 +101,16 @@ it('generates local slug and downloads image to pics with queued derivatives', f
                 ->exists()
         )->toBeTrue();
 
-        Storage::disk('public')->assertExists($product->image);
+        expect(ProductImportMedia::query()->count())->toBe(1);
+        expect(ProductImportMedia::query()->first()?->source_url)->toBe($imageUrl);
 
-        Queue::assertPushed(GenerateImageDerivativesJob::class, function (GenerateImageDerivativesJob $job) use ($product): bool {
-            return $job->sourcePath === $product->image;
-        });
+        Queue::assertPushed(DownloadProductImportMediaJob::class);
     } finally {
         dropVactoolParserSchemas();
     }
 });
 
-it('attaches staging category when existing product is updated by parser import', function () {
+it('updates existing product by legacy matcher without restaging categories', function () {
     rebuildVactoolParserSchemas();
 
     try {
@@ -164,7 +161,7 @@ it('attaches staging category when existing product is updated by parser import'
                 ->where('product_id', $product->id)
                 ->where('category_id', $stagingCategoryId)
                 ->exists()
-        )->toBeTrue();
+        )->toBeFalse();
     } finally {
         dropVactoolParserSchemas();
     }
@@ -315,10 +312,57 @@ function rebuildVactoolParserSchemas(): void
         $table->boolean('is_primary')->default(false);
         $table->primary(['product_id', 'category_id']);
     });
+
+    Schema::create('product_supplier_references', function (Blueprint $table): void {
+        $table->id();
+        $table->string('supplier', 120);
+        $table->string('external_id');
+        $table->unsignedBigInteger('product_id');
+        $table->unsignedBigInteger('first_seen_run_id')->nullable();
+        $table->unsignedBigInteger('last_seen_run_id')->nullable();
+        $table->timestamp('last_seen_at')->nullable();
+        $table->timestamps();
+        $table->unique(['supplier', 'external_id']);
+        $table->index(['supplier', 'product_id']);
+        $table->index(['supplier', 'last_seen_run_id']);
+    });
+
+    Schema::create('product_import_media', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('run_id')->nullable();
+        $table->unsignedBigInteger('product_id');
+        $table->text('source_url');
+        $table->string('source_url_hash', 64);
+        $table->string('source_kind', 32)->default('image');
+        $table->string('status', 32)->default('pending');
+        $table->string('mime_type', 120)->nullable();
+        $table->unsignedBigInteger('bytes')->nullable();
+        $table->string('content_hash', 64)->nullable();
+        $table->string('local_path')->nullable();
+        $table->unsignedInteger('attempts')->default(0);
+        $table->text('last_error')->nullable();
+        $table->timestamp('processed_at')->nullable();
+        $table->json('meta')->nullable();
+        $table->timestamps();
+    });
+
+    Schema::create('import_media_issues', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('media_id');
+        $table->unsignedBigInteger('run_id')->nullable();
+        $table->unsignedBigInteger('product_id')->nullable();
+        $table->string('code', 64);
+        $table->text('message');
+        $table->json('context')->nullable();
+        $table->timestamps();
+    });
 }
 
 function dropVactoolParserSchemas(): void
 {
+    Schema::dropIfExists('import_media_issues');
+    Schema::dropIfExists('product_import_media');
+    Schema::dropIfExists('product_supplier_references');
     Schema::dropIfExists('product_categories');
     Schema::dropIfExists('categories');
     Schema::dropIfExists('products');

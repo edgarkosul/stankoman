@@ -46,6 +46,9 @@ it('parses records and maps payloads through shared contracts', function () {
     <offers>
       <offer id="A1" available="true">
         <name>Contract Product</name>
+        <price>100</price>
+        <currencyId>RUB</currencyId>
+        <categoryId>1</categoryId>
       </offer>
     </offers>
   </shop>

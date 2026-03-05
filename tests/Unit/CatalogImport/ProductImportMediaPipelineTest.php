@@ -1,0 +1,374 @@
+<?php
+
+use App\Jobs\DownloadProductImportMediaJob;
+use App\Jobs\GenerateImageDerivativesJob;
+use App\Models\ImportMediaIssue;
+use App\Models\ImportRun;
+use App\Models\Product;
+use App\Models\ProductImportMedia;
+use App\Support\CatalogImport\DTO\ProductPayload;
+use App\Support\CatalogImport\Media\ProductImportMediaService;
+use App\Support\CatalogImport\Processing\ProductImportProcessor;
+use App\Support\CatalogImport\Processing\ProductPayloadNormalizer;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Tests\TestCase;
+
+uses(TestCase::class);
+
+beforeEach(function (): void {
+    prepareProductImportMediaPipelineSchemas();
+});
+
+it('queues media downloads without blocking product upsert', function (): void {
+    Queue::fake();
+
+    $run = createProductImportMediaRun('catalog_import_yml');
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer, new ProductImportMediaService);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'M-1',
+            name: 'Товар с медиа',
+            images: [
+                'https://cdn.example.test/media/a.jpg',
+                'https://cdn.example.test/media/a.jpg',
+                'https://cdn.example.test/media/b.jpg',
+            ],
+        ),
+    ], [
+        'supplier' => 'media_feed',
+        'run_id' => $run->id,
+        'download_media' => true,
+    ]);
+
+    expect($summary['created'])->toBe(1)
+        ->and($summary['errors'])->toBe(0)
+        ->and(ProductImportMedia::query()->count())->toBe(2)
+        ->and(ProductImportMedia::query()->where('status', ProductImportMedia::STATUS_PENDING)->count())->toBe(2)
+        ->and(ImportMediaIssue::query()->count())->toBe(0);
+
+    Queue::assertPushed(DownloadProductImportMediaJob::class, 2);
+});
+
+it('deduplicates media queue by url for same product across repeated imports', function (): void {
+    Queue::fake();
+
+    $runOne = createProductImportMediaRun('catalog_import_yml');
+    $runTwo = createProductImportMediaRun('catalog_import_yml');
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer, new ProductImportMediaService);
+
+    $processor->processBatch([
+        new ProductPayload(
+            externalId: 'M-2',
+            name: 'Повторяющийся медиа-товар',
+            images: [
+                'https://cdn.example.test/media/one.jpg',
+                'https://cdn.example.test/media/one.jpg',
+                'https://cdn.example.test/media/two.jpg',
+            ],
+        ),
+    ], [
+        'supplier' => 'media_feed_repeat',
+        'run_id' => $runOne->id,
+        'download_media' => true,
+    ]);
+
+    $processor->processBatch([
+        new ProductPayload(
+            externalId: 'M-2',
+            name: 'Повторяющийся медиа-товар',
+            images: [
+                'https://cdn.example.test/media/one.jpg',
+                'https://cdn.example.test/media/two.jpg',
+                'https://cdn.example.test/media/three.jpg',
+            ],
+        ),
+    ], [
+        'supplier' => 'media_feed_repeat',
+        'run_id' => $runTwo->id,
+        'download_media' => true,
+    ]);
+
+    expect(ProductImportMedia::query()->count())->toBe(3)
+        ->and(ProductImportMedia::query()->where('status', ProductImportMedia::STATUS_PENDING)->count())->toBe(3);
+
+    Queue::assertPushed(DownloadProductImportMediaJob::class, 3);
+});
+
+it('downloads media in queued job and deduplicates by content hash', function (): void {
+    Storage::fake('public');
+    Queue::fake();
+
+    Http::fake([
+        'https://cdn.example.test/media/hash-a.jpg' => Http::response('same-image-bytes', 200, [
+            'Content-Type' => 'image/jpeg',
+        ]),
+        'https://cdn.example.test/media/hash-b.jpg' => Http::response('same-image-bytes', 200, [
+            'Content-Type' => 'image/jpeg',
+        ]),
+    ]);
+
+    $firstProduct = Product::query()->create([
+        'name' => 'Первый товар',
+        'slug' => 'first-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+    ]);
+
+    $secondProduct = Product::query()->create([
+        'name' => 'Второй товар',
+        'slug' => 'second-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+    ]);
+
+    $mediaOne = ProductImportMedia::query()->create([
+        'product_id' => $firstProduct->id,
+        'source_url' => 'https://cdn.example.test/media/hash-a.jpg',
+        'source_url_hash' => hash('sha256', 'https://cdn.example.test/media/hash-a.jpg'),
+        'source_kind' => 'image',
+        'status' => ProductImportMedia::STATUS_PENDING,
+    ]);
+
+    $mediaTwo = ProductImportMedia::query()->create([
+        'product_id' => $secondProduct->id,
+        'source_url' => 'https://cdn.example.test/media/hash-b.jpg',
+        'source_url_hash' => hash('sha256', 'https://cdn.example.test/media/hash-b.jpg'),
+        'source_kind' => 'image',
+        'status' => ProductImportMedia::STATUS_PENDING,
+    ]);
+
+    $service = new ProductImportMediaService;
+
+    (new DownloadProductImportMediaJob($mediaOne->id))->handle($service);
+    (new DownloadProductImportMediaJob($mediaTwo->id))->handle($service);
+
+    $mediaOne->refresh();
+    $mediaTwo->refresh();
+
+    expect($mediaOne->status)->toBe(ProductImportMedia::STATUS_COMPLETED)
+        ->and($mediaTwo->status)->toBe(ProductImportMedia::STATUS_COMPLETED)
+        ->and($mediaOne->content_hash)->toBe($mediaTwo->content_hash)
+        ->and($mediaOne->local_path)->toBe($mediaTwo->local_path)
+        ->and(is_string($mediaOne->local_path))->toBeTrue();
+
+    Storage::disk('public')->assertExists((string) $mediaOne->local_path);
+
+    $firstProduct->refresh();
+    $secondProduct->refresh();
+
+    expect($firstProduct->image)->toBe($mediaOne->local_path)
+        ->and($secondProduct->image)->toBe($mediaOne->local_path)
+        ->and(ImportMediaIssue::query()->count())->toBe(0);
+
+    Queue::assertPushed(GenerateImageDerivativesJob::class, 1);
+});
+
+it('logs media failures separately from main import issues', function (): void {
+    Storage::fake('public');
+    Queue::fake();
+
+    Http::fake([
+        'https://cdn.example.test/media/bad-file' => Http::response('<html>bad</html>', 200, [
+            'Content-Type' => 'text/html; charset=UTF-8',
+        ]),
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Проблемный товар',
+        'slug' => 'broken-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+    ]);
+
+    $media = ProductImportMedia::query()->create([
+        'product_id' => $product->id,
+        'source_url' => 'https://cdn.example.test/media/bad-file',
+        'source_url_hash' => hash('sha256', 'https://cdn.example.test/media/bad-file'),
+        'source_kind' => 'image',
+        'status' => ProductImportMedia::STATUS_PENDING,
+    ]);
+
+    $service = new ProductImportMediaService;
+
+    (new DownloadProductImportMediaJob($media->id))->handle($service);
+
+    $media->refresh();
+
+    expect($media->status)->toBe(ProductImportMedia::STATUS_FAILED)
+        ->and(ImportMediaIssue::query()->count())->toBe(1)
+        ->and(ImportMediaIssue::query()->value('code'))->toBe('unsupported_mime_type');
+
+    Queue::assertNotPushed(GenerateImageDerivativesJob::class);
+});
+
+function createProductImportMediaRun(string $type): ImportRun
+{
+    return ImportRun::query()->create([
+        'type' => $type,
+        'status' => 'running',
+        'columns' => [],
+        'totals' => [],
+        'started_at' => now(),
+    ]);
+}
+
+function prepareProductImportMediaPipelineSchemas(): void
+{
+    Schema::dropIfExists('import_media_issues');
+    Schema::dropIfExists('product_import_media');
+    Schema::dropIfExists('product_supplier_references');
+    Schema::dropIfExists('product_categories');
+    Schema::dropIfExists('products');
+    Schema::dropIfExists('categories');
+    Schema::dropIfExists('import_runs');
+
+    Schema::create('import_runs', function (Blueprint $table): void {
+        $table->id();
+        $table->string('type')->default('products');
+        $table->string('status')->default('pending');
+        $table->json('columns')->nullable();
+        $table->json('totals')->nullable();
+        $table->string('source_filename')->nullable();
+        $table->string('stored_path')->nullable();
+        $table->unsignedBigInteger('user_id')->nullable();
+        $table->timestamp('started_at')->nullable();
+        $table->timestamp('finished_at')->nullable();
+        $table->timestamps();
+    });
+
+    Schema::create('categories', function (Blueprint $table): void {
+        $table->id();
+        $table->string('name');
+        $table->string('slug');
+        $table->string('img')->nullable();
+        $table->boolean('is_active')->default(true);
+        $table->integer('parent_id')->default(-1)->index();
+        $table->integer('order')->default(0)->index();
+        $table->json('meta_json')->nullable();
+        $table->timestamps();
+
+        $table->unique(['parent_id', 'slug']);
+        $table->unique(['parent_id', 'order']);
+    });
+
+    Schema::create('products', function (Blueprint $table): void {
+        $table->id();
+        $table->string('name');
+        $table->string('name_normalized');
+        $table->string('title')->nullable();
+        $table->string('slug')->unique();
+        $table->string('sku')->nullable()->index();
+        $table->string('brand')->nullable()->index();
+        $table->string('country')->nullable();
+        $table->unsignedInteger('price_amount')->default(0);
+        $table->unsignedInteger('discount_price')->nullable();
+        $table->char('currency', 3)->default('RUB');
+        $table->boolean('in_stock')->default(true)->index();
+        $table->unsignedInteger('qty')->nullable();
+        $table->unsignedInteger('popularity')->default(0)->index();
+        $table->boolean('is_active')->default(true)->index();
+        $table->boolean('is_in_yml_feed')->default(true)->index();
+        $table->boolean('with_dns')->default(true);
+        $table->text('short')->nullable();
+        $table->longText('description')->nullable();
+        $table->text('extra_description')->nullable();
+        $table->json('specs')->nullable();
+        $table->string('promo_info')->nullable();
+        $table->string('image')->nullable();
+        $table->string('thumb')->nullable();
+        $table->json('gallery')->nullable();
+        $table->string('meta_title')->nullable();
+        $table->text('meta_description')->nullable();
+        $table->timestamps();
+    });
+
+    Schema::create('product_categories', function (Blueprint $table): void {
+        $table->unsignedBigInteger('product_id');
+        $table->unsignedBigInteger('category_id');
+        $table->boolean('is_primary')->default(false);
+
+        $table->primary(['product_id', 'category_id']);
+        $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
+        $table->foreign('category_id')->references('id')->on('categories')->cascadeOnDelete();
+    });
+
+    Schema::create('product_supplier_references', function (Blueprint $table): void {
+        $table->id();
+        $table->string('supplier', 120);
+        $table->string('external_id');
+        $table->unsignedBigInteger('product_id');
+        $table->unsignedBigInteger('first_seen_run_id')->nullable();
+        $table->unsignedBigInteger('last_seen_run_id')->nullable();
+        $table->timestamp('last_seen_at')->nullable();
+        $table->timestamps();
+
+        $table->unique(['supplier', 'external_id']);
+        $table->index(['supplier', 'product_id']);
+        $table->index(['supplier', 'last_seen_run_id']);
+
+        $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
+        $table->foreign('first_seen_run_id')->references('id')->on('import_runs')->nullOnDelete();
+        $table->foreign('last_seen_run_id')->references('id')->on('import_runs')->nullOnDelete();
+    });
+
+    Schema::create('product_import_media', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('run_id')->nullable();
+        $table->unsignedBigInteger('product_id');
+        $table->text('source_url');
+        $table->char('source_url_hash', 64);
+        $table->string('source_kind', 24)->default('image');
+        $table->string('status', 16)->default('pending');
+        $table->string('mime_type', 191)->nullable();
+        $table->unsignedBigInteger('bytes')->nullable();
+        $table->char('content_hash', 64)->nullable();
+        $table->string('local_path')->nullable();
+        $table->unsignedInteger('attempts')->default(0);
+        $table->text('last_error')->nullable();
+        $table->timestamp('processed_at')->nullable();
+        $table->json('meta')->nullable();
+        $table->timestamps();
+
+        $table->unique(['product_id', 'source_url_hash']);
+        $table->index(['status', 'created_at']);
+        $table->index('source_url_hash');
+        $table->index('content_hash');
+
+        $table->foreign('run_id')->references('id')->on('import_runs')->nullOnDelete();
+        $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
+    });
+
+    Schema::create('import_media_issues', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('media_id')->nullable();
+        $table->unsignedBigInteger('run_id')->nullable();
+        $table->unsignedBigInteger('product_id')->nullable();
+        $table->string('code', 64);
+        $table->text('message')->nullable();
+        $table->json('context')->nullable();
+        $table->timestamps();
+
+        $table->foreign('media_id')->references('id')->on('product_import_media')->nullOnDelete();
+        $table->foreign('run_id')->references('id')->on('import_runs')->nullOnDelete();
+        $table->foreign('product_id')->references('id')->on('products')->nullOnDelete();
+    });
+}

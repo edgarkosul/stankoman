@@ -11,6 +11,10 @@ use SimpleXMLElement;
 
 final class YandexMarketFeedAdapter implements SupplierAdapterInterface
 {
+    public function __construct(
+        private readonly YandexMarketFeedProfile $profile = new YandexMarketFeedProfile,
+    ) {}
+
     public function mapRecord(mixed $record): RecordMappingResult
     {
         if (! $record instanceof YmlOfferRecord) {
@@ -65,18 +69,26 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
     private function mapSimplifiedOffer(string $externalId, YmlOfferRecord $offer, SimpleXMLElement $xml, array $errors): RecordMappingResult
     {
         $name = $this->textOrNull($xml->name ?? null);
+        $categoryId = $this->textOrNull($xml->categoryId ?? null);
+        $priceRaw = $this->textOrNull($xml->price ?? null);
+        $currency = $this->textOrNull($xml->currencyId ?? null);
 
-        if ($name === null) {
-            $errors[] = new ImportError(
-                code: 'missing_name',
-                message: 'Simplified offers require <name>.',
-            );
+        $this->appendRequiredFieldErrors(
+            errors: $errors,
+            offerType: null,
+            values: [
+                'name' => $name,
+                'price' => $priceRaw,
+                'currencyId' => $currency,
+                'categoryId' => $categoryId,
+            ],
+        );
 
+        if ($errors !== []) {
             return new RecordMappingResult(payload: null, errors: $errors);
         }
 
-        $priceAmount = $this->parsePriceAmount($this->textOrNull($xml->price ?? null));
-        $currency = $this->textOrNull($xml->currencyId ?? null);
+        $priceAmount = $this->parsePriceAmount($priceRaw);
         $vendor = $this->textOrNull($xml->vendor ?? null);
         $description = $this->textOrNull($xml->description ?? null);
 
@@ -90,8 +102,11 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 currency: $currency,
                 inStock: $offer->available,
                 source: [
+                    'supplier' => $this->profile->supplierKey(),
+                    'profile' => $this->profile->profileName(),
                     'format' => 'yml',
                     'offer_type' => $offer->type,
+                    'category_id' => $categoryId,
                 ],
             ),
             errors: $errors,
@@ -106,20 +121,21 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $typePrefix = $this->textOrNull($xml->typePrefix ?? null);
         $vendor = $this->textOrNull($xml->vendor ?? null);
         $model = $this->textOrNull($xml->model ?? null);
+        $categoryId = $this->textOrNull($xml->categoryId ?? null);
+        $priceRaw = $this->textOrNull($xml->price ?? null);
+        $currency = $this->textOrNull($xml->currencyId ?? null);
 
-        if ($vendor === null) {
-            $errors[] = new ImportError(
-                code: 'missing_vendor',
-                message: 'vendor.model offers require <vendor>.',
-            );
-        }
-
-        if ($model === null) {
-            $errors[] = new ImportError(
-                code: 'missing_model',
-                message: 'vendor.model offers require <model>.',
-            );
-        }
+        $this->appendRequiredFieldErrors(
+            errors: $errors,
+            offerType: 'vendor.model',
+            values: [
+                'vendor' => $vendor,
+                'model' => $model,
+                'price' => $priceRaw,
+                'currencyId' => $currency,
+                'categoryId' => $categoryId,
+            ],
+        );
 
         if ($errors !== []) {
             return new RecordMappingResult(payload: null, errors: $errors);
@@ -136,8 +152,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
 
         $name = implode(' ', $nameParts);
 
-        $priceAmount = $this->parsePriceAmount($this->textOrNull($xml->price ?? null));
-        $currency = $this->textOrNull($xml->currencyId ?? null);
+        $priceAmount = $this->parsePriceAmount($priceRaw);
         $description = $this->textOrNull($xml->description ?? null);
 
         return new RecordMappingResult(
@@ -150,8 +165,11 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 currency: $currency,
                 inStock: $offer->available,
                 source: [
+                    'supplier' => $this->profile->supplierKey(),
+                    'profile' => $this->profile->profileName(),
                     'format' => 'yml',
                     'offer_type' => $offer->type,
+                    'category_id' => $categoryId,
                 ],
             ),
             errors: $errors,
@@ -225,5 +243,29 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         }
 
         return (int) round((float) $normalized);
+    }
+
+    /**
+     * @param  array<int, ImportError>  $errors
+     * @param  array<string, string|null>  $values
+     */
+    private function appendRequiredFieldErrors(array &$errors, ?string $offerType, array $values): void
+    {
+        if (($this->profile->defaults()['strict_required_fields'] ?? false) !== true) {
+            return;
+        }
+
+        foreach ($this->profile->requiredFields($offerType) as $field) {
+            $value = $values[$field] ?? null;
+
+            if (is_string($value) && trim($value) !== '') {
+                continue;
+            }
+
+            $errors[] = new ImportError(
+                code: 'missing_required_'.$field,
+                message: sprintf('Offer is missing required field <%s>.', $field),
+            );
+        }
     }
 }

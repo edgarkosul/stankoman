@@ -176,6 +176,11 @@ class Product extends Model
         return $this->hasMany(ProductSupplierReference::class);
     }
 
+    public function importMedia(): HasMany
+    {
+        return $this->hasMany(ProductImportMedia::class);
+    }
+
     /**
      * Значения PAV (text/number/boolean/range).
      * Сразу подгружаем `attribute` для предотвращения N+1 в valueFor()/attr().

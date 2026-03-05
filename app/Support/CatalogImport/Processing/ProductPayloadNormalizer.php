@@ -20,6 +20,15 @@ class ProductPayloadNormalizer
             images: $this->normalizeImages($payload->images),
             attributes: $payload->attributes,
             source: $payload->source,
+            title: $this->normalizeString($payload->title, collapseWhitespace: true),
+            sku: $this->normalizeString($payload->sku, collapseWhitespace: true),
+            country: $this->normalizeString($payload->country, collapseWhitespace: true),
+            discountPrice: $this->normalizeNonNegativeInteger($payload->discountPrice),
+            short: $this->normalizeString($payload->short, collapseWhitespace: true),
+            extraDescription: $this->normalizeDescription($payload->extraDescription),
+            promoInfo: $this->normalizeString($payload->promoInfo, collapseWhitespace: true),
+            metaTitle: $this->normalizeString($payload->metaTitle, collapseWhitespace: true),
+            metaDescription: $this->normalizeString($payload->metaDescription, collapseWhitespace: true),
         );
     }
 

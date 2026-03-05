@@ -47,7 +47,9 @@ class RunVactoolProductImportJob implements ShouldQueue
 
         try {
             $result = $service->run(
-                $this->options,
+                array_merge($this->options, [
+                    'run_id' => $this->runId,
+                ]),
                 null,
                 function (array $progress) use ($run, $runs): void {
                     $runs->saveProgress($run, $progress, $this->mode());

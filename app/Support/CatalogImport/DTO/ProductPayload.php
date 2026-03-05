@@ -21,5 +21,14 @@ final readonly class ProductPayload
         public array $images = [],
         public array $attributes = [],
         public array $source = [],
+        public ?string $title = null,
+        public ?string $sku = null,
+        public ?string $country = null,
+        public ?int $discountPrice = null,
+        public ?string $short = null,
+        public ?string $extraDescription = null,
+        public ?string $promoInfo = null,
+        public ?string $metaTitle = null,
+        public ?string $metaDescription = null,
     ) {}
 }

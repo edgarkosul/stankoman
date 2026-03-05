@@ -76,6 +76,7 @@ it('maps simplified and vendor.model offers into product payloads', function () 
         <description>Simple description.</description>
         <price>123</price>
         <currencyId>RUB</currencyId>
+        <categoryId>1</categoryId>
       </offer>
       <offer id="A2" type="vendor.model" available="false">
         <typePrefix>Пылесос</typePrefix>
@@ -84,6 +85,7 @@ it('maps simplified and vendor.model offers into product payloads', function () 
         <description>Vendor model description.</description>
         <price>999</price>
         <currencyId>RUB</currencyId>
+        <categoryId>1</categoryId>
       </offer>
     </offers>
   </shop>
@@ -131,6 +133,9 @@ it('skips vendor.model offers when required fields are missing', function () {
       <offer id="A2" type="vendor.model" available="true">
         <typePrefix>Пылесос</typePrefix>
         <model>VT-9000</model>
+        <price>999</price>
+        <currencyId>RUB</currencyId>
+        <categoryId>1</categoryId>
       </offer>
     </offers>
   </shop>
@@ -149,7 +154,7 @@ XML;
 
         expect($result->isSuccess())->toBeFalse();
         expect($result->payload)->toBeNull();
-        expect(collect($result->errors)->pluck('code')->all())->toContain('missing_vendor');
+        expect(collect($result->errors)->pluck('code')->all())->toContain('missing_required_vendor');
     } finally {
         @unlink($path);
     }
@@ -164,6 +169,7 @@ it('skips simplified offers when <name> is missing', function () {
       <offer id="A1" available="true">
         <price>123</price>
         <currencyId>RUB</currencyId>
+        <categoryId>1</categoryId>
       </offer>
     </offers>
   </shop>
@@ -182,7 +188,7 @@ XML;
 
         expect($result->isSuccess())->toBeFalse();
         expect($result->payload)->toBeNull();
-        expect(collect($result->errors)->pluck('code')->all())->toContain('missing_name');
+        expect(collect($result->errors)->pluck('code')->all())->toContain('missing_required_name');
     } finally {
         @unlink($path);
     }
