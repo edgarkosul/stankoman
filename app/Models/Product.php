@@ -171,6 +171,11 @@ class Product extends Model
             ->withPivot('is_primary');
     }
 
+    public function supplierReferences(): HasMany
+    {
+        return $this->hasMany(ProductSupplierReference::class);
+    }
+
     /**
      * Значения PAV (text/number/boolean/range).
      * Сразу подгружаем `attribute` для предотвращения N+1 в valueFor()/attr().

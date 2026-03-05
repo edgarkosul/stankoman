@@ -6,8 +6,8 @@
 - [x] Этап 0. Discovery и фиксация текущего состояния
 - [x] Этап 1. Контракты и DTO
 - [x] Этап 2. Import Run и логирование
-- [ ] Этап 3. Источники и парсеры форматов
-- [ ] Этап 4. Нормализация и upsert
+- [x] Этап 3. Источники и парсеры форматов
+- [x] Этап 4. Нормализация и upsert
 - [ ] Этап 5. Медиа-пайплайн
 - [ ] Этап 6. Адаптеры поставщиков
 - [ ] Этап 7. Точки запуска и эксплуатация
@@ -33,6 +33,24 @@
 - В `RunVactoolProductImportJob` и `RunMetalmasterProductImportJob` убрано дублирование lifecycle-логики, добавлен опциональный порог остановки по ошибкам (`error_threshold_count` / `error_threshold_percent`) с issue-кодом `error_threshold_exceeded`.
 - Обновлены поддерживаемые статусы для нового import core: `ImportRunStatus` расширен (legacy + `running`/`completed`), `ImportRunObserver` и `ImportRunsTable` теперь понимают `completed`.
 - Добавлены/обновлены тесты: `ImportRunOrchestratorTest`, `RunVactoolProductImportJobTest` (включая threshold case), `RunMetalmasterProductImportJobTest`, `ImportRunDatabaseNotificationTest`.
+- Зафиксирована стратегия полного перехода legacy-парсеров:
+  - перенос сбора сырого контента в `RecordParserInterface` + `SupplierAdapterInterface`;
+  - сохранение текущего shape прогресса/результата (`processed/errors/created/updated/skipped/fatal_error/url_errors/samples/no_urls`) до полной миграции UI;
+  - переключение run-статусов на `running`/`completed` только после parity и подтверждения тестами.
+- Выполнен Этап 3 (источники и парсеры форматов):
+  - реализован `SourceResolver` (`SourceResolverInterface`) с поддержкой локальных файлов и URL-источников (`timeout`/`connect_timeout`/`retry`) и условных заголовков `If-None-Match`/`If-Modified-Since` (ETag/Last-Modified) через файловый cache;
+  - реализованы DTO форматного слоя `XmlRecord` и `HtmlRecord`;
+  - реализован `XmlStreamParser` (`RecordParserInterface`) на `XMLReader` с выбором повторяющегося узла (`record_node`) и конвертацией XML-записей в UTF-8;
+  - реализован базовый `HtmlDomParser` (`RecordParserInterface`) с обходом карточек по `card_selector`/`card_xpath`, извлечением полей по `selector`/`xpath` и fallback-цепочками экстракторов;
+  - добавлены unit-тесты `SourceResolverTest`, `XmlStreamParserTest`, `HtmlDomParserTest`; подтверждена работоспособность вместе с `YmlStreamParserTest`.
+- Выполнен Этап 4 (нормализация и upsert):
+  - добавлена таблица стабильной идентификации `product_supplier_references` (`supplier + external_id -> product_id`) + модель `ProductSupplierReference`;
+  - в `Product` добавлена связь `supplierReferences()` для работы с mapping-слоем;
+  - реализован `ProductPayloadNormalizer`: чистки строк (`trim`, html entities, whitespace), нормализация валюты (`RUR -> RUB`), цены/остатка и списка изображений;
+  - реализован `ProductImportProcessor` (`ImportProcessorInterface`) с batch-обработкой (`processBatch`), upsert-логикой по стабильному ключу, опциями `create_missing`/`update_existing` и обновлением `last_seen_run_id`;
+  - зафиксирована стратегия категорий в процессоре: новые товары автоматически привязываются к `Staged`, существующие обновляются без смены категорий;
+  - реализован finalize для “missing” (`finalizeMissing`): деактивация выполняется только в `full_sync_authoritative`; в `partial_import` finalize пропускается;
+  - добавлены unit-тесты `ProductImportProcessorTest` (normalization, stable key update, batch processing, missing-policy).
 
 ## Этап 0. Discovery (зафиксировано)
 
@@ -115,6 +133,7 @@ Vactool (`app/Support/Vactool/*`)
 - `Source` определяется выбранным `SupplierAdapter/Profile` (поставщик/профиль). Конкретный файл/URL относится к конкретному run и не обязан быть “полным снимком”.
 - Вводим режимы прогона: `partial_import` (по умолчанию, без деактивации “отсутствующих”) и `full_sync_authoritative` (полный снимок, после прогона выполняем finalize “missing”).
 - “Исчезнувший из фида/источника” определяется только для `full_sync_authoritative` в рамках одного `Source`: товар привязан к `Source`, но не встретился в run.
+- Базовая стратегия finalize “missing” в `full_sync_authoritative`: `is_active=false`, `in_stock=false`, `qty=0`.
 - Категории на сайте назначаются вручную: новые товары создаются в категории `Staged`, существующие обновляются без смены категорий (по умолчанию).
 - Минимальный обязательный набор полей `ProductPayload`: `external_id`, `name`. `price/stock` и прочие поля валидируются в зависимости от режима/опций прогона.
 - Ошибки делим на `fatal` (останавливают run) и `record-level` (логируем и продолжаем). Порог остановки по `record-level` настраиваемый per-run.
@@ -129,13 +148,13 @@ Vactool (`app/Support/Vactool/*`)
 - Внешние библиотеки для XML/YML не протекают в import core; если и используются, то внутри конкретного форматного парсера и только при гарантии потоковой обработки.
 
 ## Открытые вопросы
-- Что означает “missing -> inactive” на уровне домена: `is_active=false`, `stock=0`, отдельный статус, или комбинация.
 - Нужен ли отдельный режим/флаг: “`restage_existing_on_change`” (перекладывать измененные товары обратно в `Staged`).
 - Разрешаем ли создание `Staged` товара без `price` (и как его отображать/ограничивать в витрине).
 - Дефолтные значения порогов ошибок (count/%), чтобы “из коробки” было безопасно.
 - Какие типы offer YML поддерживаем сверх “упрощенный” и `vendor.model` и какая стратегия до поддержки: пропуск с ошибкой или частичный маппинг.
 
 ## Ближайшие шаги
-1. Продолжить слой источников и парсеров форматов (Этап 3), интегрируя уже сделанный YML-стриминг.
-2. Добавить `SourceResolver` (local file / URL download / cache) и связать его с `RecordParserInterface` в новом import core pipeline.
-3. Начать перенос Vactool/Metalmaster в parser+adapter-профили поверх общего pipeline (без удаления текущих рабочих entrypoint до полного parity).
+1. Перейти к Этапу 5: медиа-пайплайн (вынести загрузку медиа из основного потока импорта в очередь).
+2. Начать перенос Vactool/Metalmaster в parser+adapter-профили поверх общего pipeline (перенос raw-парсинга в `RecordParserInterface` + `SupplierAdapterInterface`).
+3. До завершения миграции сохранить legacy shape прогресса/результата (`processed/errors/created/updated/skipped/fatal_error/url_errors/samples/no_urls`) для совместимости UI и текущих entrypoint.
+4. После достижения parity и прохождения тестов переключить новый core-поток на run-статусы `running`/`completed`.
