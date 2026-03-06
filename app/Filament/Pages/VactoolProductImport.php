@@ -8,6 +8,7 @@ use App\Models\ImportRun;
 use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
 use BackedEnum;
 use Filament\Actions\Action as FormAction;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -50,7 +51,11 @@ class VactoolProductImport extends Page implements HasForms
      *     publish: bool,
      *     download_images: bool,
      *     skip_existing: bool,
-     *     show_samples: int
+     *     show_samples: int,
+     *     mode: string,
+     *     finalize_missing: bool,
+     *     create_missing: bool,
+     *     update_existing: bool
      * }|null
      */
     public ?array $data = [
@@ -60,6 +65,10 @@ class VactoolProductImport extends Page implements HasForms
         'download_images' => true,
         'skip_existing' => false,
         'show_samples' => 3,
+        'mode' => 'partial_import',
+        'finalize_missing' => false,
+        'create_missing' => true,
+        'update_existing' => true,
     ];
 
     /** @var array<string, int|string|null>|null */
@@ -123,6 +132,14 @@ class VactoolProductImport extends Page implements HasForms
                             ->numeric()
                             ->integer()
                             ->minValue(0),
+                        Select::make('mode')
+                            ->label('Режим синхронизации')
+                            ->options([
+                                'partial_import' => 'partial_import',
+                                'full_sync_authoritative' => 'full_sync_authoritative',
+                            ])
+                            ->default('partial_import')
+                            ->native(false),
                         Toggle::make('publish')
                             ->label('Публиковать импортированные товары')
                             ->hintIcon(Heroicon::InformationCircle, 'В write-режиме выставляет признак Показывать на сайте.'),
@@ -130,9 +147,19 @@ class VactoolProductImport extends Page implements HasForms
                             ->label('Скачивать изображения')
                             ->hintIcon(Heroicon::InformationCircle, 'Включено по умолчанию: изображения сохраняются в storage/app/public/pics.')
                             ->default(true),
+                        Toggle::make('finalize_missing')
+                            ->label('Finalize missing (deactivate в full_sync)')
+                            ->hintIcon(Heroicon::InformationCircle, 'Работает только в full_sync_authoritative: товары, не встретившиеся в run, деактивируются.')
+                            ->default(false),
+                        Toggle::make('create_missing')
+                            ->label('Создавать новые товары')
+                            ->default(true),
+                        Toggle::make('update_existing')
+                            ->label('Обновлять существующие товары')
+                            ->default(true),
                         Toggle::make('skip_existing')
                             ->label('Пропускать уже существующие товары')
-                            ->hintIcon(Heroicon::InformationCircle, 'Если товар найден по ключу name + brand, он не будет обновлен.'),
+                            ->hintIcon(Heroicon::InformationCircle, 'Если найден supplier+external_id, карточка не скачивается и запись учитывается как skipped.'),
                     ]),
                 Section::make('Запуск')
                     ->schema([
@@ -176,7 +203,7 @@ class VactoolProductImport extends Page implements HasForms
         if (! $run) {
             Notification::make()
                 ->title('Активный запуск не найден')
-                ->body('Для Vactool нет запуска со статусом "В ожидании".')
+                ->body('Для Vactool нет запуска со статусом "В ожидании" или "Выполняется".')
                 ->warning()
                 ->send();
 
@@ -209,6 +236,18 @@ class VactoolProductImport extends Page implements HasForms
 
     private function dispatchImport(bool $write): void
     {
+        if ($this->hasActiveRun()) {
+            Notification::make()
+                ->title('Запуск уже выполняется')
+                ->body('Дождитесь завершения текущего запуска Vactool или остановите его.')
+                ->warning()
+                ->send();
+
+            $this->refreshLastSavedRun();
+
+            return;
+        }
+
         $options = $this->buildOptions($write);
         $mode = $write ? 'write' : 'dry-run';
         $runs = app(ImportRunOrchestrator::class);
@@ -246,11 +285,21 @@ class VactoolProductImport extends Page implements HasForms
      *     publish: bool,
      *     download_images: bool,
      *     skip_existing: bool,
-     *     show_samples: int
+     *     show_samples: int,
+     *     mode: string,
+     *     finalize_missing: bool,
+     *     create_missing: bool,
+     *     update_existing: bool
      * }
      */
     private function buildOptions(bool $write): array
     {
+        $mode = (string) ($this->data['mode'] ?? 'partial_import');
+
+        if (! in_array($mode, ['partial_import', 'full_sync_authoritative'], true)) {
+            $mode = 'partial_import';
+        }
+
         return [
             'sitemap' => self::DEFAULT_SITEMAP,
             'match' => self::DEFAULT_MATCH,
@@ -261,6 +310,10 @@ class VactoolProductImport extends Page implements HasForms
             'download_images' => (bool) ($this->data['download_images'] ?? true),
             'skip_existing' => (bool) ($this->data['skip_existing'] ?? false),
             'show_samples' => max(0, (int) ($this->data['show_samples'] ?? 3)),
+            'mode' => $mode,
+            'finalize_missing' => (bool) ($this->data['finalize_missing'] ?? ($mode === 'full_sync_authoritative')),
+            'create_missing' => (bool) ($this->data['create_missing'] ?? true),
+            'update_existing' => (bool) ($this->data['update_existing'] ?? true),
         ];
     }
 
@@ -306,7 +359,7 @@ class VactoolProductImport extends Page implements HasForms
             'id' => $run->id,
             'status' => $run->status,
             'mode' => (string) ($meta['mode'] ?? 'unknown'),
-            'is_running' => (bool) ($meta['is_running'] ?? ($run->status === 'pending')),
+            'is_running' => (bool) ($meta['is_running'] ?? in_array($run->status, ['pending', 'running'], true)),
             'found_urls' => $foundUrls,
             'processed' => $processed,
             'progress_percent' => $progressPercent,
@@ -343,7 +396,7 @@ class VactoolProductImport extends Page implements HasForms
 
         $runQuery = ImportRun::query()
             ->where('type', 'vactool_products')
-            ->where('status', 'pending');
+            ->whereIn('status', ['pending', 'running']);
 
         if ($this->lastRunId !== null) {
             $lastRun = (clone $runQuery)->whereKey($this->lastRunId)->first();

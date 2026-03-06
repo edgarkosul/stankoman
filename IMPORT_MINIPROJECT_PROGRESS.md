@@ -10,7 +10,7 @@
 - [x] Этап 4. Нормализация и upsert
 - [x] Этап 5. Медиа-пайплайн
 - [x] Этап 6. Адаптеры поставщиков
-- [ ] Этап 7. Точки запуска и эксплуатация
+- [x] Этап 7. Точки запуска и эксплуатация
 - [ ] Этап 8. Тестирование и приемка
 
 ## Хронология изменений
@@ -69,6 +69,27 @@
   - добавлен legacy-fallback matching в процессоре (`slug` / `name_brand`) для безопасного перехода со старых ключей на `supplier + external_id`;
   - добавлен профиль `YandexMarketFeedProfile` и строгая `record-level` валидация обязательных полей в `YandexMarketFeedAdapter` (упрощенный + `vendor.model`);
   - обновлены/добавлены unit-тесты: `VactoolSupplierAdapterTest`, `MetalmasterSupplierAdapterTest`, обновлены `YmlStreamParserTest`, `CatalogImportContractsTest`, а также CLI/job тесты под новый pipeline.
+- Зафиксировано улучшение для повторных запусков Metalmaster/Vactool: при `skip_existing=true` добавить prefilter существующих товаров до HTTP-запроса карточки (по `supplier + external_id` в `product_supplier_references`) для снижения нагрузки на поставщика и уменьшения риска rate-limit/anti-bot блокировок.
+- Зафиксировано текущее ограничение: на текущем этапе `skip_existing` влияет на upsert-часть, но не сокращает количество запросов к страницам поставщика; экономия появится после внедрения prefilter-шага в pipeline.
+- Реализован prefilter для `skip_existing=true` в `VactoolProductImportService` и `MetalmasterProductImportService`: существующие `supplier + external_id` записи пропускаются до HTTP-запроса карточки поставщика.
+- Для prefilter-сценария сохранен текущий shape прогресса/результата (`processed/skipped/...`) и добавлено обновление `last_seen_run_id/last_seen_at` у пропущенных references, чтобы не ломать `finalizeMissing` в `full_sync_authoritative`.
+- Унифицированы run-опции текущих точек запуска:
+  - CLI (`parser:parse-products`, `products:parse-vactool`) теперь принимают `mode`, `finalize_missing`, `create_missing`, `update_existing` (включая `--full-sync` shortcut).
+  - Filament-страницы Vactool/Metalmaster получили те же опции в форме запуска.
+- Новый core-поток переключен на статусы run `running` / `completed` (`ImportRunOrchestrator::saveProgress/completeFromResult`), UI-страницы и виджеты прогресса обновлены под новые статусы.
+- Добавлена базовая защита от параллельных запусков:
+  - блокировка повторного старта в Filament при активном `pending/running` run;
+  - queue middleware `WithoutOverlapping` для job-ов Metalmaster/Vactool.
+- Этап 7 закрыт полностью:
+  - добавлен единый CLI-entrypoint `catalog:import-products` с выбором `supplier/profile`, режимов `partial_import/full_sync_authoritative`, action-флагов и поддержкой `queue`/foreground запуска;
+  - добавлена единая Filament-страница запуска `CatalogSupplierImport` с выбором `supplier/profile/source`, режимов и action-флагов;
+  - добавлено базовое scheduler-подключение для поставщиков через `config/catalog-import.php` + `routes/console.php` (опционально, включается env-флагами, с `withoutOverlapping`);
+  - quick-report по run доступен и в новом CLI (summary после foreground запуска), и в Filament-странице (polling-виджет последнего run).
+- Обновлены/добавлены тесты:
+  - `ParseVactoolProductsCommandTest`, `ParseProductsCommandTest` (prefilter + снижение HTTP-запросов);
+  - `ImportRunOrchestratorTest`, `RunVactoolProductImportJobTest`, `RunMetalmasterProductImportJobTest` (новые статусы);
+  - `ImportExportFilamentPagesTest` (новые launch-опции и остановка `running` run).
+  - `CatalogImportProductsCommandTest`, `CatalogSupplierImportPageTest` (унифицированные CLI/Filament точки запуска Этапа 7).
 
 ## Этап 0. Discovery (зафиксировано)
 
@@ -172,7 +193,6 @@ Vactool (`app/Support/Vactool/*`)
 - Какие типы offer YML поддерживаем сверх “упрощенный” и `vendor.model` и какая стратегия до поддержки: пропуск с ошибкой или частичный маппинг.
 
 ## Ближайшие шаги
-1. Перейти к Этапу 6: перенос Vactool/Metalmaster в parser+adapter-профили поверх общего pipeline (`resolver -> parser -> adapter -> processor`).
-2. До завершения миграции сохранить legacy shape прогресса/результата (`processed/errors/created/updated/skipped/fatal_error/url_errors/samples/no_urls`) для совместимости UI и текущих entrypoint.
-3. После достижения parity и прохождения тестов переключить новый core-поток на run-статусы `running`/`completed`.
-4. Подготовить Этап 7: унифицированные точки запуска (CLI/Filament) с режимами `partial_import`/`full_sync_authoritative` и media-флагами.
+1. Запустить Этап 8: расширить feature-набор на idempotency/full-sync/missing/media-retry сценарии и зафиксировать критерии приемки.
+2. Добавить приемочные e2e-тесты для нового unified CLI + unified Filament launch flow.
+3. Зафиксировать production-настройки scheduler (конкретные cron-окна, thresholds, alerting) и включить env-флаги в целевом окружении.

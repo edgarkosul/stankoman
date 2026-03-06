@@ -41,6 +41,53 @@ it('runs parser command in dry-run mode', function () {
     Http::assertSentCount(3);
 });
 
+it('prefilters existing supplier references before loading product pages', function () {
+    rebuildVactoolParserSchemas();
+
+    try {
+        $existingProduct = Product::query()->create([
+            'name' => 'Уже импортированный товар',
+            'slug' => 'product-prefiltered-5000',
+            'price_amount' => 15000,
+            'currency' => 'RUB',
+            'in_stock' => true,
+            'is_active' => true,
+        ]);
+
+        DB::table('product_supplier_references')->insert([
+            'supplier' => 'vactool',
+            'external_id' => 'product-prefiltered-5000',
+            'product_id' => $existingProduct->id,
+            'first_seen_run_id' => null,
+            'last_seen_run_id' => null,
+            'last_seen_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $prefilteredUrl = 'https://vactool.ru/catalog/product-prefiltered-5000';
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://vactool.ru/sitemap.xml' => Http::response(sitemapUrlsetXml([$prefilteredUrl]), 200),
+        ]);
+
+        $this->artisan('products:parse-vactool', [
+            '--sitemap' => 'https://vactool.ru/sitemap.xml',
+            '--delay-ms' => 0,
+            '--write' => true,
+            '--skip-existing' => true,
+        ])
+            ->expectsOutputToContain('SKIP: '.$prefilteredUrl)
+            ->assertSuccessful();
+
+        Http::assertSentCount(1);
+        expect(Product::query()->count())->toBe(1);
+    } finally {
+        dropVactoolParserSchemas();
+    }
+});
+
 it('generates local slug and downloads image to pics with queued derivatives', function () {
     rebuildVactoolParserSchemas();
 

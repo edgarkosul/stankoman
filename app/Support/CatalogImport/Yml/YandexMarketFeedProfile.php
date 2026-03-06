@@ -4,6 +4,11 @@ namespace App\Support\CatalogImport\Yml;
 
 final class YandexMarketFeedProfile
 {
+    public function profileKey(): string
+    {
+        return 'yandex_market_feed_yml';
+    }
+
     public function profileName(): string
     {
         return 'Yandex Market Feed';
@@ -39,6 +44,7 @@ final class YandexMarketFeedProfile
             'description' => 'description',
             'price' => 'price',
             'currency' => 'currencyId',
+            'images' => 'picture[]',
             'category_id' => 'categoryId',
         ];
     }

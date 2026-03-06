@@ -3,9 +3,10 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Resources\ImportRuns\ImportRunResource;
-use App\Jobs\RunMetalmasterProductImportJob;
+use App\Jobs\RunYandexMarketFeedImportJob;
 use App\Models\ImportRun;
 use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
+use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
 use BackedEnum;
 use Filament\Actions\Action as FormAction;
 use Filament\Forms\Components\Select;
@@ -19,13 +20,12 @@ use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema as DatabaseSchema;
 use Throwable;
 use UnitEnum;
 
-class MetalmasterProductImport extends Page implements HasForms
+class YandexMarketFeedImport extends Page implements HasForms
 {
     use InteractsWithForms;
 
@@ -35,16 +35,17 @@ class MetalmasterProductImport extends Page implements HasForms
 
     protected static string|UnitEnum|null $navigationGroup = 'Экспорт/Импорт';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 5;
 
-    protected static ?string $navigationLabel = 'Импорт Metalmaster';
+    protected static ?string $navigationLabel = 'Импорт Yandex Feed';
 
-    protected static ?string $title = 'Импорт товаров из Metalmaster';
+    protected static ?string $title = 'Импорт товаров из Yandex Market Feed';
 
-    protected string $view = 'filament.pages.metalmaster-product-import';
+    protected string $view = 'filament.pages.yandex-market-feed-import';
 
     /** @var array{
-     *     bucket: string,
+     *     source: string,
+     *     category_id: int|null,
      *     limit: int,
      *     timeout: int,
      *     delay_ms: int,
@@ -59,6 +60,13 @@ class MetalmasterProductImport extends Page implements HasForms
      * }|null
      */
     public ?array $data = null;
+
+    /** @var array<int, string> */
+    public array $parsedCategories = [];
+
+    public ?string $categoriesLoadedAt = null;
+
+    public ?string $categoriesLoadedSource = null;
 
     /** @var array<string, int|string|bool|null>|null */
     public ?array $lastSavedRun = null;
@@ -87,11 +95,6 @@ class MetalmasterProductImport extends Page implements HasForms
     protected function getHeaderActions(): array
     {
         return [
-            FormAction::make('instructions')
-                ->label('Инструкция')
-                ->icon('heroicon-o-question-mark-circle')
-                ->color('gray')
-                ->url('https://help.stankoman.ru/import/metalmaster-import/', true),
             FormAction::make('history')
                 ->label('История импортов')
                 ->icon('heroicon-o-clock')
@@ -104,28 +107,36 @@ class MetalmasterProductImport extends Page implements HasForms
     {
         return $schema
             ->components([
-                Section::make('Параметры парсинга Metalmaster')
-                    ->description('Перед запуском обновите buckets через parser:sitemap-buckets.')
+                Section::make('Источник Yandex Market Feed')
+                    ->description('Можно запустить импорт всего фида или в два этапа: сначала загрузить категории, затем выбрать одну категорию для прогона.')
                     ->schema([
+                        TextInput::make('source')
+                            ->label('Источник фида (URL или путь к файлу)')
+                            ->required(),
                         Actions::make([
-                            FormAction::make('regenerate_buckets')
-                                ->label('Перегенерировать список категорий')
-                                ->icon('heroicon-o-arrow-path')
+                            FormAction::make('load_categories')
+                                ->label('Загрузить категории <category>')
+                                ->icon('heroicon-o-list-bullet')
                                 ->color('gray')
-                                ->requiresConfirmation()
-                                ->action('regenerateBuckets'),
+                                ->action('loadFeedCategories'),
                         ]),
-                        Select::make('bucket')
-                            ->label('Категория на Metalmaster (пусто = все категории)')
+                        Select::make('category_id')
+                            ->label('Категория для прогона (опционально)')
+                            ->placeholder('Весь фид (без фильтра)')
                             ->searchable()
-                            ->placeholder('Все категории')
-                            ->options(fn (): array => $this->bucketOptions(limit: 50))
-                            ->getSearchResultsUsing(fn (string $search): array => $this->bucketOptions(search: $search, limit: 50))
-                            ->getOptionLabelUsing(fn ($value): ?string => $this->bucketOptionLabel((string) $value))
-                            ->optionsLimit(50)
-                            ->hintIcon(Heroicon::InformationCircle, 'Показаны первые 50 категорий. Поиск работает по всему списку buckets.'),
+                            ->native(false)
+                            ->options(fn (): array => $this->categoryOptions(limit: 100))
+                            ->getSearchResultsUsing(fn (string $search): array => $this->categoryOptions(search: $search, limit: 100))
+                            ->getOptionLabelUsing(fn ($value): ?string => $this->categoryOptionLabel($value))
+                            ->hintIcon(
+                                Heroicon::InformationCircle,
+                                'Сначала нажмите "Загрузить категории <category>", затем выберите нужную категорию. Оставьте пустым для импорта всего фида.',
+                            ),
+                    ]),
+                Section::make('Параметры run')
+                    ->schema([
                         TextInput::make('limit')
-                            ->label('Лимит URL (0 = все)')
+                            ->label('Лимит offer (0 = все)')
                             ->numeric()
                             ->integer()
                             ->minValue(0),
@@ -135,7 +146,7 @@ class MetalmasterProductImport extends Page implements HasForms
                             ->integer()
                             ->minValue(1),
                         TextInput::make('delay_ms')
-                            ->label('Задержка между запросами, мс')
+                            ->label('Задержка между записями, мс')
                             ->numeric()
                             ->integer()
                             ->minValue(0),
@@ -153,15 +164,12 @@ class MetalmasterProductImport extends Page implements HasForms
                             ->default('partial_import')
                             ->native(false),
                         Toggle::make('publish')
-                            ->label('Публиковать импортированные товары')
-                            ->hintIcon(Heroicon::InformationCircle, 'В write-режиме выставляет признак Показывать на сайте.'),
+                            ->label('Публиковать импортированные товары'),
                         Toggle::make('download_images')
                             ->label('Скачивать изображения')
-                            ->hintIcon(Heroicon::InformationCircle, 'Включено по умолчанию: изображения сохраняются в storage/app/public/pics.')
                             ->default(true),
                         Toggle::make('finalize_missing')
-                            ->label('Finalize missing (deactivate в full_sync)')
-                            ->hintIcon(Heroicon::InformationCircle, 'Работает только в full_sync_authoritative: товары, не встретившиеся в run, деактивируются.')
+                            ->label('Finalize missing (только full_sync)')
                             ->default(false),
                         Toggle::make('create_missing')
                             ->label('Создавать новые товары')
@@ -170,8 +178,7 @@ class MetalmasterProductImport extends Page implements HasForms
                             ->label('Обновлять существующие товары')
                             ->default(true),
                         Toggle::make('skip_existing')
-                            ->label('Пропускать уже существующие товары')
-                            ->hintIcon(Heroicon::InformationCircle, 'Если найден supplier+external_id, карточка не скачивается и запись учитывается как skipped.'),
+                            ->label('Пропускать уже существующие товары (prefilter)'),
                     ]),
                 Section::make('Запуск')
                     ->schema([
@@ -197,6 +204,80 @@ class MetalmasterProductImport extends Page implements HasForms
             ->statePath('data');
     }
 
+    public function updatedDataSource(mixed $value): void
+    {
+        $source = is_string($value) ? trim($value) : '';
+
+        if ($source === $this->categoriesLoadedSource) {
+            return;
+        }
+
+        $this->parsedCategories = [];
+        $this->categoriesLoadedAt = null;
+        $this->categoriesLoadedSource = null;
+
+        if (is_array($this->data)) {
+            $this->data['category_id'] = null;
+        }
+    }
+
+    public function loadFeedCategories(): void
+    {
+        $source = trim((string) ($this->data['source'] ?? ''));
+
+        if ($source === '') {
+            Notification::make()
+                ->title('Не указан источник фида')
+                ->body('Заполните поле "Источник фида" перед загрузкой категорий.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        try {
+            $categories = app(YandexMarketFeedImportService::class)->listCategories([
+                'source' => $source,
+                'timeout' => max(1, (int) ($this->data['timeout'] ?? 25)),
+            ]);
+        } catch (Throwable $exception) {
+            Notification::make()
+                ->title('Не удалось загрузить категории')
+                ->body($exception->getMessage())
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $this->parsedCategories = [];
+
+        foreach ($categories as $categoryId => $categoryName) {
+            if (! is_int($categoryId) || $categoryId <= 0) {
+                continue;
+            }
+
+            $name = trim((string) $categoryName);
+
+            $this->parsedCategories[$categoryId] = $name !== '' ? $name : ('Категория #'.$categoryId);
+        }
+
+        $selectedCategoryId = $this->normalizeNullableInt($this->data['category_id'] ?? null);
+
+        if ($selectedCategoryId !== null && ! isset($this->parsedCategories[$selectedCategoryId])) {
+            $this->data['category_id'] = null;
+        }
+
+        $this->categoriesLoadedAt = now()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i:s');
+        $this->categoriesLoadedSource = $source;
+
+        Notification::make()
+            ->title('Категории загружены')
+            ->body('Найдено категорий: '.count($this->parsedCategories).'.')
+            ->success()
+            ->send();
+    }
+
     public function doDryRun(): void
     {
         $this->dispatchImport(false);
@@ -215,7 +296,7 @@ class MetalmasterProductImport extends Page implements HasForms
         if (! $run) {
             Notification::make()
                 ->title('Активный запуск не найден')
-                ->body('Для Metalmaster нет запуска со статусом "В ожидании" или "Выполняется".')
+                ->body('Для Yandex Market Feed нет запуска со статусом "В ожидании" или "Выполняется".')
                 ->warning()
                 ->send();
 
@@ -246,53 +327,12 @@ class MetalmasterProductImport extends Page implements HasForms
             ->send();
     }
 
-    public function regenerateBuckets(): void
-    {
-        try {
-            $exitCode = Artisan::call('parser:sitemap-buckets', [
-                '--no-interaction' => true,
-            ]);
-        } catch (Throwable $exception) {
-            Notification::make()
-                ->title('Не удалось обновить категории')
-                ->body($exception->getMessage())
-                ->danger()
-                ->send();
-
-            return;
-        }
-
-        if ($exitCode !== 0) {
-            $output = trim(Artisan::output());
-
-            Notification::make()
-                ->title('Команда завершилась с ошибкой')
-                ->body($output !== '' ? $output : 'parser:sitemap-buckets завершилась с кодом '.$exitCode.'.')
-                ->danger()
-                ->send();
-
-            return;
-        }
-
-        if (is_array($this->data)) {
-            $this->data['bucket'] = '';
-        }
-
-        $output = trim(Artisan::output());
-
-        Notification::make()
-            ->title('Список категорий обновлен')
-            ->body($output !== '' ? $output : 'Команда parser:sitemap-buckets выполнена успешно.')
-            ->success()
-            ->send();
-    }
-
     private function dispatchImport(bool $write): void
     {
         if ($this->hasActiveRun()) {
             Notification::make()
                 ->title('Запуск уже выполняется')
-                ->body('Дождитесь завершения текущего запуска Metalmaster или остановите его.')
+                ->body('Дождитесь завершения текущего запуска Yandex Market Feed или остановите его.')
                 ->warning()
                 ->send();
 
@@ -305,14 +345,14 @@ class MetalmasterProductImport extends Page implements HasForms
         $mode = $write ? 'write' : 'dry-run';
         $runs = app(ImportRunOrchestrator::class);
         $run = $runs->start(
-            type: 'metalmaster_products',
+            type: 'yandex_market_feed_products',
             columns: $options,
             mode: $mode,
-            sourceFilename: $options['buckets_file'],
+            sourceFilename: $options['source'],
             userId: Auth::id(),
         );
 
-        RunMetalmasterProductImportJob::dispatch($run->id, $options, $write);
+        RunYandexMarketFeedImportJob::dispatch($run->id, $options, $write);
 
         $this->lastRunId = $run->id;
         $this->refreshLastSavedRun();
@@ -330,8 +370,8 @@ class MetalmasterProductImport extends Page implements HasForms
 
     /**
      * @return array{
-     *     buckets_file: string,
-     *     bucket: string,
+     *     source: string,
+     *     category_id: int|null,
      *     limit: int,
      *     timeout: int,
      *     delay_ms: int,
@@ -354,12 +394,14 @@ class MetalmasterProductImport extends Page implements HasForms
             $mode = 'partial_import';
         }
 
+        $source = trim((string) ($this->data['source'] ?? ''));
+
         return [
-            'buckets_file' => $this->defaultBucketsFile(),
-            'bucket' => trim((string) ($this->data['bucket'] ?? '')),
+            'source' => $source !== '' ? $source : $this->defaultSource(),
+            'category_id' => $this->normalizeNullableInt($this->data['category_id'] ?? null),
             'limit' => max(0, (int) ($this->data['limit'] ?? 0)),
             'timeout' => max(1, (int) ($this->data['timeout'] ?? 25)),
-            'delay_ms' => max(0, (int) ($this->data['delay_ms'] ?? 250)),
+            'delay_ms' => max(0, (int) ($this->data['delay_ms'] ?? 0)),
             'write' => $write,
             'publish' => (bool) ($this->data['publish'] ?? false),
             'download_images' => (bool) ($this->data['download_images'] ?? true),
@@ -374,8 +416,14 @@ class MetalmasterProductImport extends Page implements HasForms
 
     public function refreshLastSavedRun(): void
     {
-        $runQuery = ImportRun::query()
-            ->where('type', 'metalmaster_products');
+        if (! DatabaseSchema::hasTable('import_runs')) {
+            $this->lastSavedRun = null;
+            $this->lastSavedIssues = [];
+
+            return;
+        }
+
+        $runQuery = ImportRun::query()->where('type', 'yandex_market_feed_products');
 
         if ($this->lastRunId !== null) {
             $runQuery->whereKey($this->lastRunId);
@@ -385,7 +433,7 @@ class MetalmasterProductImport extends Page implements HasForms
 
         if (! $run) {
             $run = ImportRun::query()
-                ->where('type', 'metalmaster_products')
+                ->where('type', 'yandex_market_feed_products')
                 ->latest('id')
                 ->first();
         }
@@ -405,7 +453,6 @@ class MetalmasterProductImport extends Page implements HasForms
         }
 
         $columns = is_array($run->columns) ? $run->columns : [];
-
         $processed = (int) ($totals['scanned'] ?? 0);
         $foundUrls = (int) ($meta['found_urls'] ?? 0);
         $progressPercent = $foundUrls > 0
@@ -429,8 +476,8 @@ class MetalmasterProductImport extends Page implements HasForms
             'image_download_failed' => (int) ($meta['image_download_failed'] ?? 0),
             'derivatives_queued' => (int) ($meta['derivatives_queued'] ?? 0),
             'samples_count' => count(is_array($totals['_samples'] ?? null) ? $totals['_samples'] : []),
-            'bucket' => (string) ($columns['bucket'] ?? ''),
-            'buckets_file' => (string) ($columns['buckets_file'] ?? ''),
+            'source' => (string) ($columns['source'] ?? ''),
+            'category_id' => $this->normalizeNullableInt($columns['category_id'] ?? null),
             'finished_at' => $run->finished_at?->copy()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i'),
         ];
 
@@ -438,34 +485,22 @@ class MetalmasterProductImport extends Page implements HasForms
             ->latest('id')
             ->limit(5)
             ->pluck('message')
-            ->filter(fn ($value) => is_string($value) && $value !== '')
+            ->filter(fn ($value): bool => is_string($value) && $value !== '')
             ->values()
             ->all();
     }
 
     /**
-     * @return array{
-     *     bucket: string,
-     *     limit: int,
-     *     timeout: int,
-     *     delay_ms: int,
-     *     publish: bool,
-     *     download_images: bool,
-     *     skip_existing: bool,
-     *     show_samples: int,
-     *     mode: string,
-     *     finalize_missing: bool,
-     *     create_missing: bool,
-     *     update_existing: bool
-     * }
+     * @return array<string, mixed>
      */
     private function defaultData(): array
     {
         return [
-            'bucket' => '',
+            'source' => $this->defaultSource(),
+            'category_id' => null,
             'limit' => 0,
             'timeout' => 25,
-            'delay_ms' => 250,
+            'delay_ms' => 0,
             'publish' => false,
             'download_images' => true,
             'skip_existing' => false,
@@ -477,42 +512,43 @@ class MetalmasterProductImport extends Page implements HasForms
         ];
     }
 
-    private function defaultBucketsFile(): string
+    private function defaultSource(): string
     {
-        return storage_path('app/parser/metalmaster-buckets.json');
+        return storage_path('app/parser/yandex-market-feed.xml');
     }
 
     /**
      * @return array<string, string>
      */
-    private function bucketOptions(?string $search = null, int $limit = 50): array
+    private function categoryOptions(?string $search = null, int $limit = 100): array
     {
-        $rows = $this->bucketRows();
-
-        if ($search !== null && trim($search) !== '') {
-            $needle = mb_strtolower(trim($search));
-
-            $rows = array_values(array_filter(
-                $rows,
-                function (array $row) use ($needle): bool {
-                    $bucket = mb_strtolower((string) ($row['bucket'] ?? ''));
-                    $categoryUrl = mb_strtolower((string) ($row['category_url'] ?? ''));
-
-                    return str_contains($bucket, $needle) || str_contains($categoryUrl, $needle);
-                },
-            ));
+        if ($this->parsedCategories === []) {
+            return [];
         }
 
         $options = [];
+        $needle = $search !== null ? mb_strtolower(trim($search)) : null;
 
-        foreach ($rows as $row) {
-            $bucket = trim((string) ($row['bucket'] ?? ''));
+        foreach ($this->parsedCategories as $categoryId => $categoryName) {
+            $id = (int) $categoryId;
 
-            if ($bucket === '') {
+            if ($id <= 0) {
                 continue;
             }
 
-            $options[$bucket] = $this->bucketLabel($row);
+            $name = trim((string) $categoryName);
+            $label = $this->categoryLabel($id, $name);
+
+            if ($needle !== null && $needle !== '') {
+                $idMatches = str_contains((string) $id, $needle);
+                $nameMatches = str_contains(mb_strtolower($label), $needle);
+
+                if (! $idMatches && ! $nameMatches) {
+                    continue;
+                }
+            }
+
+            $options[(string) $id] = $label;
 
             if (count($options) >= $limit) {
                 break;
@@ -522,64 +558,30 @@ class MetalmasterProductImport extends Page implements HasForms
         return $options;
     }
 
-    private function bucketOptionLabel(string $bucket): ?string
+    private function categoryOptionLabel(mixed $value): ?string
     {
-        if ($bucket === '') {
+        $categoryId = $this->normalizeNullableInt($value);
+
+        if ($categoryId === null) {
             return null;
         }
 
-        foreach ($this->bucketRows() as $row) {
-            if ((string) ($row['bucket'] ?? '') === $bucket) {
-                return $this->bucketLabel($row);
-            }
+        $categoryName = $this->parsedCategories[$categoryId] ?? null;
+
+        if (! is_string($categoryName)) {
+            return (string) $categoryId;
         }
 
-        return $bucket;
+        return $this->categoryLabel($categoryId, trim($categoryName));
     }
 
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function bucketRows(): array
+    private function categoryLabel(int $categoryId, string $categoryName): string
     {
-        $raw = @file_get_contents($this->defaultBucketsFile());
-
-        if (! is_string($raw)) {
-            return [];
+        if ($categoryName === '') {
+            return '['.$categoryId.']';
         }
 
-        $decoded = json_decode($raw, true);
-
-        if (! is_array($decoded)) {
-            return [];
-        }
-
-        if (array_is_list($decoded)) {
-            return array_values(array_filter($decoded, 'is_array'));
-        }
-
-        $rows = $decoded['buckets'] ?? null;
-
-        if (! is_array($rows)) {
-            return [];
-        }
-
-        return array_values(array_filter($rows, 'is_array'));
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function bucketLabel(array $row): string
-    {
-        $bucket = trim((string) ($row['bucket'] ?? ''));
-        $productsCount = max(0, (int) ($row['products_count'] ?? 0));
-
-        if ($productsCount > 0) {
-            return $bucket.' ('.$productsCount.')';
-        }
-
-        return $bucket;
+        return '['.$categoryId.'] '.$categoryName;
     }
 
     private function hasActiveRun(): bool
@@ -594,7 +596,7 @@ class MetalmasterProductImport extends Page implements HasForms
         }
 
         $runQuery = ImportRun::query()
-            ->where('type', 'metalmaster_products')
+            ->where('type', 'yandex_market_feed_products')
             ->whereIn('status', ['pending', 'running']);
 
         if ($this->lastRunId !== null) {
@@ -606,5 +608,24 @@ class MetalmasterProductImport extends Page implements HasForms
         }
 
         return $runQuery->latest('id')->first();
+    }
+
+    private function normalizeNullableInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_int($value)) {
+            return $value > 0 ? $value : null;
+        }
+
+        if (is_string($value) && preg_match('/^\d+$/', trim($value)) === 1) {
+            $parsed = (int) trim($value);
+
+            return $parsed > 0 ? $parsed : null;
+        }
+
+        return null;
     }
 }

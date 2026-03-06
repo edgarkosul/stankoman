@@ -73,6 +73,22 @@ final class ImportRunOrchestrator
      */
     public function saveProgress(ImportRun $run, array $progress, string $mode, array $meta = []): void
     {
+        $freshStatus = ImportRun::query()->whereKey($run->id)->value('status');
+
+        if (! is_string($freshStatus) || $freshStatus === '') {
+            return;
+        }
+
+        if (in_array($freshStatus, [
+            ImportRunStatus::DryRun->value,
+            ImportRunStatus::Applied->value,
+            ImportRunStatus::Completed->value,
+            ImportRunStatus::Failed->value,
+            ImportRunStatus::Cancelled->value,
+        ], true)) {
+            return;
+        }
+
         $totals = is_array($run->totals) ? $run->totals : [];
 
         $totals['create'] = (int) ($progress['created'] ?? 0);
@@ -92,6 +108,7 @@ final class ImportRunOrchestrator
             'is_running' => true,
         ], $meta));
 
+        $run->status = ImportRunStatus::Running->value;
         $run->totals = $totals;
         $run->save();
     }
@@ -119,14 +136,8 @@ final class ImportRunOrchestrator
             return ImportRunStatus::Failed;
         }
 
-        if ($write) {
-            return ((int) ($result['processed'] ?? 0)) > 0
-                ? ImportRunStatus::Applied
-                : ImportRunStatus::Failed;
-        }
-
         if (((int) ($result['processed'] ?? 0)) > 0 || ((bool) ($result['no_urls'] ?? false))) {
-            return ImportRunStatus::DryRun;
+            return ImportRunStatus::Completed;
         }
 
         return ImportRunStatus::Failed;

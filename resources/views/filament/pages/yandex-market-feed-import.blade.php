@@ -1,6 +1,46 @@
 <x-filament-panels::page>
     {{ $this->form }}
 
+    @if (!empty($parsedCategories))
+        @php
+            $previewCategories = array_slice($parsedCategories, 0, 200, true);
+            $hiddenCount = max(0, count($parsedCategories) - count($previewCategories));
+        @endphp
+
+        <div class="mt-6 space-y-3 rounded-xl border border-zinc-200 bg-white/60 p-4">
+            <div class="flex items-center justify-between gap-3">
+                <h2 class="text-sm font-semibold">Категории из фида</h2>
+                <div class="text-xs text-zinc-500">Всего: {{ count($parsedCategories) }}</div>
+            </div>
+
+            @if (!empty($categoriesLoadedSource))
+                <div class="text-xs text-zinc-500">
+                    Источник: {{ $categoriesLoadedSource }}
+                    @if (!empty($categoriesLoadedAt))
+                        · загружено: {{ $categoriesLoadedAt }}
+                    @endif
+                </div>
+            @endif
+
+            <div class="max-h-72 overflow-auto rounded-lg border border-zinc-200 bg-zinc-50">
+                <ul class="divide-y divide-zinc-200 text-xs sm:text-sm">
+                    @foreach ($previewCategories as $categoryId => $categoryName)
+                        <li class="px-3 py-2">
+                            <span class="font-semibold text-zinc-800">[{{ $categoryId }}]</span>
+                            <span class="text-zinc-700">{{ $categoryName }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+
+            @if ($hiddenCount > 0)
+                <div class="text-xs text-zinc-500">
+                    Показаны первые {{ count($previewCategories) }} категорий. Осталось скрыто: {{ $hiddenCount }}.
+                </div>
+            @endif
+        </div>
+    @endif
+
     <div class="mt-6" wire:poll.2s="refreshLastSavedRun">
         @if ($lastSavedRun)
             @php
@@ -18,7 +58,7 @@
 
             <div class="space-y-4 rounded-xl border border-zinc-200 bg-white/60 p-4">
                 <div class="flex items-center justify-between gap-2">
-                    <h2 class="text-sm font-semibold">Последний запуск Vactool</h2>
+                    <h2 class="text-sm font-semibold">Последний запуск Yandex Market Feed</h2>
                     <div class="text-xs text-zinc-500">#{{ $lastSavedRun['id'] ?? '—' }}</div>
                 </div>
 
@@ -29,7 +69,13 @@
                     </div>
                 @endif
 
-                <div class="grid gap-3 text-xs sm:grid-cols-5 sm:text-sm">
+                @if (($lastSavedRun['no_urls'] ?? false) === true)
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:text-sm">
+                        Подходящие offer-записи не найдены.
+                    </div>
+                @endif
+
+                <div class="grid gap-3 text-xs sm:grid-cols-6 sm:text-sm">
                     <div>
                         <div class="text-zinc-500">Статус</div>
                         <div class="font-semibold text-zinc-900">{{ $statusLabel }}</div>
@@ -39,7 +85,11 @@
                         <div class="font-semibold text-zinc-900">{{ $lastSavedRun['mode'] ?? '—' }}</div>
                     </div>
                     <div>
-                        <div class="text-zinc-500">Найдено URL</div>
+                        <div class="text-zinc-500">Категория</div>
+                        <div class="font-semibold text-zinc-900">{{ $lastSavedRun['category_id'] ?? 'весь фид' }}</div>
+                    </div>
+                    <div>
+                        <div class="text-zinc-500">Найдено offer</div>
                         <div class="font-semibold text-zinc-900">{{ $lastSavedRun['found_urls'] ?? 0 }}</div>
                     </div>
                     <div>
@@ -78,6 +128,12 @@
                         <div class="font-semibold text-zinc-900">{{ $lastSavedRun['samples_count'] ?? 0 }}</div>
                     </div>
                 </div>
+
+                @if (!empty($lastSavedRun['source']))
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700 sm:text-sm">
+                        Источник: {{ $lastSavedRun['source'] }}
+                    </div>
+                @endif
 
                 @if (!empty($lastSavedIssues))
                     <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">

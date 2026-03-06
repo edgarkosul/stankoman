@@ -4,8 +4,11 @@ namespace App\Filament\Pages;
 
 use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Jobs\RunMetalmasterProductImportJob;
+use App\Jobs\RunVactoolProductImportJob;
 use App\Models\ImportRun;
 use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
+use App\Support\CatalogImport\Suppliers\Metalmaster\MetalmasterSupplierProfile;
+use App\Support\CatalogImport\Suppliers\Vactool\VactoolSupplierProfile;
 use BackedEnum;
 use Filament\Actions\Action as FormAction;
 use Filament\Forms\Components\Select;
@@ -18,47 +21,71 @@ use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema as DatabaseSchema;
-use Throwable;
 use UnitEnum;
 
-class MetalmasterProductImport extends Page implements HasForms
+class CatalogSupplierImport extends Page implements HasForms
 {
     use InteractsWithForms;
 
     private const DISPLAY_TIMEZONE = 'Europe/Moscow';
 
-    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-cloud-arrow-down';
+    private const DEFAULT_VACTOOL_SOURCE = 'https://vactool.ru/sitemap.xml';
+
+    protected string $view = 'filament.pages.catalog-supplier-import';
+
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-adjustments-horizontal';
 
     protected static string|UnitEnum|null $navigationGroup = 'Экспорт/Импорт';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 2;
 
-    protected static ?string $navigationLabel = 'Импорт Metalmaster';
+    protected static ?string $navigationLabel = 'Импорт поставщиков';
 
-    protected static ?string $title = 'Импорт товаров из Metalmaster';
-
-    protected string $view = 'filament.pages.metalmaster-product-import';
+    protected static ?string $title = 'Единый импорт поставщиков';
 
     /** @var array{
+     *     supplier: string,
+     *     profile: string,
+     *     source: string,
      *     bucket: string,
+     *     match: string,
      *     limit: int,
      *     timeout: int,
      *     delay_ms: int,
+     *     show_samples: int,
      *     publish: bool,
      *     download_images: bool,
      *     skip_existing: bool,
-     *     show_samples: int,
      *     mode: string,
      *     finalize_missing: bool,
      *     create_missing: bool,
-     *     update_existing: bool
+     *     update_existing: bool,
+     *     error_threshold_count: int|null,
+     *     error_threshold_percent: float|null
      * }|null
      */
-    public ?array $data = null;
+    public ?array $data = [
+        'supplier' => 'vactool',
+        'profile' => 'vactool_html',
+        'source' => self::DEFAULT_VACTOOL_SOURCE,
+        'bucket' => '',
+        'match' => '/catalog/product-',
+        'limit' => 0,
+        'timeout' => 25,
+        'delay_ms' => 250,
+        'show_samples' => 3,
+        'publish' => false,
+        'download_images' => true,
+        'skip_existing' => false,
+        'mode' => 'partial_import',
+        'finalize_missing' => false,
+        'create_missing' => true,
+        'update_existing' => true,
+        'error_threshold_count' => null,
+        'error_threshold_percent' => null,
+    ];
 
     /** @var array<string, int|string|bool|null>|null */
     public ?array $lastSavedRun = null;
@@ -70,8 +97,6 @@ class MetalmasterProductImport extends Page implements HasForms
 
     public function mount(): void
     {
-        $this->data = $this->defaultData();
-
         $this->form->fill($this->data);
         $this->refreshLastSavedRun();
     }
@@ -87,11 +112,6 @@ class MetalmasterProductImport extends Page implements HasForms
     protected function getHeaderActions(): array
     {
         return [
-            FormAction::make('instructions')
-                ->label('Инструкция')
-                ->icon('heroicon-o-question-mark-circle')
-                ->color('gray')
-                ->url('https://help.stankoman.ru/import/metalmaster-import/', true),
             FormAction::make('history')
                 ->label('История импортов')
                 ->icon('heroicon-o-clock')
@@ -104,33 +124,41 @@ class MetalmasterProductImport extends Page implements HasForms
     {
         return $schema
             ->components([
-                Section::make('Параметры парсинга Metalmaster')
-                    ->description('Перед запуском обновите buckets через parser:sitemap-buckets.')
+                Section::make('Источник и профиль')
                     ->schema([
-                        Actions::make([
-                            FormAction::make('regenerate_buckets')
-                                ->label('Перегенерировать список категорий')
-                                ->icon('heroicon-o-arrow-path')
-                                ->color('gray')
-                                ->requiresConfirmation()
-                                ->action('regenerateBuckets'),
-                        ]),
-                        Select::make('bucket')
-                            ->label('Категория на Metalmaster (пусто = все категории)')
-                            ->searchable()
-                            ->placeholder('Все категории')
-                            ->options(fn (): array => $this->bucketOptions(limit: 50))
-                            ->getSearchResultsUsing(fn (string $search): array => $this->bucketOptions(search: $search, limit: 50))
-                            ->getOptionLabelUsing(fn ($value): ?string => $this->bucketOptionLabel((string) $value))
-                            ->optionsLimit(50)
-                            ->hintIcon(Heroicon::InformationCircle, 'Показаны первые 50 категорий. Поиск работает по всему списку buckets.'),
+                        Select::make('supplier')
+                            ->label('Поставщик')
+                            ->options([
+                                'vactool' => 'Vactool',
+                                'metalmaster' => 'Metalmaster',
+                            ])
+                            ->default('vactool')
+                            ->live()
+                            ->native(false),
+                        Select::make('profile')
+                            ->label('Профиль')
+                            ->options(fn (): array => $this->profileOptions((string) ($this->data['supplier'] ?? 'vactool')))
+                            ->native(false),
+                        TextInput::make('source')
+                            ->label('Источник (URL или путь к файлу)')
+                            ->helperText('Для Vactool: sitemap URL. Для Metalmaster: buckets JSON.')
+                            ->required(),
+                        TextInput::make('bucket')
+                            ->label('Bucket (только для Metalmaster)')
+                            ->placeholder('Например: promyshlennye'),
+                        TextInput::make('match')
+                            ->label('URL match (только для Vactool)')
+                            ->placeholder('/catalog/product-'),
+                    ]),
+                Section::make('Параметры run')
+                    ->schema([
                         TextInput::make('limit')
-                            ->label('Лимит URL (0 = все)')
+                            ->label('Лимит записей (0 = все)')
                             ->numeric()
                             ->integer()
                             ->minValue(0),
                         TextInput::make('timeout')
-                            ->label('Таймаут запроса, сек')
+                            ->label('Таймаут запроса, сек (Metalmaster)')
                             ->numeric()
                             ->integer()
                             ->minValue(1),
@@ -153,15 +181,14 @@ class MetalmasterProductImport extends Page implements HasForms
                             ->default('partial_import')
                             ->native(false),
                         Toggle::make('publish')
-                            ->label('Публиковать импортированные товары')
-                            ->hintIcon(Heroicon::InformationCircle, 'В write-режиме выставляет признак Показывать на сайте.'),
+                            ->label('Публиковать импортированные товары'),
                         Toggle::make('download_images')
                             ->label('Скачивать изображения')
-                            ->hintIcon(Heroicon::InformationCircle, 'Включено по умолчанию: изображения сохраняются в storage/app/public/pics.')
                             ->default(true),
+                        Toggle::make('skip_existing')
+                            ->label('Пропускать уже существующие товары (prefilter)'),
                         Toggle::make('finalize_missing')
-                            ->label('Finalize missing (deactivate в full_sync)')
-                            ->hintIcon(Heroicon::InformationCircle, 'Работает только в full_sync_authoritative: товары, не встретившиеся в run, деактивируются.')
+                            ->label('Finalize missing (только full_sync)')
                             ->default(false),
                         Toggle::make('create_missing')
                             ->label('Создавать новые товары')
@@ -169,9 +196,15 @@ class MetalmasterProductImport extends Page implements HasForms
                         Toggle::make('update_existing')
                             ->label('Обновлять существующие товары')
                             ->default(true),
-                        Toggle::make('skip_existing')
-                            ->label('Пропускать уже существующие товары')
-                            ->hintIcon(Heroicon::InformationCircle, 'Если найден supplier+external_id, карточка не скачивается и запись учитывается как skipped.'),
+                        TextInput::make('error_threshold_count')
+                            ->label('Порог ошибок (count)')
+                            ->numeric()
+                            ->integer()
+                            ->minValue(1),
+                        TextInput::make('error_threshold_percent')
+                            ->label('Порог ошибок (%)')
+                            ->numeric()
+                            ->minValue(0),
                     ]),
                 Section::make('Запуск')
                     ->schema([
@@ -197,6 +230,16 @@ class MetalmasterProductImport extends Page implements HasForms
             ->statePath('data');
     }
 
+    public function updatedDataSupplier(mixed $value): void
+    {
+        $supplier = is_string($value) ? $value : 'vactool';
+        $this->data['profile'] = $this->defaultProfileForSupplier($supplier);
+        $this->data['source'] = $this->defaultSourceForSupplier($supplier);
+        $this->data['match'] = $supplier === 'vactool' ? '/catalog/product-' : '';
+        $this->data['bucket'] = $supplier === 'metalmaster' ? (string) ($this->data['bucket'] ?? '') : '';
+        $this->refreshLastSavedRun();
+    }
+
     public function doDryRun(): void
     {
         $this->dispatchImport(false);
@@ -215,7 +258,7 @@ class MetalmasterProductImport extends Page implements HasForms
         if (! $run) {
             Notification::make()
                 ->title('Активный запуск не найден')
-                ->body('Для Metalmaster нет запуска со статусом "В ожидании" или "Выполняется".')
+                ->body('Нет запуска со статусом "В ожидании" или "Выполняется".')
                 ->warning()
                 ->send();
 
@@ -225,7 +268,6 @@ class MetalmasterProductImport extends Page implements HasForms
         }
 
         $runs->markCancelled($run, $runs->resolveMode($run));
-
         $run->issues()->create([
             'row_index' => null,
             'code' => 'cancelled_by_user',
@@ -246,73 +288,41 @@ class MetalmasterProductImport extends Page implements HasForms
             ->send();
     }
 
-    public function regenerateBuckets(): void
-    {
-        try {
-            $exitCode = Artisan::call('parser:sitemap-buckets', [
-                '--no-interaction' => true,
-            ]);
-        } catch (Throwable $exception) {
-            Notification::make()
-                ->title('Не удалось обновить категории')
-                ->body($exception->getMessage())
-                ->danger()
-                ->send();
-
-            return;
-        }
-
-        if ($exitCode !== 0) {
-            $output = trim(Artisan::output());
-
-            Notification::make()
-                ->title('Команда завершилась с ошибкой')
-                ->body($output !== '' ? $output : 'parser:sitemap-buckets завершилась с кодом '.$exitCode.'.')
-                ->danger()
-                ->send();
-
-            return;
-        }
-
-        if (is_array($this->data)) {
-            $this->data['bucket'] = '';
-        }
-
-        $output = trim(Artisan::output());
-
-        Notification::make()
-            ->title('Список категорий обновлен')
-            ->body($output !== '' ? $output : 'Команда parser:sitemap-buckets выполнена успешно.')
-            ->success()
-            ->send();
-    }
-
     private function dispatchImport(bool $write): void
     {
         if ($this->hasActiveRun()) {
             Notification::make()
                 ->title('Запуск уже выполняется')
-                ->body('Дождитесь завершения текущего запуска Metalmaster или остановите его.')
+                ->body('Дождитесь завершения текущего запуска или остановите его.')
                 ->warning()
                 ->send();
-
-            $this->refreshLastSavedRun();
 
             return;
         }
 
+        $supplier = (string) ($this->data['supplier'] ?? 'vactool');
         $options = $this->buildOptions($write);
         $mode = $write ? 'write' : 'dry-run';
+        $runType = $this->runType($supplier);
+
         $runs = app(ImportRunOrchestrator::class);
         $run = $runs->start(
-            type: 'metalmaster_products',
+            type: $runType,
             columns: $options,
             mode: $mode,
-            sourceFilename: $options['buckets_file'],
+            sourceFilename: (string) ($options['sitemap'] ?? $options['buckets_file'] ?? $options['source'] ?? null),
             userId: Auth::id(),
+            meta: [
+                'supplier' => $supplier,
+                'profile' => (string) ($options['profile'] ?? ''),
+            ],
         );
 
-        RunMetalmasterProductImportJob::dispatch($run->id, $options, $write);
+        if ($supplier === 'vactool') {
+            RunVactoolProductImportJob::dispatch($run->id, $options, $write);
+        } else {
+            RunMetalmasterProductImportJob::dispatch($run->id, $options, $write);
+        }
 
         $this->lastRunId = $run->id;
         $this->refreshLastSavedRun();
@@ -329,38 +339,21 @@ class MetalmasterProductImport extends Page implements HasForms
     }
 
     /**
-     * @return array{
-     *     buckets_file: string,
-     *     bucket: string,
-     *     limit: int,
-     *     timeout: int,
-     *     delay_ms: int,
-     *     write: bool,
-     *     publish: bool,
-     *     download_images: bool,
-     *     skip_existing: bool,
-     *     show_samples: int,
-     *     mode: string,
-     *     finalize_missing: bool,
-     *     create_missing: bool,
-     *     update_existing: bool
-     * }
+     * @return array<string, mixed>
      */
     private function buildOptions(bool $write): array
     {
+        $supplier = (string) ($this->data['supplier'] ?? 'vactool');
         $mode = (string) ($this->data['mode'] ?? 'partial_import');
 
         if (! in_array($mode, ['partial_import', 'full_sync_authoritative'], true)) {
             $mode = 'partial_import';
         }
 
-        return [
-            'buckets_file' => $this->defaultBucketsFile(),
-            'bucket' => trim((string) ($this->data['bucket'] ?? '')),
-            'limit' => max(0, (int) ($this->data['limit'] ?? 0)),
-            'timeout' => max(1, (int) ($this->data['timeout'] ?? 25)),
-            'delay_ms' => max(0, (int) ($this->data['delay_ms'] ?? 250)),
+        $commonOptions = [
             'write' => $write,
+            'limit' => max(0, (int) ($this->data['limit'] ?? 0)),
+            'delay_ms' => max(0, (int) ($this->data['delay_ms'] ?? 250)),
             'publish' => (bool) ($this->data['publish'] ?? false),
             'download_images' => (bool) ($this->data['download_images'] ?? true),
             'skip_existing' => (bool) ($this->data['skip_existing'] ?? false),
@@ -369,13 +362,43 @@ class MetalmasterProductImport extends Page implements HasForms
             'finalize_missing' => (bool) ($this->data['finalize_missing'] ?? ($mode === 'full_sync_authoritative')),
             'create_missing' => (bool) ($this->data['create_missing'] ?? true),
             'update_existing' => (bool) ($this->data['update_existing'] ?? true),
+            'error_threshold_count' => $this->normalizeNullableInt($this->data['error_threshold_count'] ?? null),
+            'error_threshold_percent' => $this->normalizeNullableFloat($this->data['error_threshold_percent'] ?? null),
+            'profile' => (string) ($this->data['profile'] ?? $this->defaultProfileForSupplier($supplier)),
         ];
+
+        if ($supplier === 'vactool') {
+            $sitemap = trim((string) ($this->data['source'] ?? ''));
+
+            return array_merge($commonOptions, [
+                'sitemap' => $sitemap !== '' ? $sitemap : self::DEFAULT_VACTOOL_SOURCE,
+                'match' => (string) ($this->data['match'] ?? '/catalog/product-'),
+            ]);
+        }
+
+        if ($supplier === 'metalmaster') {
+            $bucketsFile = trim((string) ($this->data['source'] ?? ''));
+
+            return array_merge($commonOptions, [
+                'buckets_file' => $bucketsFile !== '' ? $bucketsFile : storage_path('app/parser/metalmaster-buckets.json'),
+                'bucket' => trim((string) ($this->data['bucket'] ?? '')),
+                'timeout' => max(1, (int) ($this->data['timeout'] ?? 25)),
+            ]);
+        }
+
+        $sitemap = trim((string) ($this->data['source'] ?? ''));
+
+        return array_merge($commonOptions, [
+            'sitemap' => $sitemap !== '' ? $sitemap : self::DEFAULT_VACTOOL_SOURCE,
+            'match' => (string) ($this->data['match'] ?? '/catalog/product-'),
+        ]);
     }
 
     public function refreshLastSavedRun(): void
     {
-        $runQuery = ImportRun::query()
-            ->where('type', 'metalmaster_products');
+        $supplier = (string) ($this->data['supplier'] ?? 'vactool');
+        $runType = $this->runType($supplier);
+        $runQuery = ImportRun::query()->where('type', $runType);
 
         if ($this->lastRunId !== null) {
             $runQuery->whereKey($this->lastRunId);
@@ -385,7 +408,7 @@ class MetalmasterProductImport extends Page implements HasForms
 
         if (! $run) {
             $run = ImportRun::query()
-                ->where('type', 'metalmaster_products')
+                ->where('type', $runType)
                 ->latest('id')
                 ->first();
         }
@@ -404,8 +427,6 @@ class MetalmasterProductImport extends Page implements HasForms
             $meta = [];
         }
 
-        $columns = is_array($run->columns) ? $run->columns : [];
-
         $processed = (int) ($totals['scanned'] ?? 0);
         $foundUrls = (int) ($meta['found_urls'] ?? 0);
         $progressPercent = $foundUrls > 0
@@ -417,7 +438,6 @@ class MetalmasterProductImport extends Page implements HasForms
             'status' => $run->status,
             'mode' => (string) ($meta['mode'] ?? 'unknown'),
             'is_running' => (bool) ($meta['is_running'] ?? in_array($run->status, ['pending', 'running'], true)),
-            'no_urls' => (bool) ($meta['no_urls'] ?? false),
             'found_urls' => $foundUrls,
             'processed' => $processed,
             'progress_percent' => $progressPercent,
@@ -429,8 +449,6 @@ class MetalmasterProductImport extends Page implements HasForms
             'image_download_failed' => (int) ($meta['image_download_failed'] ?? 0),
             'derivatives_queued' => (int) ($meta['derivatives_queued'] ?? 0),
             'samples_count' => count(is_array($totals['_samples'] ?? null) ? $totals['_samples'] : []),
-            'bucket' => (string) ($columns['bucket'] ?? ''),
-            'buckets_file' => (string) ($columns['buckets_file'] ?? ''),
             'finished_at' => $run->finished_at?->copy()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i'),
         ];
 
@@ -438,148 +456,9 @@ class MetalmasterProductImport extends Page implements HasForms
             ->latest('id')
             ->limit(5)
             ->pluck('message')
-            ->filter(fn ($value) => is_string($value) && $value !== '')
+            ->filter(fn ($value): bool => is_string($value) && $value !== '')
             ->values()
             ->all();
-    }
-
-    /**
-     * @return array{
-     *     bucket: string,
-     *     limit: int,
-     *     timeout: int,
-     *     delay_ms: int,
-     *     publish: bool,
-     *     download_images: bool,
-     *     skip_existing: bool,
-     *     show_samples: int,
-     *     mode: string,
-     *     finalize_missing: bool,
-     *     create_missing: bool,
-     *     update_existing: bool
-     * }
-     */
-    private function defaultData(): array
-    {
-        return [
-            'bucket' => '',
-            'limit' => 0,
-            'timeout' => 25,
-            'delay_ms' => 250,
-            'publish' => false,
-            'download_images' => true,
-            'skip_existing' => false,
-            'show_samples' => 3,
-            'mode' => 'partial_import',
-            'finalize_missing' => false,
-            'create_missing' => true,
-            'update_existing' => true,
-        ];
-    }
-
-    private function defaultBucketsFile(): string
-    {
-        return storage_path('app/parser/metalmaster-buckets.json');
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function bucketOptions(?string $search = null, int $limit = 50): array
-    {
-        $rows = $this->bucketRows();
-
-        if ($search !== null && trim($search) !== '') {
-            $needle = mb_strtolower(trim($search));
-
-            $rows = array_values(array_filter(
-                $rows,
-                function (array $row) use ($needle): bool {
-                    $bucket = mb_strtolower((string) ($row['bucket'] ?? ''));
-                    $categoryUrl = mb_strtolower((string) ($row['category_url'] ?? ''));
-
-                    return str_contains($bucket, $needle) || str_contains($categoryUrl, $needle);
-                },
-            ));
-        }
-
-        $options = [];
-
-        foreach ($rows as $row) {
-            $bucket = trim((string) ($row['bucket'] ?? ''));
-
-            if ($bucket === '') {
-                continue;
-            }
-
-            $options[$bucket] = $this->bucketLabel($row);
-
-            if (count($options) >= $limit) {
-                break;
-            }
-        }
-
-        return $options;
-    }
-
-    private function bucketOptionLabel(string $bucket): ?string
-    {
-        if ($bucket === '') {
-            return null;
-        }
-
-        foreach ($this->bucketRows() as $row) {
-            if ((string) ($row['bucket'] ?? '') === $bucket) {
-                return $this->bucketLabel($row);
-            }
-        }
-
-        return $bucket;
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function bucketRows(): array
-    {
-        $raw = @file_get_contents($this->defaultBucketsFile());
-
-        if (! is_string($raw)) {
-            return [];
-        }
-
-        $decoded = json_decode($raw, true);
-
-        if (! is_array($decoded)) {
-            return [];
-        }
-
-        if (array_is_list($decoded)) {
-            return array_values(array_filter($decoded, 'is_array'));
-        }
-
-        $rows = $decoded['buckets'] ?? null;
-
-        if (! is_array($rows)) {
-            return [];
-        }
-
-        return array_values(array_filter($rows, 'is_array'));
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function bucketLabel(array $row): string
-    {
-        $bucket = trim((string) ($row['bucket'] ?? ''));
-        $productsCount = max(0, (int) ($row['products_count'] ?? 0));
-
-        if ($productsCount > 0) {
-            return $bucket.' ('.$productsCount.')';
-        }
-
-        return $bucket;
     }
 
     private function hasActiveRun(): bool
@@ -593,8 +472,9 @@ class MetalmasterProductImport extends Page implements HasForms
             return null;
         }
 
+        $runType = $this->runType((string) ($this->data['supplier'] ?? 'vactool'));
         $runQuery = ImportRun::query()
-            ->where('type', 'metalmaster_products')
+            ->where('type', $runType)
             ->whereIn('status', ['pending', 'running']);
 
         if ($this->lastRunId !== null) {
@@ -606,5 +486,63 @@ class MetalmasterProductImport extends Page implements HasForms
         }
 
         return $runQuery->latest('id')->first();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function profileOptions(string $supplier): array
+    {
+        if ($supplier === 'metalmaster') {
+            $profile = app(MetalmasterSupplierProfile::class)->profileKey();
+
+            return [$profile => $profile];
+        }
+
+        $profile = app(VactoolSupplierProfile::class)->profileKey();
+
+        return [$profile => $profile];
+    }
+
+    private function defaultProfileForSupplier(string $supplier): string
+    {
+        if ($supplier === 'metalmaster') {
+            return app(MetalmasterSupplierProfile::class)->profileKey();
+        }
+
+        return app(VactoolSupplierProfile::class)->profileKey();
+    }
+
+    private function defaultSourceForSupplier(string $supplier): string
+    {
+        return $supplier === 'metalmaster'
+            ? storage_path('app/parser/metalmaster-buckets.json')
+            : self::DEFAULT_VACTOOL_SOURCE;
+    }
+
+    private function runType(string $supplier): string
+    {
+        return match ($supplier) {
+            'metalmaster' => 'metalmaster_products',
+            default => 'vactool_products',
+        };
+    }
+
+    private function normalizeNullableInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return is_numeric($value) ? (int) $value : null;
+    }
+
+    private function normalizeNullableFloat(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return is_numeric($value) ? (float) $value : null;
     }
 }

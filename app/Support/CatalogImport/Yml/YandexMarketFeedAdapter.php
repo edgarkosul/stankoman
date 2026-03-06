@@ -91,6 +91,8 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $priceAmount = $this->parsePriceAmount($priceRaw);
         $vendor = $this->textOrNull($xml->vendor ?? null);
         $description = $this->textOrNull($xml->description ?? null);
+        $pictures = $this->extractPictures($xml);
+        $params = $this->extractParams($xml);
 
         return new RecordMappingResult(
             payload: new ProductPayload(
@@ -101,6 +103,8 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 priceAmount: $priceAmount,
                 currency: $currency,
                 inStock: $offer->available,
+                images: $pictures,
+                attributes: $params,
                 source: [
                     'supplier' => $this->profile->supplierKey(),
                     'profile' => $this->profile->profileName(),
@@ -154,6 +158,8 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
 
         $priceAmount = $this->parsePriceAmount($priceRaw);
         $description = $this->textOrNull($xml->description ?? null);
+        $pictures = $this->extractPictures($xml);
+        $params = $this->extractParams($xml);
 
         return new RecordMappingResult(
             payload: new ProductPayload(
@@ -164,6 +170,8 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 priceAmount: $priceAmount,
                 currency: $currency,
                 inStock: $offer->available,
+                images: $pictures,
+                attributes: $params,
                 source: [
                     'supplier' => $this->profile->supplierKey(),
                     'profile' => $this->profile->profileName(),
@@ -267,5 +275,72 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 message: sprintf('Offer is missing required field <%s>.', $field),
             );
         }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractPictures(SimpleXMLElement $xml): array
+    {
+        $pictures = [];
+        $seen = [];
+
+        foreach ($xml->picture as $pictureNode) {
+            $picture = $this->textOrNull($pictureNode);
+
+            if ($picture === null) {
+                continue;
+            }
+
+            $key = mb_strtolower($picture);
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $pictures[] = $picture;
+        }
+
+        return $pictures;
+    }
+
+    /**
+     * @return array<int, array{name:string,value:string,source:string}>
+     */
+    private function extractParams(SimpleXMLElement $xml): array
+    {
+        $params = [];
+        $seen = [];
+
+        foreach ($xml->param as $paramNode) {
+            $name = $this->textOrNull((string) ($paramNode['name'] ?? ''));
+            $value = $this->textOrNull($paramNode);
+
+            if ($name === null || $value === null) {
+                continue;
+            }
+
+            $unit = $this->textOrNull((string) ($paramNode['unit'] ?? ''));
+
+            if ($unit !== null) {
+                $value .= ' '.$unit;
+            }
+
+            $key = mb_strtolower($name.'::'.$value);
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $params[] = [
+                'name' => $name,
+                'value' => $value,
+                'source' => 'yml',
+            ];
+        }
+
+        return $params;
     }
 }

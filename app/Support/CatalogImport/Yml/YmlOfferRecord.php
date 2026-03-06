@@ -8,6 +8,7 @@ final readonly class YmlOfferRecord
         public string $id,
         public ?string $type,
         public ?bool $available,
+        public ?int $categoryId,
         public string $xml,
     ) {}
 }

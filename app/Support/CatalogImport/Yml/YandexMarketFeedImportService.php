@@ -1,27 +1,37 @@
 <?php
 
-namespace App\Support\Metalmaster;
+namespace App\Support\CatalogImport\Yml;
 
 use App\Models\ProductSupplierReference;
 use App\Support\CatalogImport\Contracts\SourceResolverInterface;
-use App\Support\CatalogImport\Html\HtmlDocumentParser;
+use App\Support\CatalogImport\DTO\ProductPayload;
+use App\Support\CatalogImport\DTO\ResolvedSource;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
 use App\Support\CatalogImport\Sources\SourceResolver;
-use App\Support\CatalogImport\Suppliers\Metalmaster\MetalmasterSupplierAdapter;
-use App\Support\CatalogImport\Suppliers\Metalmaster\MetalmasterSupplierProfile;
-use Illuminate\Support\Collection;
-use RuntimeException;
 use Throwable;
 
-class MetalmasterProductImportService
+class YandexMarketFeedImportService
 {
     public function __construct(
-        private MetalmasterSupplierAdapter $adapter,
-        private MetalmasterSupplierProfile $profile,
-        private HtmlDocumentParser $recordParser,
+        private YandexMarketFeedAdapter $adapter,
+        private YandexMarketFeedProfile $profile,
+        private YmlStreamParser $recordParser,
         private ProductImportProcessor $processor,
         private SourceResolverInterface $sourceResolver = new SourceResolver,
     ) {}
+
+    /**
+     * @param  array<string, mixed>  $options
+     * @return array<int, string>
+     */
+    public function listCategories(array $options = []): array
+    {
+        $normalized = $this->normalizeOptions($options);
+        $source = $this->resolveSource($normalized);
+        $stream = $this->recordParser->open($source->resolvedPath);
+
+        return $stream->categories;
+    }
 
     /**
      * @param  array<string, mixed>  $options
@@ -51,11 +61,8 @@ class MetalmasterProductImportService
         $normalized = $this->normalizeOptions($options);
 
         try {
-            $targets = $this->loadTargets(
-                $normalized['buckets_file'],
-                $normalized['bucket'],
-                $normalized['limit'],
-            );
+            $source = $this->resolveSource($normalized);
+            [$foundUrls, $prefilteredExternalIds] = $this->scanFeed($source, $normalized);
         } catch (Throwable $exception) {
             $this->emitProgress($progress, $this->makeProgressPayload(
                 foundUrls: 0,
@@ -90,8 +97,8 @@ class MetalmasterProductImportService
             ];
         }
 
-        if ($targets->isEmpty()) {
-            $this->emit($output, 'warn', 'Подходящие URL товаров не найдены.');
+        if ($foundUrls === 0) {
+            $this->emit($output, 'warn', 'Подходящие offer-записи не найдены.');
             $this->emitProgress($progress, $this->makeProgressPayload(
                 foundUrls: 0,
                 processed: 0,
@@ -125,10 +132,9 @@ class MetalmasterProductImportService
             ];
         }
 
-        $this->emit($output, 'info', 'Найдено URL товаров: '.$targets->count());
+        $this->emit($output, 'info', 'Найдено offer-записей: '.$foundUrls);
         $this->emit($output, 'line', 'Режим: '.($normalized['write'] ? 'write' : 'dry-run'));
 
-        $foundUrls = $targets->count();
         $processed = 0;
         $errors = 0;
         $created = 0;
@@ -139,64 +145,51 @@ class MetalmasterProductImportService
         $derivativesQueued = 0;
         $samples = [];
         $urlErrors = [];
-        $prefilteredExternalIds = $this->resolvePrefilteredExternalIds($targets, $normalized);
-
-        if ($prefilteredExternalIds !== [] && $normalized['run_id'] !== null) {
-            $this->touchPrefilteredReferences($prefilteredExternalIds, $normalized['run_id']);
-        }
+        $processedOffers = 0;
+        $touchedPrefilteredExternalIds = [];
 
         $this->emitProgress($progress, $this->makeProgressPayload(
             foundUrls: $foundUrls,
-            processed: 0,
-            errors: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
+            processed: $processed,
+            errors: $errors,
+            created: $created,
+            updated: $updated,
+            skipped: $skipped,
             imagesDownloaded: $imagesDownloaded,
             imageDownloadFailed: $imageDownloadFailed,
             derivativesQueued: $derivativesQueued,
             noUrls: false,
         ));
 
-        foreach ($targets as $target) {
-            $url = (string) $target['url'];
-            $bucket = (string) $target['bucket'];
-            $externalId = $this->profile->resolveExternalId($url);
+        try {
+            foreach ($this->recordParser->parse($source, []) as $record) {
+                if (! $record instanceof YmlOfferRecord) {
+                    continue;
+                }
 
-            if (isset($prefilteredExternalIds[$externalId])) {
-                $processed++;
-                $skipped++;
+                if (! $this->passesCategoryFilter($record, $normalized['category_id'])) {
+                    continue;
+                }
 
-                $this->emit($output, 'line', 'SKIP: '.$url.' | existing product reference.');
+                if ($normalized['limit'] > 0 && $processedOffers >= $normalized['limit']) {
+                    break;
+                }
 
-                $this->emitProgress($progress, $this->makeProgressPayload(
-                    foundUrls: $foundUrls,
-                    processed: $processed,
-                    errors: $errors,
-                    created: $created,
-                    updated: $updated,
-                    skipped: $skipped,
-                    imagesDownloaded: $imagesDownloaded,
-                    imageDownloadFailed: $imageDownloadFailed,
-                    derivativesQueued: $derivativesQueued,
-                    noUrls: false,
-                ));
+                $processedOffers++;
+                $externalId = trim($record->id);
+                $errorRow = $externalId !== '' ? 'offer:'.$externalId : 'offer#'.$processedOffers;
 
-                continue;
-            }
+                if (
+                    $normalized['write']
+                    && $normalized['skip_existing']
+                    && $externalId !== ''
+                    && isset($prefilteredExternalIds[$externalId])
+                ) {
+                    $processed++;
+                    $skipped++;
+                    $touchedPrefilteredExternalIds[$externalId] = true;
 
-            try {
-                $recordResult = $this->mapTargetToPayload($url, $bucket, $normalized);
-
-                if ($recordResult['payload'] === null) {
-                    $errors += $recordResult['errors_count'];
-
-                    $urlErrors[] = [
-                        'url' => $url,
-                        'message' => $recordResult['first_error'] ?? 'Record mapping failed.',
-                    ];
-
-                    $this->emit($output, 'error', 'ERR: '.$url.' | '.($recordResult['first_error'] ?? 'Record mapping failed.'));
+                    $this->emit($output, 'line', 'SKIP: '.$errorRow.' | existing product reference.');
 
                     $this->emitProgress($progress, $this->makeProgressPayload(
                         foundUrls: $foundUrls,
@@ -214,71 +207,125 @@ class MetalmasterProductImportService
                     continue;
                 }
 
-                $errors += $recordResult['errors_count'];
+                try {
+                    $mapping = $this->adapter->mapRecord($record);
 
-                if ($normalized['write']) {
-                    $processResult = $this->processor->process(
-                        $recordResult['payload'],
-                        $this->processorOptions($normalized),
-                    );
+                    if ($mapping->payload === null) {
+                        $errors += count($mapping->errors);
+                        $urlErrors[] = [
+                            'url' => $errorRow,
+                            'message' => $mapping->errors[0]->message ?? 'Record mapping failed.',
+                        ];
 
-                    if ($processResult->operation === 'created') {
-                        $created++;
-                    } elseif ($processResult->operation === 'updated') {
-                        $updated++;
-                    } else {
-                        $skipped++;
+                        $this->emit($output, 'error', 'ERR: '.$errorRow.' | '.($mapping->errors[0]->message ?? 'Record mapping failed.'));
+
+                        $this->emitProgress($progress, $this->makeProgressPayload(
+                            foundUrls: $foundUrls,
+                            processed: $processed,
+                            errors: $errors,
+                            created: $created,
+                            updated: $updated,
+                            skipped: $skipped,
+                            imagesDownloaded: $imagesDownloaded,
+                            imageDownloadFailed: $imageDownloadFailed,
+                            derivativesQueued: $derivativesQueued,
+                            noUrls: false,
+                        ));
+
+                        continue;
                     }
 
-                    $processed++;
-                    $errors += count($processResult->errors);
+                    $errors += count($mapping->errors);
 
-                    $imagesDownloaded += (int) ($processResult->meta['media_reused'] ?? 0);
-                    $derivativesQueued += (int) ($processResult->meta['media_queued'] ?? 0);
-                    $imageDownloadFailed += $this->countMediaErrors($processResult->errors);
-                } elseif (count($samples) < $normalized['show_samples']) {
-                    $samples[] = $this->sampleRow($recordResult['payload'], $url, $bucket);
-                    $processed++;
-                } else {
-                    $processed++;
+                    if ($normalized['write']) {
+                        $processResult = $this->processor->process(
+                            $mapping->payload,
+                            $this->processorOptions($normalized),
+                        );
+
+                        if ($processResult->operation === 'created') {
+                            $created++;
+                        } elseif ($processResult->operation === 'updated') {
+                            $updated++;
+                        } else {
+                            $skipped++;
+                        }
+
+                        $processed++;
+                        $errors += count($processResult->errors);
+
+                        $imagesDownloaded += (int) ($processResult->meta['media_reused'] ?? 0);
+                        $derivativesQueued += (int) ($processResult->meta['media_queued'] ?? 0);
+                        $imageDownloadFailed += $this->countMediaErrors($processResult->errors);
+                    } elseif (count($samples) < $normalized['show_samples']) {
+                        $samples[] = $this->sampleRow($mapping->payload, $record->type);
+                        $processed++;
+                    } else {
+                        $processed++;
+                    }
+
+                    $this->emit($output, 'line', 'OK: '.$errorRow);
+
+                    if ($normalized['delay_ms'] > 0) {
+                        usleep($normalized['delay_ms'] * 1000);
+                    }
+                } catch (Throwable $exception) {
+                    $errors++;
+                    $urlErrors[] = [
+                        'url' => $errorRow,
+                        'message' => $exception->getMessage(),
+                    ];
+
+                    $this->emit($output, 'error', 'ERR: '.$errorRow.' | '.$exception->getMessage());
                 }
 
-                $this->emit($output, 'line', 'OK: '.$url);
-
-                if ($normalized['delay_ms'] > 0) {
-                    usleep($normalized['delay_ms'] * 1000);
-                }
-            } catch (Throwable $exception) {
-                $errors++;
-                $urlErrors[] = [
-                    'url' => $url,
-                    'message' => $exception->getMessage(),
-                ];
-
-                $this->emit($output, 'error', 'ERR: '.$url.' | '.$exception->getMessage());
+                $this->emitProgress($progress, $this->makeProgressPayload(
+                    foundUrls: $foundUrls,
+                    processed: $processed,
+                    errors: $errors,
+                    created: $created,
+                    updated: $updated,
+                    skipped: $skipped,
+                    imagesDownloaded: $imagesDownloaded,
+                    imageDownloadFailed: $imageDownloadFailed,
+                    derivativesQueued: $derivativesQueued,
+                    noUrls: false,
+                ));
             }
-
-            $this->emitProgress($progress, $this->makeProgressPayload(
-                foundUrls: $foundUrls,
-                processed: $processed,
-                errors: $errors,
-                created: $created,
-                updated: $updated,
-                skipped: $skipped,
-                imagesDownloaded: $imagesDownloaded,
-                imageDownloadFailed: $imageDownloadFailed,
-                derivativesQueued: $derivativesQueued,
-                noUrls: false,
-            ));
+        } catch (Throwable $exception) {
+            return [
+                'options' => $normalized,
+                'write_mode' => $normalized['write'],
+                'found_urls' => $foundUrls,
+                'processed' => $processed,
+                'errors' => $errors + 1,
+                'created' => $created,
+                'updated' => $updated,
+                'skipped' => $skipped,
+                'images_downloaded' => $imagesDownloaded,
+                'image_download_failed' => $imageDownloadFailed,
+                'derivatives_queued' => $derivativesQueued,
+                'samples' => $samples,
+                'url_errors' => array_merge($urlErrors, [[
+                    'url' => 'feed',
+                    'message' => $exception->getMessage(),
+                ]]),
+                'fatal_error' => $exception->getMessage(),
+                'no_urls' => false,
+                'success' => false,
+            ];
         }
 
         if ($normalized['write'] && $normalized['run_id'] !== null) {
+            $this->touchPrefilteredReferences($touchedPrefilteredExternalIds, $normalized['run_id']);
+
             $this->processor->finalizeMissing(
                 supplier: $this->profile->supplierKey(),
                 runId: $normalized['run_id'],
                 options: [
                     'mode' => $normalized['mode'],
                     'finalize_missing' => $normalized['finalize_missing'],
+                    'source_category_id' => $normalized['category_id'],
                 ],
             );
         }
@@ -304,7 +351,7 @@ class MetalmasterProductImportService
         if (! $normalized['write'] && $samples !== []) {
             $this->emit($output, 'new_line', '');
             $this->emit($output, 'table', [
-                'headers' => ['url', 'bucket', 'title', 'price', 'brand', 'images', 'specs'],
+                'headers' => ['external_id', 'name', 'price', 'currency', 'offer_type'],
                 'rows' => $samples,
             ]);
         }
@@ -332,8 +379,8 @@ class MetalmasterProductImportService
     /**
      * @param  array<string, mixed>  $options
      * @return array{
-     *     buckets_file: string,
-     *     bucket: string,
+     *     source: string,
+     *     category_id: int|null,
      *     limit: int,
      *     timeout: int,
      *     delay_ms: int,
@@ -359,21 +406,12 @@ class MetalmasterProductImportService
         $mode = $this->normalizeMode($options['mode'] ?? null);
 
         return [
-            'buckets_file' => trim((string) (
-                $options['buckets_file']
-                ?? $options['buckets-file']
-                ?? storage_path('app/parser/metalmaster-buckets.json')
-            )),
-            'bucket' => trim((string) ($options['bucket'] ?? '')),
+            'source' => trim((string) ($options['source'] ?? $options['feed'] ?? '')),
+            'category_id' => $this->normalizeNullableInt($options['category_id'] ?? $options['category-id'] ?? null),
             'limit' => max(0, (int) ($options['limit'] ?? 0)),
             'timeout' => max(1, (int) ($options['timeout'] ?? 25)),
-            'delay_ms' => max(0, (int) (
-                $options['delay_ms']
-                ?? $options['delay-ms']
-                ?? $options['sleep']
-                ?? 250
-            )),
-            'write' => $this->normalizeBoolOption($options['write'] ?? true, true),
+            'delay_ms' => max(0, (int) ($options['delay_ms'] ?? $options['delay-ms'] ?? 0)),
+            'write' => $this->normalizeBoolOption($options['write'] ?? false, false),
             'publish' => $this->normalizeBoolOption($options['publish'] ?? false, false),
             'download_images' => $this->normalizeBoolOption(
                 $options['download_images'] ?? $options['download-images'] ?? false,
@@ -399,119 +437,62 @@ class MetalmasterProductImportService
     }
 
     /**
-     * @return Collection<int, array{bucket: string, url: string}>
-     */
-    private function loadTargets(string $bucketsFile, string $bucketFilter, int $limit): Collection
-    {
-        if (! is_file($bucketsFile)) {
-            throw new RuntimeException("Buckets file not found: {$bucketsFile}");
-        }
-
-        $raw = file_get_contents($bucketsFile);
-
-        if (! is_string($raw)) {
-            throw new RuntimeException("Unable to read buckets file: {$bucketsFile}");
-        }
-
-        $decoded = json_decode($raw, true);
-
-        if (! is_array($decoded)) {
-            throw new RuntimeException("Invalid buckets JSON: {$bucketsFile}");
-        }
-
-        $bucketRows = $this->extractBucketRows($decoded);
-
-        $targets = collect($bucketRows)
-            ->filter(function (mixed $row) use ($bucketFilter): bool {
-                if (! is_array($row)) {
-                    return false;
-                }
-
-                if ($bucketFilter === '') {
-                    return true;
-                }
-
-                return (string) ($row['bucket'] ?? '') === $bucketFilter;
-            })
-            ->flatMap(function (array $row): Collection {
-                $bucket = (string) ($row['bucket'] ?? '');
-                $urls = is_array($row['product_urls'] ?? null) ? $row['product_urls'] : [];
-
-                return collect($urls)->map(fn (mixed $url): array => [
-                    'bucket' => $bucket,
-                    'url' => (string) $url,
-                ]);
-            })
-            ->filter(fn (array $target): bool => filter_var($target['url'], FILTER_VALIDATE_URL) !== false)
-            ->unique('url')
-            ->values();
-
-        if ($limit > 0) {
-            $targets = $targets->take($limit)->values();
-        }
-
-        return $targets;
-    }
-
-    /**
-     * @param  array<string|int, mixed>  $decoded
-     * @return array<int, array<string, mixed>>
-     */
-    private function extractBucketRows(array $decoded): array
-    {
-        if (array_is_list($decoded)) {
-            return array_values(array_filter($decoded, 'is_array'));
-        }
-
-        $rows = $decoded['buckets'] ?? null;
-
-        if (! is_array($rows)) {
-            return [];
-        }
-
-        return array_values(array_filter($rows, 'is_array'));
-    }
-
-    /**
      * @param  array<string, mixed>  $normalized
-     * @return array{payload:\App\Support\CatalogImport\DTO\ProductPayload|null,errors_count:int,first_error:string|null}
+     * @return array{0:int,1:array<string, true>}
      */
-    private function mapTargetToPayload(string $url, string $bucket, array $normalized): array
+    private function scanFeed(ResolvedSource $source, array $normalized): array
     {
-        $source = $this->sourceResolver->resolve($url, [
-            'cache_key' => $this->profile->supplierKey().'_'.sha1($url),
-            'timeout' => $normalized['timeout'],
-            'connect_timeout' => min(10, max(1, $normalized['timeout'])),
-            'retry_times' => 2,
-            'retry_sleep_ms' => 300,
-        ]);
+        $foundUrls = 0;
+        $candidateExternalIds = [];
 
-        $records = $this->recordParser->parse($source, array_merge(
-            $this->profile->parserOptions(),
-            [
-                'url' => $url,
-                'meta' => [
-                    'supplier' => $this->profile->supplierKey(),
-                    'bucket' => $bucket,
-                ],
-            ],
-        ));
+        foreach ($this->recordParser->parse($source, []) as $record) {
+            if (! $record instanceof YmlOfferRecord) {
+                continue;
+            }
 
-        foreach ($records as $record) {
-            $mapping = $this->adapter->mapRecord($record);
+            if (! $this->passesCategoryFilter($record, $normalized['category_id'])) {
+                continue;
+            }
 
-            return [
-                'payload' => $mapping->payload,
-                'errors_count' => count($mapping->errors),
-                'first_error' => $mapping->errors[0]->message ?? null,
-            ];
+            if ($normalized['limit'] > 0 && $foundUrls >= $normalized['limit']) {
+                break;
+            }
+
+            $foundUrls++;
+
+            if (! $normalized['write'] || ! $normalized['skip_existing']) {
+                continue;
+            }
+
+            $externalId = trim($record->id);
+
+            if ($externalId === '') {
+                continue;
+            }
+
+            $candidateExternalIds[$externalId] = true;
         }
 
-        return [
-            'payload' => null,
-            'errors_count' => 1,
-            'first_error' => 'HTML parser returned no records.',
-        ];
+        if (! $normalized['write'] || ! $normalized['skip_existing'] || $candidateExternalIds === []) {
+            return [$foundUrls, []];
+        }
+
+        $prefiltered = [];
+
+        foreach (array_chunk(array_keys($candidateExternalIds), 1000) as $chunk) {
+            $existing = ProductSupplierReference::query()
+                ->where('supplier', $this->profile->supplierKey())
+                ->whereIn('external_id', $chunk)
+                ->pluck('external_id');
+
+            foreach ($existing as $externalId) {
+                if (is_string($externalId) && $externalId !== '') {
+                    $prefiltered[$externalId] = true;
+                }
+            }
+        }
+
+        return [$foundUrls, $prefiltered];
     }
 
     /**
@@ -528,40 +509,9 @@ class MetalmasterProductImportService
             'publish_created' => $normalized['publish'],
             'publish_updated' => $normalized['publish'],
             'download_media' => $normalized['download_images'],
-            'legacy_match' => $this->profile->defaults()['legacy_match'] ?? null,
-            'use_source_slug' => true,
+            'use_source_slug' => false,
             'mode' => $normalized['mode'],
         ];
-    }
-
-    /**
-     * @param  Collection<int, array{bucket: string, url: string}>  $targets
-     * @param  array<string, mixed>  $normalized
-     * @return array<string, true>
-     */
-    private function resolvePrefilteredExternalIds(Collection $targets, array $normalized): array
-    {
-        if (! $normalized['write'] || ! $normalized['skip_existing']) {
-            return [];
-        }
-
-        $externalIds = $targets
-            ->map(fn (array $target): string => $this->profile->resolveExternalId((string) $target['url']))
-            ->filter(fn (string $externalId): bool => trim($externalId) !== '')
-            ->unique()
-            ->values();
-
-        if ($externalIds->isEmpty()) {
-            return [];
-        }
-
-        return ProductSupplierReference::query()
-            ->where('supplier', $this->profile->supplierKey())
-            ->whereIn('external_id', $externalIds->all())
-            ->pluck('external_id')
-            ->filter(fn (mixed $externalId): bool => is_string($externalId) && $externalId !== '')
-            ->mapWithKeys(fn (string $externalId): array => [$externalId => true])
-            ->all();
     }
 
     /**
@@ -581,6 +531,48 @@ class MetalmasterProductImportService
                 'last_seen_at' => now(),
                 'updated_at' => now(),
             ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $normalized
+     */
+    private function resolveSource(array $normalized): ResolvedSource
+    {
+        return $this->sourceResolver->resolve($normalized['source'], [
+            'cache_key' => $this->profile->supplierKey().'_'.sha1($normalized['source']),
+            'timeout' => max(1, (float) $normalized['timeout']),
+            'connect_timeout' => min(10.0, max(1.0, (float) $normalized['timeout'])),
+            'retry_times' => 2,
+            'retry_sleep_ms' => 300,
+        ]);
+    }
+
+    private function passesCategoryFilter(YmlOfferRecord $record, ?int $categoryId): bool
+    {
+        if ($categoryId === null) {
+            return true;
+        }
+
+        return $record->categoryId === $categoryId;
+    }
+
+    private function normalizeNullableInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_int($value)) {
+            return $value > 0 ? $value : null;
+        }
+
+        if (is_string($value) && preg_match('/^\d+$/', trim($value)) === 1) {
+            $parsed = (int) trim($value);
+
+            return $parsed > 0 ? $parsed : null;
+        }
+
+        return null;
     }
 
     private function normalizeMode(mixed $mode): string
@@ -642,18 +634,16 @@ class MetalmasterProductImportService
     }
 
     /**
-     * @return array{url: string, bucket: string, title: string, price: string, brand: string, images: string, specs: string}
+     * @return array{external_id: string, name: string, price: string, currency: string, offer_type: string}
      */
-    private function sampleRow(\App\Support\CatalogImport\DTO\ProductPayload $payload, string $url, string $bucket): array
+    private function sampleRow(ProductPayload $payload, ?string $offerType): array
     {
         return [
-            'url' => $url,
-            'bucket' => $bucket,
-            'title' => (string) ($payload->title ?? $payload->name),
+            'external_id' => $payload->externalId,
+            'name' => $payload->name,
             'price' => (string) ($payload->priceAmount ?? 0),
-            'brand' => (string) ($payload->brand ?? ''),
-            'images' => (string) count($payload->images),
-            'specs' => (string) count($payload->attributes),
+            'currency' => (string) ($payload->currency ?? ''),
+            'offer_type' => $offerType ?? 'simple',
         ];
     }
 

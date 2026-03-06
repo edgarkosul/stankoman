@@ -23,7 +23,7 @@ it('starts import run with normalized pending totals', function () {
     expect((string) data_get($run->totals, '_meta.mode'))->toBe('dry-run');
 });
 
-it('completes import run with legacy status mapping', function () {
+it('completes import run with completed status mapping', function () {
     prepareImportRunOrchestratorTables();
 
     $orchestrator = app(ImportRunOrchestrator::class);
@@ -45,7 +45,7 @@ it('completes import run with legacy status mapping', function () {
 
     $run->refresh();
 
-    expect($run->status)->toBe('dry_run');
+    expect($run->status)->toBe('completed');
     expect((bool) data_get($run->totals, '_meta.is_running'))->toBeFalse();
 });
 

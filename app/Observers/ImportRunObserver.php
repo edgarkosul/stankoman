@@ -137,6 +137,7 @@ class ImportRunObserver
             'category_filters' => 'Категорийные фильтры',
             'vactool_products' => 'Vactool',
             'metalmaster_products' => 'Metalmaster',
+            'yandex_market_feed_products' => 'Yandex Market Feed',
             'specs_match' => 'Specs match',
             default => $type !== '' ? $type : 'unknown',
         };

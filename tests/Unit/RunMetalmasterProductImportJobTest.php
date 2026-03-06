@@ -72,7 +72,7 @@ it('updates import run totals and status while handling queued metalmaster impor
 
         $run->refresh();
 
-        expect($run->status)->toBe('dry_run');
+        expect($run->status)->toBe('completed');
         expect((int) data_get($run->totals, 'scanned'))->toBe(1);
         expect((int) data_get($run->totals, '_meta.found_urls'))->toBe(1);
         expect((bool) data_get($run->totals, '_meta.is_running'))->toBeFalse();

@@ -109,6 +109,15 @@
 1. Перенести сбор сырого контента и разбор записей в связку `RecordParserInterface` + `SupplierAdapterInterface` (для Vactool/Metalmaster).
 2. До полной миграции UI и точек запуска сохранять текущий shape прогресса/результата: `processed`, `errors`, `created`, `updated`, `skipped`, `fatal_error`, `url_errors`, `samples`, `no_urls`.
 3. Переключение run-статусов на `running` / `completed` выполнять только после достижения parity со старым поведением и подтверждения тестами.
+4. Добавить prefilter при `skip_existing=true` до HTTP-загрузки карточки товара:
+   - вычислять `external_id` из URL на уровне supplier profile;
+   - проверять наличие в `product_supplier_references` по `supplier + external_id`;
+   - не запрашивать страницу поставщика, если товар уже существует и разрешено пропускать обновления.
+5. Для prefilter сохранять parity legacy-прогресса:
+   - учитывать такие записи в `processed/skipped`;
+   - не ухудшать текущую совместимость UI по shape результата.
+
+**Результат дополнения:** при повторных прогонах с `skip_existing=true` снижается количество HTTP-запросов к поставщику и риск упора в rate-limit/anti-bot.
 
 ### Этап 7. Точки запуска и эксплуатация
 1. Команда запуска импорта (CLI) по поставщику/профилю с выбором режима (`partial_import`/`full_sync_authoritative`) и опций (create/update/check presence/media).

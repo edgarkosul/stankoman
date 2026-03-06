@@ -22,4 +22,26 @@ return [
             'text/plain',
         ],
     ],
+    'schedule' => [
+        'enabled' => (bool) env('CATALOG_IMPORT_SCHEDULE_ENABLED', false),
+        'timezone' => env('CATALOG_IMPORT_SCHEDULE_TIMEZONE', 'Europe/Moscow'),
+        'vactool' => [
+            'enabled' => (bool) env('CATALOG_IMPORT_SCHEDULE_VACTOOL_ENABLED', false),
+            'time' => env('CATALOG_IMPORT_SCHEDULE_VACTOOL_TIME', '04:00'),
+            'mode' => env('CATALOG_IMPORT_SCHEDULE_VACTOOL_MODE', 'partial_import'),
+            'source' => env('CATALOG_IMPORT_SCHEDULE_VACTOOL_SOURCE', 'https://vactool.ru/sitemap.xml'),
+            'download_images' => (bool) env('CATALOG_IMPORT_SCHEDULE_VACTOOL_DOWNLOAD_IMAGES', true),
+            'skip_existing' => (bool) env('CATALOG_IMPORT_SCHEDULE_VACTOOL_SKIP_EXISTING', false),
+        ],
+        'metalmaster' => [
+            'enabled' => (bool) env('CATALOG_IMPORT_SCHEDULE_METALMASTER_ENABLED', false),
+            'time' => env('CATALOG_IMPORT_SCHEDULE_METALMASTER_TIME', '04:30'),
+            'mode' => env('CATALOG_IMPORT_SCHEDULE_METALMASTER_MODE', 'partial_import'),
+            'source' => env('CATALOG_IMPORT_SCHEDULE_METALMASTER_SOURCE', storage_path('app/parser/metalmaster-buckets.json')),
+            'bucket' => env('CATALOG_IMPORT_SCHEDULE_METALMASTER_BUCKET', ''),
+            'timeout' => (int) env('CATALOG_IMPORT_SCHEDULE_METALMASTER_TIMEOUT', 25),
+            'download_images' => (bool) env('CATALOG_IMPORT_SCHEDULE_METALMASTER_DOWNLOAD_IMAGES', true),
+            'skip_existing' => (bool) env('CATALOG_IMPORT_SCHEDULE_METALMASTER_SKIP_EXISTING', false),
+        ],
+    ],
 ];

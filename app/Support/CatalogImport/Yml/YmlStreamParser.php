@@ -88,11 +88,13 @@ class YmlStreamParser implements RecordParserInterface
                 $type = $this->nullableTrimmed($reader->getAttribute('type'));
                 $available = $this->parseBoolAttribute($reader->getAttribute('available'));
                 $xml = (string) $reader->readOuterXml();
+                $categoryId = $this->parseOfferCategoryId($xml);
 
                 yield new YmlOfferRecord(
                     id: $id,
                     type: $type,
                     available: $available,
+                    categoryId: $categoryId,
                     xml: $xml,
                 );
 
@@ -197,5 +199,16 @@ class YmlStreamParser implements RecordParserInterface
         }
 
         return null;
+    }
+
+    private function parseOfferCategoryId(string $xml): ?int
+    {
+        if (preg_match('/<categoryId>\s*(\d+)\s*<\/categoryId>/u', $xml, $matches) !== 1) {
+            return null;
+        }
+
+        $categoryId = (int) ($matches[1] ?? 0);
+
+        return $categoryId > 0 ? $categoryId : null;
     }
 }

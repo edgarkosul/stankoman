@@ -10,6 +10,7 @@ class ProductSupplierReference extends Model
     protected $fillable = [
         'supplier',
         'external_id',
+        'source_category_id',
         'product_id',
         'first_seen_run_id',
         'last_seen_run_id',
@@ -17,6 +18,7 @@ class ProductSupplierReference extends Model
     ];
 
     protected $casts = [
+        'source_category_id' => 'int',
         'first_seen_run_id' => 'int',
         'last_seen_run_id' => 'int',
         'last_seen_at' => 'datetime',

@@ -6,7 +6,7 @@ use App\Exceptions\ImportErrorThresholdExceededException;
 use App\Exceptions\ImportRunCancelledException;
 use App\Models\ImportRun;
 use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
-use App\Support\Metalmaster\MetalmasterProductImportService;
+use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -15,7 +15,7 @@ use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Throwable;
 
-class RunMetalmasterProductImportJob implements ShouldQueue
+class RunYandexMarketFeedImportJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -38,13 +38,13 @@ class RunMetalmasterProductImportJob implements ShouldQueue
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping('catalog_import_metalmaster'))
+            (new WithoutOverlapping('catalog_import_yandex_market_feed'))
                 ->releaseAfter(30)
                 ->expireAfter($this->timeout + 60),
         ];
     }
 
-    public function handle(MetalmasterProductImportService $service, ImportRunOrchestrator $runs): void
+    public function handle(YandexMarketFeedImportService $service, ImportRunOrchestrator $runs): void
     {
         $run = ImportRun::query()->find($this->runId);
 
@@ -96,12 +96,11 @@ class RunMetalmasterProductImportJob implements ShouldQueue
             if (($result['fatal_error'] ?? null) !== null) {
                 $run->issues()->create([
                     'row_index' => null,
-                    'code' => 'buckets_error',
+                    'code' => 'feed_error',
                     'severity' => 'error',
                     'message' => $result['fatal_error'],
                     'row_snapshot' => [
-                        'buckets_file' => $this->options['buckets_file'] ?? null,
-                        'bucket' => $this->options['bucket'] ?? null,
+                        'source' => $this->options['source'] ?? null,
                     ],
                 ]);
             }

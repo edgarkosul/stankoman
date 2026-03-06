@@ -11,6 +11,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Throwable;
 
@@ -30,6 +31,18 @@ class RunVactoolProductImportJob implements ShouldQueue
         public array $options,
         public bool $write,
     ) {}
+
+    /**
+     * @return array<int, object>
+     */
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping('catalog_import_vactool'))
+                ->releaseAfter(30)
+                ->expireAfter($this->timeout + 60),
+        ];
+    }
 
     public function handle(VactoolProductImportService $service, ImportRunOrchestrator $runs): void
     {

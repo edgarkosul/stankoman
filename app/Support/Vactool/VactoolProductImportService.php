@@ -2,6 +2,7 @@
 
 namespace App\Support\Vactool;
 
+use App\Models\ProductSupplierReference;
 use App\Support\CatalogImport\Contracts\SourceResolverInterface;
 use App\Support\CatalogImport\Html\HtmlDocumentParser;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
@@ -137,6 +138,11 @@ class VactoolProductImportService
         $derivativesQueued = 0;
         $samples = [];
         $urlErrors = [];
+        $prefilteredExternalIds = $this->resolvePrefilteredExternalIds($productUrls, $normalized);
+
+        if ($prefilteredExternalIds !== [] && $normalized['run_id'] !== null) {
+            $this->touchPrefilteredReferences($prefilteredExternalIds, $normalized['run_id']);
+        }
 
         $this->emitProgress($progress, $this->makeProgressPayload(
             foundUrls: $foundUrls,
@@ -152,6 +158,30 @@ class VactoolProductImportService
         ));
 
         foreach ($productUrls as $url) {
+            $externalId = $this->profile->resolveExternalId($url);
+
+            if (isset($prefilteredExternalIds[$externalId])) {
+                $processed++;
+                $skipped++;
+
+                $this->emit($output, 'line', 'SKIP: '.$url.' | existing product reference.');
+
+                $this->emitProgress($progress, $this->makeProgressPayload(
+                    foundUrls: $foundUrls,
+                    processed: $processed,
+                    errors: $errors,
+                    created: $created,
+                    updated: $updated,
+                    skipped: $skipped,
+                    imagesDownloaded: $imagesDownloaded,
+                    imageDownloadFailed: $imageDownloadFailed,
+                    derivativesQueued: $derivativesQueued,
+                    noUrls: false,
+                ));
+
+                continue;
+            }
+
             try {
                 $recordResult = $this->mapUrlToPayload($url, $normalized);
 
@@ -310,26 +340,47 @@ class VactoolProductImportService
      *     show_samples: int,
      *     run_id: int|null,
      *     mode: string,
-     *     finalize_missing: bool
+     *     finalize_missing: bool,
+     *     create_missing: bool,
+     *     update_existing: bool
      * }
      */
     private function normalizeOptions(array $options): array
     {
         $runId = $options['run_id'] ?? null;
+        $skipExisting = $this->normalizeBoolOption(
+            $options['skip_existing'] ?? $options['skip-existing'] ?? false,
+            false,
+        );
+        $mode = $this->normalizeMode($options['mode'] ?? null);
 
         return [
             'sitemap' => (string) ($options['sitemap'] ?? 'https://vactool.ru/sitemap.xml'),
             'match' => (string) ($options['match'] ?? '/catalog/product-'),
             'limit' => max(0, (int) ($options['limit'] ?? 0)),
             'delay_ms' => max(0, (int) ($options['delay_ms'] ?? $options['delay-ms'] ?? 250)),
-            'write' => (bool) ($options['write'] ?? false),
-            'publish' => (bool) ($options['publish'] ?? false),
-            'download_images' => (bool) ($options['download_images'] ?? $options['download-images'] ?? false),
-            'skip_existing' => (bool) ($options['skip_existing'] ?? $options['skip-existing'] ?? false),
+            'write' => $this->normalizeBoolOption($options['write'] ?? false, false),
+            'publish' => $this->normalizeBoolOption($options['publish'] ?? false, false),
+            'download_images' => $this->normalizeBoolOption(
+                $options['download_images'] ?? $options['download-images'] ?? false,
+                false,
+            ),
+            'skip_existing' => $skipExisting,
             'show_samples' => max(0, (int) ($options['show_samples'] ?? $options['show-samples'] ?? 3)),
             'run_id' => is_numeric($runId) ? (int) $runId : null,
-            'mode' => (string) ($options['mode'] ?? 'partial_import'),
-            'finalize_missing' => (bool) ($options['finalize_missing'] ?? true),
+            'mode' => $mode,
+            'finalize_missing' => $this->normalizeBoolOption(
+                $options['finalize_missing'] ?? $options['finalize-missing'] ?? null,
+                $mode === 'full_sync_authoritative',
+            ),
+            'create_missing' => $this->normalizeBoolOption(
+                $options['create_missing'] ?? $options['create-missing'] ?? null,
+                true,
+            ),
+            'update_existing' => $this->normalizeBoolOption(
+                $options['update_existing'] ?? $options['update-existing'] ?? null,
+                ! $skipExisting,
+            ),
         ];
     }
 
@@ -406,8 +457,8 @@ class VactoolProductImportService
         return [
             'supplier' => $this->profile->supplierKey(),
             'run_id' => $normalized['run_id'],
-            'create_missing' => true,
-            'update_existing' => ! $normalized['skip_existing'],
+            'create_missing' => $normalized['create_missing'],
+            'update_existing' => $normalized['update_existing'] && ! $normalized['skip_existing'],
             'publish_created' => $normalized['publish'],
             'publish_updated' => $normalized['publish'],
             'download_media' => $normalized['download_images'],
@@ -415,6 +466,103 @@ class VactoolProductImportService
             'use_source_slug' => false,
             'mode' => $normalized['mode'],
         ];
+    }
+
+    /**
+     * @param  Collection<int, string>  $productUrls
+     * @param  array<string, mixed>  $normalized
+     * @return array<string, true>
+     */
+    private function resolvePrefilteredExternalIds(Collection $productUrls, array $normalized): array
+    {
+        if (! $normalized['write'] || ! $normalized['skip_existing']) {
+            return [];
+        }
+
+        $externalIds = $productUrls
+            ->map(fn (string $url): string => $this->profile->resolveExternalId($url))
+            ->filter(fn (string $externalId): bool => trim($externalId) !== '')
+            ->unique()
+            ->values();
+
+        if ($externalIds->isEmpty()) {
+            return [];
+        }
+
+        return ProductSupplierReference::query()
+            ->where('supplier', $this->profile->supplierKey())
+            ->whereIn('external_id', $externalIds->all())
+            ->pluck('external_id')
+            ->filter(fn (mixed $externalId): bool => is_string($externalId) && $externalId !== '')
+            ->mapWithKeys(fn (string $externalId): array => [$externalId => true])
+            ->all();
+    }
+
+    /**
+     * @param  array<string, true>  $prefilteredExternalIds
+     */
+    private function touchPrefilteredReferences(array $prefilteredExternalIds, int $runId): void
+    {
+        if ($prefilteredExternalIds === [] || $runId <= 0) {
+            return;
+        }
+
+        ProductSupplierReference::query()
+            ->where('supplier', $this->profile->supplierKey())
+            ->whereIn('external_id', array_keys($prefilteredExternalIds))
+            ->update([
+                'last_seen_run_id' => $runId,
+                'last_seen_at' => now(),
+                'updated_at' => now(),
+            ]);
+    }
+
+    private function normalizeMode(mixed $mode): string
+    {
+        if (! is_string($mode)) {
+            return 'partial_import';
+        }
+
+        $mode = trim($mode);
+
+        if (in_array($mode, ['partial_import', 'full_sync_authoritative'], true)) {
+            return $mode;
+        }
+
+        return 'partial_import';
+    }
+
+    private function normalizeBoolOption(mixed $value, bool $default): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value)) {
+            return $value !== 0;
+        }
+
+        if (is_string($value)) {
+            $normalized = mb_strtolower(trim($value));
+
+            if ($normalized === '') {
+                return $default;
+            }
+
+            if (in_array($normalized, ['1', 'true', 'yes', 'y', 'on'], true)) {
+                return true;
+            }
+
+            if (in_array($normalized, ['0', 'false', 'no', 'n', 'off'], true)) {
+                return false;
+            }
+        }
+
+        return (bool) $value;
     }
 
     /**

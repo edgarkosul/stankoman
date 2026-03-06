@@ -257,6 +257,52 @@ it('finalizes missing only in full sync authoritative mode', function (): void {
     expect(Product::query()->whereKey((int) $seenProductId)->value('is_active'))->toBeTrue();
 });
 
+it('finalizes missing only inside selected source category when scoped category is provided', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $processor->processBatch([
+        new ProductPayload(externalId: 'SC-22-1', name: 'Категория 22 / 1', inStock: true, qty: 10, source: ['category_id' => 22]),
+        new ProductPayload(externalId: 'SC-22-2', name: 'Категория 22 / 2', inStock: true, qty: 4, source: ['category_id' => 22]),
+        new ProductPayload(externalId: 'SC-31-1', name: 'Категория 31 / 1', inStock: true, qty: 2, source: ['category_id' => 31]),
+    ], [
+        'supplier' => 'sync_feed',
+        'run_id' => $firstRun->id,
+    ]);
+
+    $processor->processBatch([
+        new ProductPayload(externalId: 'SC-22-1', name: 'Категория 22 / 1', inStock: true, qty: 9, source: ['category_id' => 22]),
+    ], [
+        'supplier' => 'sync_feed',
+        'run_id' => $secondRun->id,
+    ]);
+
+    $scopedFinalize = $processor->finalizeMissing('sync_feed', $secondRun->id, [
+        'mode' => 'full_sync_authoritative',
+        'finalize_missing' => true,
+        'source_category_id' => 22,
+    ]);
+
+    expect($scopedFinalize['skipped'])->toBeFalse()
+        ->and($scopedFinalize['checked'])->toBe(1)
+        ->and($scopedFinalize['deactivated'])->toBe(1);
+
+    $missingInScopedCategoryId = ProductSupplierReference::query()
+        ->where('supplier', 'sync_feed')
+        ->where('external_id', 'SC-22-2')
+        ->value('product_id');
+
+    $missingOutsideScopedCategoryId = ProductSupplierReference::query()
+        ->where('supplier', 'sync_feed')
+        ->where('external_id', 'SC-31-1')
+        ->value('product_id');
+
+    expect(Product::query()->whereKey((int) $missingInScopedCategoryId)->value('is_active'))->toBeFalse();
+    expect(Product::query()->whereKey((int) $missingOutsideScopedCategoryId)->value('is_active'))->toBeTrue();
+});
+
 function createImportRun(string $type): ImportRun
 {
     return ImportRun::query()->create([
@@ -350,6 +396,7 @@ function prepareProductImportProcessorTables(): void
         $table->id();
         $table->string('supplier', 120);
         $table->string('external_id');
+        $table->unsignedInteger('source_category_id')->nullable();
         $table->unsignedBigInteger('product_id');
         $table->unsignedBigInteger('first_seen_run_id')->nullable();
         $table->unsignedBigInteger('last_seen_run_id')->nullable();
@@ -359,6 +406,7 @@ function prepareProductImportProcessorTables(): void
         $table->unique(['supplier', 'external_id']);
         $table->index(['supplier', 'product_id']);
         $table->index(['supplier', 'last_seen_run_id']);
+        $table->index(['supplier', 'source_category_id']);
 
         $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
         $table->foreign('first_seen_run_id')->references('id')->on('import_runs')->nullOnDelete();

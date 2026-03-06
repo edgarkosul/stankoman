@@ -29,6 +29,7 @@ it('streams categories and offers from yml feed', function () {
         <typePrefix>Пылесос</typePrefix>
         <vendor>Vactool</vendor>
         <model>VT-9000</model>
+        <categoryId>2</categoryId>
       </offer>
     </offers>
   </shop>
@@ -53,10 +54,12 @@ XML;
         expect($offers[0]->id)->toBe('A1');
         expect($offers[0]->type)->toBeNull();
         expect($offers[0]->available)->toBeTrue();
+        expect($offers[0]->categoryId)->toBe(1);
 
         expect($offers[1]->id)->toBe('A2');
         expect($offers[1]->type)->toBe('vendor.model');
         expect($offers[1]->available)->toBeFalse();
+        expect($offers[1]->categoryId)->toBe(2);
     } finally {
         @unlink($path);
     }
@@ -76,6 +79,12 @@ it('maps simplified and vendor.model offers into product payloads', function () 
         <description>Simple description.</description>
         <price>123</price>
         <currencyId>RUB</currencyId>
+        <param name="Мощность" unit="Вт">1200</param>
+        <param name="Цвет">  Красный </param>
+        <param name="Цвет">Красный</param>
+        <param name="">ignored</param>
+        <picture>https://example.test/images/simple-1.jpg</picture>
+        <picture>https://example.test/images/simple-2.jpg</picture>
         <categoryId>1</categoryId>
       </offer>
       <offer id="A2" type="vendor.model" available="false">
@@ -85,6 +94,12 @@ it('maps simplified and vendor.model offers into product payloads', function () 
         <description>Vendor model description.</description>
         <price>999</price>
         <currencyId>RUB</currencyId>
+        <param name="Напряжение" unit="В">220</param>
+        <param name="Комплектация">Шланг</param>
+        <picture>https://example.test/images/vm-1.jpg</picture>
+        <picture>
+          https://example.test/images/vm-2.jpg
+        </picture>
         <categoryId>1</categoryId>
       </offer>
     </offers>
@@ -109,6 +124,14 @@ XML;
         expect($simple->payload?->priceAmount)->toBe(123);
         expect($simple->payload?->currency)->toBe('RUB');
         expect($simple->payload?->inStock)->toBeTrue();
+        expect($simple->payload?->images)->toBe([
+            'https://example.test/images/simple-1.jpg',
+            'https://example.test/images/simple-2.jpg',
+        ]);
+        expect($simple->payload?->attributes)->toBe([
+            ['name' => 'Мощность', 'value' => '1200 Вт', 'source' => 'yml'],
+            ['name' => 'Цвет', 'value' => 'Красный', 'source' => 'yml'],
+        ]);
 
         $vendorModel = $adapter->mapOffer($offers[1]);
         expect($vendorModel->isSuccess())->toBeTrue();
@@ -119,6 +142,14 @@ XML;
         expect($vendorModel->payload?->priceAmount)->toBe(999);
         expect($vendorModel->payload?->currency)->toBe('RUB');
         expect($vendorModel->payload?->inStock)->toBeFalse();
+        expect($vendorModel->payload?->images)->toBe([
+            'https://example.test/images/vm-1.jpg',
+            'https://example.test/images/vm-2.jpg',
+        ]);
+        expect($vendorModel->payload?->attributes)->toBe([
+            ['name' => 'Напряжение', 'value' => '220 В', 'source' => 'yml'],
+            ['name' => 'Комплектация', 'value' => 'Шланг', 'source' => 'yml'],
+        ]);
     } finally {
         @unlink($path);
     }

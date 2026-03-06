@@ -32,13 +32,14 @@ class ImportRunsTable
                         'category_filters' => 'Категорийные фильтры',
                         'vactool_products' => 'Vactool',
                         'metalmaster_products' => 'Metalmaster',
+                        'yandex_market_feed_products' => 'Yandex Market Feed',
                         'specs_match' => 'Specs match',
                         default => (string) $state,
                     })
                     ->badge()
                     ->colors([
                         'gray' => 'products',
-                        'warning' => 'category_filters',
+                        'warning' => ['category_filters', 'yandex_market_feed_products'],
                         'primary' => 'vactool_products',
                         'success' => 'metalmaster_products',
                         'info' => 'specs_match',

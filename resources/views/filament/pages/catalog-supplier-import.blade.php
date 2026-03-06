@@ -18,7 +18,7 @@
 
             <div class="space-y-4 rounded-xl border border-zinc-200 bg-white/60 p-4">
                 <div class="flex items-center justify-between gap-2">
-                    <h2 class="text-sm font-semibold">Последний запуск Vactool</h2>
+                    <h2 class="text-sm font-semibold">Последний запуск поставщика</h2>
                     <div class="text-xs text-zinc-500">#{{ $lastSavedRun['id'] ?? '—' }}</div>
                 </div>
 

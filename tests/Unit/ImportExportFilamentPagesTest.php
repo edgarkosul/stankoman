@@ -5,6 +5,7 @@ use App\Filament\Pages\ImportExportHelp;
 use App\Filament\Pages\MetalmasterProductImport;
 use App\Filament\Pages\ProductImportExport;
 use App\Filament\Pages\VactoolProductImport;
+use App\Filament\Pages\YandexMarketFeedImport;
 use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Jobs\RunMetalmasterProductImportJob;
 use App\Jobs\RunVactoolProductImportJob;
@@ -84,6 +85,18 @@ test('metalmaster product import page metadata and route are configured', functi
     expect(Route::has('filament.admin.pages.metalmaster-product-import'))->toBeTrue();
 });
 
+test('yandex market feed import page metadata and route are configured', function () {
+    expect(YandexMarketFeedImport::getNavigationGroup())->toBe('Экспорт/Импорт');
+    expect(YandexMarketFeedImport::getNavigationLabel())->toBe('Импорт Yandex Feed');
+    expect(YandexMarketFeedImport::getNavigationIcon())->toBe('heroicon-o-cloud-arrow-down');
+
+    $defaults = (new ReflectionClass(YandexMarketFeedImport::class))->getDefaultProperties();
+
+    expect($defaults['view'])->toBe('filament.pages.yandex-market-feed-import');
+    expect($defaults['title'])->toBe('Импорт товаров из Yandex Market Feed');
+    expect(Route::has('filament.admin.pages.yandex-market-feed-import'))->toBeTrue();
+});
+
 test('product import export page has instruction header action', function () {
     $page = new ProductImportExport;
 
@@ -95,7 +108,7 @@ test('product import export page has instruction header action', function () {
     expect($actions)->toHaveCount(1);
     expect($actions[0]->getName())->toBe('instructions');
     expect($actions[0]->getLabel())->toBe('Инструкция');
-    expect($actions[0]->getUrl())->toBe(ImportExportHelp::getUrl());
+    expect($actions[0]->getUrl())->toBe('https://help.stankoman.ru/import/excel-import/');
 });
 
 test('vactool product import page has expected header actions', function () {
@@ -108,7 +121,7 @@ test('vactool product import page has expected header actions', function () {
 
     expect($actions)->toHaveCount(2);
     expect($actions[0]->getName())->toBe('instructions');
-    expect($actions[0]->getUrl())->toBe(ImportExportHelp::getUrl());
+    expect($actions[0]->getUrl())->toBe('https://help.stankoman.ru/import/vactool-import/');
     expect($actions[1]->getName())->toBe('history');
     expect($actions[1]->getUrl())->toBe(ImportRunResource::getUrl());
 });
@@ -123,7 +136,7 @@ test('metalmaster product import page has expected header actions', function () 
 
     expect($actions)->toHaveCount(2);
     expect($actions[0]->getName())->toBe('instructions');
-    expect($actions[0]->getUrl())->toBe(ImportExportHelp::getUrl());
+    expect($actions[0]->getUrl())->toBe('https://help.stankoman.ru/import/metalmaster-import/');
     expect($actions[1]->getName())->toBe('history');
     expect($actions[1]->getUrl())->toBe(ImportRunResource::getUrl());
 });
@@ -274,6 +287,18 @@ test('vactool product import form has default fields and hint icons', function (
     $skipExistingField = $schema->getComponent(
         fn ($component) => $component instanceof Toggle && $component->getName() === 'skip_existing',
     );
+    $modeField = $schema->getComponent(
+        fn ($component) => $component instanceof Select && $component->getName() === 'mode',
+    );
+    $finalizeMissingField = $schema->getComponent(
+        fn ($component) => $component instanceof Toggle && $component->getName() === 'finalize_missing',
+    );
+    $createMissingField = $schema->getComponent(
+        fn ($component) => $component instanceof Toggle && $component->getName() === 'create_missing',
+    );
+    $updateExistingField = $schema->getComponent(
+        fn ($component) => $component instanceof Toggle && $component->getName() === 'update_existing',
+    );
     $sitemapField = $schema->getComponent(
         fn ($component) => $component instanceof TextInput && $component->getName() === 'sitemap',
     );
@@ -281,6 +306,10 @@ test('vactool product import form has default fields and hint icons', function (
     expect($limitField)->not->toBeNull();
     expect($downloadImagesField)->not->toBeNull();
     expect($skipExistingField)->not->toBeNull();
+    expect($modeField)->not->toBeNull();
+    expect($finalizeMissingField)->not->toBeNull();
+    expect($createMissingField)->not->toBeNull();
+    expect($updateExistingField)->not->toBeNull();
     expect($sitemapField)->toBeNull();
 
     expect($limitField->isNumeric())->toBeTrue();
@@ -304,6 +333,18 @@ test('metalmaster product import form has default fields and hint icons', functi
     $skipExistingField = $schema->getComponent(
         fn ($component) => $component instanceof Toggle && $component->getName() === 'skip_existing',
     );
+    $modeField = $schema->getComponent(
+        fn ($component) => $component instanceof Select && $component->getName() === 'mode',
+    );
+    $finalizeMissingField = $schema->getComponent(
+        fn ($component) => $component instanceof Toggle && $component->getName() === 'finalize_missing',
+    );
+    $createMissingField = $schema->getComponent(
+        fn ($component) => $component instanceof Toggle && $component->getName() === 'create_missing',
+    );
+    $updateExistingField = $schema->getComponent(
+        fn ($component) => $component instanceof Toggle && $component->getName() === 'update_existing',
+    );
     $downloadImagesField = $schema->getComponent(
         fn ($component) => $component instanceof Toggle && $component->getName() === 'download_images',
     );
@@ -312,6 +353,10 @@ test('metalmaster product import form has default fields and hint icons', functi
     expect($bucketsFileField)->toBeNull();
     expect($timeoutField)->not->toBeNull();
     expect($skipExistingField)->not->toBeNull();
+    expect($modeField)->not->toBeNull();
+    expect($finalizeMissingField)->not->toBeNull();
+    expect($createMissingField)->not->toBeNull();
+    expect($updateExistingField)->not->toBeNull();
     expect($downloadImagesField)->not->toBeNull();
 
     expect($bucketField->isSearchable())->toBeTrue();
@@ -498,6 +543,118 @@ test('vactool product import page can stop active queued run', function () {
     expect((bool) data_get($run->totals, '_meta.is_running'))->toBeFalse();
     expect((bool) data_get($run->totals, '_meta.cancelled_by_user'))->toBeTrue();
     expect($run->issues()->where('code', 'cancelled_by_user')->exists())->toBeTrue();
+});
+
+test('vactool product import page can stop running queued run', function () {
+    if (! DatabaseSchema::hasTable('import_runs')) {
+        DatabaseSchema::create('import_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->string('type')->default('products');
+            $table->string('status')->default('pending');
+            $table->json('columns')->nullable();
+            $table->json('totals')->nullable();
+            $table->string('source_filename')->nullable();
+            $table->string('stored_path')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    if (! DatabaseSchema::hasTable('import_issues')) {
+        DatabaseSchema::create('import_issues', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('run_id');
+            $table->integer('row_index')->nullable();
+            $table->string('code', 64);
+            $table->string('severity', 16)->default('error');
+            $table->text('message')->nullable();
+            $table->json('row_snapshot')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    $run = ImportRun::query()->create([
+        'type' => 'vactool_products',
+        'status' => 'running',
+        'columns' => [
+            'write' => true,
+        ],
+        'totals' => [
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => true,
+            ],
+        ],
+        'started_at' => now(),
+    ]);
+
+    $page = new VactoolProductImport;
+    $page->mount();
+    $page->lastRunId = $run->id;
+    $page->stopActiveImport();
+
+    $run->refresh();
+
+    expect($run->status)->toBe('cancelled');
+    expect((bool) data_get($run->totals, '_meta.cancelled_by_user'))->toBeTrue();
+});
+
+test('metalmaster product import page can stop running queued run', function () {
+    if (! DatabaseSchema::hasTable('import_runs')) {
+        DatabaseSchema::create('import_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->string('type')->default('products');
+            $table->string('status')->default('pending');
+            $table->json('columns')->nullable();
+            $table->json('totals')->nullable();
+            $table->string('source_filename')->nullable();
+            $table->string('stored_path')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    if (! DatabaseSchema::hasTable('import_issues')) {
+        DatabaseSchema::create('import_issues', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('run_id');
+            $table->integer('row_index')->nullable();
+            $table->string('code', 64);
+            $table->string('severity', 16)->default('error');
+            $table->text('message')->nullable();
+            $table->json('row_snapshot')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    $run = ImportRun::query()->create([
+        'type' => 'metalmaster_products',
+        'status' => 'running',
+        'columns' => [
+            'write' => true,
+        ],
+        'totals' => [
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => true,
+            ],
+        ],
+        'started_at' => now(),
+    ]);
+
+    $page = new MetalmasterProductImport;
+    $page->mount();
+    $page->lastRunId = $run->id;
+    $page->stopActiveImport();
+
+    $run->refresh();
+
+    expect($run->status)->toBe('cancelled');
+    expect((bool) data_get($run->totals, '_meta.cancelled_by_user'))->toBeTrue();
 });
 
 test('metalmaster product import page can stop active queued run', function () {

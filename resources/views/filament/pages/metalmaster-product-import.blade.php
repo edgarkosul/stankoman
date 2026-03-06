@@ -6,8 +6,10 @@
             @php
                 $statusLabel = match ($lastSavedRun['status'] ?? '') {
                     'pending' => 'В ожидании',
+                    'running' => 'Выполняется',
                     'dry_run' => 'Проверено',
                     'applied' => 'Применено',
+                    'completed' => 'Завершен',
                     'failed' => 'Ошибка',
                     'cancelled' => 'Остановлен',
                     default => (string) ($lastSavedRun['status'] ?? '—'),

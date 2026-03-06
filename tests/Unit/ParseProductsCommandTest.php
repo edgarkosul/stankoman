@@ -56,6 +56,62 @@ it('runs metalmaster parser command in dry-run mode', function () {
     }
 });
 
+it('prefilters existing supplier references before loading metalmaster pages', function () {
+    rebuildMetalmasterParserSchemas();
+
+    $productUrl = 'https://metalmaster.ru/promyshlennye/z50100-dro/';
+    $bucketsFile = storage_path('app/testing/metalmaster-buckets-'.Str::lower(Str::random(10)).'.json');
+
+    file_put_contents($bucketsFile, json_encode([
+        [
+            'bucket' => 'promyshlennye',
+            'category_url' => 'https://metalmaster.ru/promyshlennye/',
+            'products_count' => 1,
+            'product_urls' => [$productUrl],
+        ],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+
+    try {
+        $existingProduct = Product::query()->create([
+            'name' => 'Уже импортированный Metalmaster товар',
+            'slug' => 'z50100-dro',
+            'price_amount' => 1000,
+            'currency' => 'RUB',
+            'in_stock' => true,
+            'is_active' => true,
+        ]);
+
+        DB::table('product_supplier_references')->insert([
+            'supplier' => 'metalmaster',
+            'external_id' => 'z50100-dro',
+            'product_id' => $existingProduct->id,
+            'first_seen_run_id' => null,
+            'last_seen_run_id' => null,
+            'last_seen_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Http::preventStrayRequests();
+        Http::fake();
+
+        $this->artisan('parser:parse-products', [
+            '--buckets-file' => $bucketsFile,
+            '--sleep' => 0,
+            '--write' => true,
+            '--skip-existing' => true,
+        ])
+            ->expectsOutputToContain('SKIP: '.$productUrl)
+            ->assertSuccessful();
+
+        Http::assertNothingSent();
+        expect(Product::query()->count())->toBe(1);
+    } finally {
+        @unlink($bucketsFile);
+        dropMetalmasterParserSchemas();
+    }
+});
+
 it('imports metalmaster products into database and attaches staging category', function () {
     rebuildMetalmasterParserSchemas();
 

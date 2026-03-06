@@ -23,6 +23,8 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
     private ?int $stagingCategoryId = null;
 
+    private ?bool $sourceCategoryReferenceSupported = null;
+
     public function __construct(
         private readonly ProductPayloadNormalizer $normalizer = new ProductPayloadNormalizer,
         private readonly ProductImportMediaService $mediaService = new ProductImportMediaService,
@@ -95,6 +97,9 @@ final class ProductImportProcessor implements ImportProcessorInterface
     public function finalizeMissing(string $supplier, int $runId, array $options = []): array
     {
         $normalizedSupplier = $this->normalizeSupplier($supplier);
+        $sourceCategoryId = $this->positiveIntOrNull(
+            $options['source_category_id'] ?? $options['category_id'] ?? null,
+        );
 
         if ($normalizedSupplier === null || $runId <= 0) {
             return [
@@ -108,8 +113,22 @@ final class ProductImportProcessor implements ImportProcessorInterface
         $finalizeMissing = ($options['finalize_missing'] ?? true) === true;
         $missingStrategy = (string) ($options['missing_strategy'] ?? 'deactivate');
 
-        $productIds = ProductSupplierReference::query()
-            ->where('supplier', $normalizedSupplier)
+        if ($sourceCategoryId !== null && ! $this->supportsSourceCategoryReference()) {
+            return [
+                'checked' => 0,
+                'deactivated' => 0,
+                'skipped' => true,
+            ];
+        }
+
+        $referenceQuery = ProductSupplierReference::query()
+            ->where('supplier', $normalizedSupplier);
+
+        if ($sourceCategoryId !== null) {
+            $referenceQuery->where('source_category_id', $sourceCategoryId);
+        }
+
+        $productIds = $referenceQuery
             ->where(function ($query) use ($runId): void {
                 $query->whereNull('last_seen_run_id')
                     ->orWhere('last_seen_run_id', '!=', $runId);
@@ -208,6 +227,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
         /** @var ConnectionInterface $connection */
         $connection = Product::query()->getConnection();
+        $supportsSourceCategoryReference = $this->supportsSourceCategoryReference();
 
         $connection->transaction(function () use (
             $normalizedItems,
@@ -218,6 +238,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
             $canUpdate,
             $queueMedia,
             $options,
+            $supportsSourceCategoryReference,
             &$pendingMediaIds,
             &$summary,
         ): void {
@@ -283,7 +304,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
                         ];
                     }
 
-                    $referenceUpserts[] = [
+                    $referenceUpsert = [
                         'supplier' => $supplier,
                         'external_id' => $payload->externalId,
                         'product_id' => $product->id,
@@ -293,6 +314,12 @@ final class ProductImportProcessor implements ImportProcessorInterface
                         'created_at' => $reference?->created_at ?? $now,
                         'updated_at' => $now,
                     ];
+
+                    if ($supportsSourceCategoryReference) {
+                        $referenceUpsert['source_category_id'] = $this->resolveSourceCategoryId($payload, $reference);
+                    }
+
+                    $referenceUpserts[] = $referenceUpsert;
                 }
 
                 $summary['processed']++;
@@ -311,10 +338,16 @@ final class ProductImportProcessor implements ImportProcessorInterface
             }
 
             if ($referenceUpserts !== []) {
+                $updateColumns = ['product_id', 'last_seen_run_id', 'last_seen_at', 'updated_at'];
+
+                if ($supportsSourceCategoryReference) {
+                    $updateColumns[] = 'source_category_id';
+                }
+
                 ProductSupplierReference::query()->upsert(
                     values: $referenceUpserts,
                     uniqueBy: ['supplier', 'external_id'],
-                    update: ['product_id', 'last_seen_run_id', 'last_seen_at', 'updated_at'],
+                    update: $updateColumns,
                 );
             }
         });
@@ -626,6 +659,44 @@ final class ProductImportProcessor implements ImportProcessorInterface
         }
 
         return $this->findStagingCategoryId($slug);
+    }
+
+    private function supportsSourceCategoryReference(): bool
+    {
+        if ($this->sourceCategoryReferenceSupported !== null) {
+            return $this->sourceCategoryReferenceSupported;
+        }
+
+        $this->sourceCategoryReferenceSupported = Schema::hasTable('product_supplier_references')
+            && Schema::hasColumn('product_supplier_references', 'source_category_id');
+
+        return $this->sourceCategoryReferenceSupported;
+    }
+
+    private function resolveSourceCategoryId(ProductPayload $payload, ?ProductSupplierReference $reference): ?int
+    {
+        $fromPayload = $this->positiveIntOrNull($payload->source['category_id'] ?? null);
+
+        if ($fromPayload !== null) {
+            return $fromPayload;
+        }
+
+        return $this->positiveIntOrNull($reference?->getAttribute('source_category_id'));
+    }
+
+    private function positiveIntOrNull(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value > 0 ? $value : null;
+        }
+
+        if (is_string($value) && preg_match('/^\d+$/', trim($value)) === 1) {
+            $parsed = (int) trim($value);
+
+            return $parsed > 0 ? $parsed : null;
+        }
+
+        return null;
     }
 
     private function normalizeSupplier(mixed $supplier): ?string
