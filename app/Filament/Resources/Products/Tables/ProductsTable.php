@@ -151,6 +151,7 @@ class ProductsTable
                 Filter::make('staging_category')
                     ->label('Импортированные товары')
                     ->toggle()
+                    ->default()
                     ->query(
                         fn (Builder $query): Builder => $query->whereHas('categories', function (Builder $q): Builder {
                             return $q->where('slug', 'staging');

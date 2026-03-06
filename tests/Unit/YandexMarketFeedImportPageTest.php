@@ -4,6 +4,7 @@ use App\Filament\Pages\YandexMarketFeedImport;
 use App\Jobs\RunYandexMarketFeedImportJob;
 use App\Models\ImportRun;
 use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -34,11 +35,17 @@ test('yandex market feed import form has source, category and run controls', fun
 
     $schema = $page->form(Schema::make($page));
 
-    $sourceField = $schema->getComponent(
-        fn ($component) => $component instanceof TextInput && $component->getName() === 'source',
+    $sourceModeField = $schema->getComponent(
+        fn ($component) => $component instanceof Select && $component->getName() === 'source_mode',
+    );
+    $sourceUrlField = $schema->getComponent(
+        fn ($component) => $component instanceof TextInput && $component->getName() === 'source_url',
     );
     $categoryField = $schema->getComponent(
         fn ($component) => $component instanceof Select && $component->getName() === 'category_id',
+    );
+    $syncScenarioField = $schema->getComponent(
+        fn ($component) => $component instanceof Select && $component->getName() === 'sync_scenario',
     );
     $modeField = $schema->getComponent(
         fn ($component) => $component instanceof Select && $component->getName() === 'mode',
@@ -47,19 +54,66 @@ test('yandex market feed import form has source, category and run controls', fun
         fn ($component) => $component instanceof Toggle && $component->getName() === 'download_images',
     );
 
-    expect($sourceField)->not->toBeNull();
+    expect($sourceModeField)->not->toBeNull();
+    expect($sourceUrlField)->not->toBeNull();
     expect($categoryField)->not->toBeNull();
+    expect($syncScenarioField)->not->toBeNull();
     expect($modeField)->not->toBeNull();
     expect($downloadImagesField)->not->toBeNull();
+
+    $page->data = array_merge($page->data ?? [], [
+        'source_mode' => 'upload',
+    ]);
+
+    $uploadSchema = $page->form(Schema::make($page));
+    $sourceUploadField = $uploadSchema->getComponent(
+        fn ($component) => $component instanceof FileUpload && $component->getName() === 'source_upload',
+    );
+
+    expect($sourceUploadField)->not->toBeNull();
+});
+
+test('yandex market feed import page applies sync scenario to technical flags', function () {
+    $page = new YandexMarketFeedImport;
+    $page->mount();
+
+    $page->data = array_merge($page->data ?? [], [
+        'sync_scenario' => 'new_only',
+    ]);
+
+    $page->updatedDataSyncScenario('new_only');
+
+    expect(data_get($page->data, 'mode'))->toBe('partial_import');
+    expect(data_get($page->data, 'finalize_missing'))->toBeFalse();
+    expect(data_get($page->data, 'create_missing'))->toBeTrue();
+    expect(data_get($page->data, 'update_existing'))->toBeFalse();
+    expect(data_get($page->data, 'skip_existing'))->toBeTrue();
+});
+
+test('yandex market feed import page switches scenario to custom for manual technical flags', function () {
+    $page = new YandexMarketFeedImport;
+    $page->mount();
+
+    $page->data = array_merge($page->data ?? [], [
+        'create_missing' => false,
+        'update_existing' => false,
+    ]);
+
+    $page->updatedDataUpdateExisting();
+
+    expect(data_get($page->data, 'sync_scenario'))->toBe('custom');
 });
 
 test('yandex market feed import page loads categories from feed source', function () {
+    prepareYandexMarketFeedImportPageTables();
+
     $service = \Mockery::mock(YandexMarketFeedImportService::class);
-    $service->shouldReceive('listCategories')
+    $service->shouldReceive('listCategoryNodes')
         ->once()
         ->andReturn([
-            11 => 'Компрессоры',
-            22 => 'Пылесосы',
+            ['id' => 11, 'name' => 'Компрессоры', 'parent_id' => null],
+            ['id' => 22, 'name' => 'Пылесосы', 'parent_id' => 11],
+            ['id' => 33, 'name' => 'Промышленные', 'parent_id' => 22],
         ]);
 
     app()->instance(YandexMarketFeedImportService::class, $service);
@@ -67,7 +121,9 @@ test('yandex market feed import page loads categories from feed source', functio
     $page = new YandexMarketFeedImport;
     $page->mount();
     $page->data = array_merge($page->data ?? [], [
-        'source' => 'https://example.test/yandex.xml',
+        'source_mode' => 'url',
+        'source_url' => 'https://example.test/yandex.xml',
+        'category_id' => 11,
     ]);
 
     $page->loadFeedCategories();
@@ -75,19 +131,93 @@ test('yandex market feed import page loads categories from feed source', functio
     expect($page->parsedCategories)->toBe([
         11 => 'Компрессоры',
         22 => 'Пылесосы',
+        33 => 'Промышленные',
     ]);
+    expect($page->parsedCategoryTree)->toBe([
+        11 => [
+            'id' => 11,
+            'name' => 'Компрессоры',
+            'parent_id' => null,
+            'depth' => 0,
+            'is_leaf' => false,
+            'tree_name' => 'Компрессоры',
+        ],
+        22 => [
+            'id' => 22,
+            'name' => 'Пылесосы',
+            'parent_id' => 11,
+            'depth' => 1,
+            'is_leaf' => false,
+            'tree_name' => '— Пылесосы',
+        ],
+        33 => [
+            'id' => 33,
+            'name' => 'Промышленные',
+            'parent_id' => 22,
+            'depth' => 2,
+            'is_leaf' => true,
+            'tree_name' => '— — Промышленные',
+        ],
+    ]);
+    expect($page->leafCategoryIds)->toBe([33 => true]);
+    expect(data_get($page->data, 'category_id'))->toBe(11);
     expect($page->categoriesLoadedSource)->toBe('https://example.test/yandex.xml');
     expect($page->categoriesLoadedAt)->not->toBeNull();
+});
+
+test('yandex market feed import page category select options contain full category tree', function () {
+    prepareYandexMarketFeedImportPageTables();
+
+    $service = \Mockery::mock(YandexMarketFeedImportService::class);
+    $service->shouldReceive('listCategoryNodes')
+        ->once()
+        ->andReturn([
+            ['id' => 10, 'name' => 'Root', 'parent_id' => null],
+            ['id' => 20, 'name' => 'Branch', 'parent_id' => 10],
+            ['id' => 30, 'name' => 'Leaf A', 'parent_id' => 20],
+            ['id' => 40, 'name' => 'Leaf B', 'parent_id' => 10],
+        ]);
+
+    app()->instance(YandexMarketFeedImportService::class, $service);
+
+    $page = new YandexMarketFeedImport;
+    $page->mount();
+    $page->data = array_merge($page->data ?? [], [
+        'source_mode' => 'url',
+        'source_url' => 'https://example.test/yandex.xml',
+    ]);
+
+    $page->loadFeedCategories();
+
+    $method = new ReflectionMethod(YandexMarketFeedImport::class, 'categoryOptions');
+    $method->setAccessible(true);
+
+    $options = $method->invoke($page, null, 100);
+
+    expect($options)->toBe([
+        '10' => '[10] Root',
+        '20' => '— [20] Branch',
+        '30' => '— — [30] Leaf A',
+        '40' => '— [40] Leaf B',
+    ]);
 });
 
 test('yandex market feed import page dispatches job with selected category filter', function () {
     prepareYandexMarketFeedImportPageTables();
     Queue::fake();
 
+    $service = \Mockery::mock(YandexMarketFeedImportService::class);
+    $service->shouldReceive('listCategoryNodes')
+        ->once()
+        ->andReturn([]);
+
+    app()->instance(YandexMarketFeedImportService::class, $service);
+
     $page = new YandexMarketFeedImport;
     $page->mount();
     $page->data = array_merge($page->data ?? [], [
-        'source' => 'https://example.test/yandex-market-feed.xml',
+        'source_mode' => 'url',
+        'source_url' => 'https://example.test/yandex-market-feed.xml',
         'category_id' => 22,
         'mode' => 'partial_import',
     ]);
@@ -103,6 +233,26 @@ test('yandex market feed import page dispatches job with selected category filte
     Queue::assertPushed(RunYandexMarketFeedImportJob::class, function (RunYandexMarketFeedImportJob $job) use ($page): bool {
         return $job->runId === $page->lastRunId && $job->write === false;
     });
+});
+
+test('yandex market feed import page blocks write import when create and update are disabled', function () {
+    prepareYandexMarketFeedImportPageTables();
+    Queue::fake();
+
+    $page = new YandexMarketFeedImport;
+    $page->mount();
+    $page->data = array_merge($page->data ?? [], [
+        'source_mode' => 'url',
+        'source_url' => 'https://example.test/yandex-market-feed.xml',
+        'create_missing' => false,
+        'update_existing' => false,
+    ]);
+
+    $page->doImport();
+
+    expect($page->lastRunId)->toBeNull();
+    expect(ImportRun::query()->where('type', 'yandex_market_feed_products')->count())->toBe(0);
+    Queue::assertNothingPushed();
 });
 
 function prepareYandexMarketFeedImportPageTables(): void
@@ -132,6 +282,26 @@ function prepareYandexMarketFeedImportPageTables(): void
             $table->string('severity', 16)->default('error');
             $table->text('message')->nullable();
             $table->json('row_snapshot')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    if (! DatabaseSchema::hasTable('import_feed_sources')) {
+        DatabaseSchema::create('import_feed_sources', function (Blueprint $table): void {
+            $table->id();
+            $table->string('supplier', 120);
+            $table->string('source_type', 16);
+            $table->string('fingerprint', 64);
+            $table->string('source_url', 2048)->nullable();
+            $table->string('stored_path')->nullable();
+            $table->string('original_filename')->nullable();
+            $table->string('content_hash', 64)->nullable();
+            $table->unsignedBigInteger('size_bytes')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('last_run_id')->nullable();
+            $table->timestamp('last_used_at')->nullable();
+            $table->timestamp('last_validated_at')->nullable();
+            $table->json('meta')->nullable();
             $table->timestamps();
         });
     }

@@ -126,7 +126,7 @@ it('reads categories from yandex market feed', function () {
   <shop>
     <categories>
       <category id="22">Компрессоры</category>
-      <category id="31">Пылесосы</category>
+      <category id="31" parentId="22">Пылесосы</category>
     </categories>
     <offers>
       <offer id="A1" available="true">
@@ -144,10 +144,17 @@ XML;
     file_put_contents($path, $xml);
 
     try {
+        $categoryNodes = app(YandexMarketFeedImportService::class)->listCategoryNodes([
+            'source' => $path,
+        ]);
         $categories = app(YandexMarketFeedImportService::class)->listCategories([
             'source' => $path,
         ]);
 
+        expect($categoryNodes)->toBe([
+            22 => ['id' => 22, 'name' => 'Компрессоры', 'parent_id' => null],
+            31 => ['id' => 31, 'name' => 'Пылесосы', 'parent_id' => 22],
+        ]);
         expect($categories)->toBe([
             22 => 'Компрессоры',
             31 => 'Пылесосы',
@@ -157,11 +164,16 @@ XML;
     }
 });
 
-it('filters yandex market feed import by selected category id', function () {
+it('filters yandex market feed import by selected category including descendants', function () {
     $xml = <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
 <yml_catalog date="2026-03-05 00:00">
   <shop>
+    <categories>
+      <category id="22">Root 22</category>
+      <category id="31" parentId="22">Child 31</category>
+      <category id="44">Other 44</category>
+    </categories>
     <offers>
       <offer id="A1" available="true">
         <name>Category 22 product</name>
@@ -174,6 +186,12 @@ it('filters yandex market feed import by selected category id', function () {
         <price>999</price>
         <currencyId>RUB</currencyId>
         <categoryId>31</categoryId>
+      </offer>
+      <offer id="A3" available="true">
+        <name>Category 44 product</name>
+        <price>777</price>
+        <currencyId>RUB</currencyId>
+        <categoryId>44</categoryId>
       </offer>
     </offers>
   </shop>
@@ -195,12 +213,13 @@ XML;
 
         expect($result['fatal_error'])->toBeNull();
         expect($result['no_urls'])->toBeFalse();
-        expect($result['found_urls'])->toBe(1);
-        expect($result['processed'])->toBe(1);
+        expect($result['found_urls'])->toBe(2);
+        expect($result['processed'])->toBe(2);
         expect($result['errors'])->toBe(0);
         expect($result['success'])->toBeTrue();
-        expect($result['samples'])->toHaveCount(1);
+        expect($result['samples'])->toHaveCount(2);
         expect($result['samples'][0]['external_id'])->toBe('A1');
+        expect($result['samples'][1]['external_id'])->toBe('A2');
     } finally {
         @unlink($path);
     }

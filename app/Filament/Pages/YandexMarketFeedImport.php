@@ -4,11 +4,14 @@ namespace App\Filament\Pages;
 
 use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Jobs\RunYandexMarketFeedImportJob;
+use App\Models\ImportFeedSource;
 use App\Models\ImportRun;
 use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
 use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
+use App\Support\CatalogImport\Yml\YandexMarketFeedSourceHistoryService;
 use BackedEnum;
 use Filament\Actions\Action as FormAction;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -18,10 +21,14 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema as DatabaseSchema;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use RuntimeException;
 use Throwable;
 use UnitEnum;
 
@@ -44,7 +51,11 @@ class YandexMarketFeedImport extends Page implements HasForms
     protected string $view = 'filament.pages.yandex-market-feed-import';
 
     /** @var array{
-     *     source: string,
+     *     source_mode: string,
+     *     source_url: string,
+     *     source_upload: TemporaryUploadedFile|array<int|string, TemporaryUploadedFile|string>|string|null,
+     *     source_history_id: int|null,
+     *     sync_scenario: string,
      *     category_id: int|null,
      *     limit: int,
      *     timeout: int,
@@ -61,12 +72,22 @@ class YandexMarketFeedImport extends Page implements HasForms
      */
     public ?array $data = null;
 
+    private bool $isSyncScenarioInternalUpdate = false;
+
     /** @var array<int, string> */
     public array $parsedCategories = [];
+
+    /** @var array<int, array{id: int, name: string, parent_id: int|null, depth: int, is_leaf: bool, tree_name: string}> */
+    public array $parsedCategoryTree = [];
+
+    /** @var array<int, true> */
+    public array $leafCategoryIds = [];
 
     public ?string $categoriesLoadedAt = null;
 
     public ?string $categoriesLoadedSource = null;
+
+    public ?string $categoriesLoadedSourceKey = null;
 
     /** @var array<string, int|string|bool|null>|null */
     public ?array $lastSavedRun = null;
@@ -110,9 +131,47 @@ class YandexMarketFeedImport extends Page implements HasForms
                 Section::make('Источник Yandex Market Feed')
                     ->description('Можно запустить импорт всего фида или в два этапа: сначала загрузить категории, затем выбрать одну категорию для прогона.')
                     ->schema([
-                        TextInput::make('source')
-                            ->label('Источник фида (URL или путь к файлу)')
-                            ->required(),
+                        Select::make('source_mode')
+                            ->label('Источник фида')
+                            ->options([
+                                'url' => 'URL',
+                                'upload' => 'Загрузить файл',
+                                'history' => 'Из истории успешных',
+                            ])
+                            ->native(false)
+                            ->default('url')
+                            ->live(),
+                        TextInput::make('source_url')
+                            ->label('URL фида')
+                            ->placeholder('https://example.test/yandex-market.xml')
+                            ->visible(fn (Get $get): bool => (string) $get('source_mode') === 'url')
+                            ->required(fn (Get $get): bool => (string) $get('source_mode') === 'url'),
+                        FileUpload::make('source_upload')
+                            ->label('Файл фида (XML/YML)')
+                            ->acceptedFileTypes([
+                                'application/xml',
+                                'text/xml',
+                                'application/octet-stream',
+                                'text/plain',
+                            ])
+                            ->preserveFilenames()
+                            ->disk('local')
+                            ->directory(YandexMarketFeedSourceHistoryService::temporaryUploadDirectory())
+                            ->visibility('private')
+                            ->visible(fn (Get $get): bool => (string) $get('source_mode') === 'upload')
+                            ->required(fn (Get $get): bool => (string) $get('source_mode') === 'upload'),
+                        Select::make('source_history_id')
+                            ->label('Успешный источник из истории')
+                            ->placeholder('Выберите ранее валидированный источник')
+                            ->searchable()
+                            ->native(false)
+                            ->visible(fn (Get $get): bool => (string) $get('source_mode') === 'history')
+                            ->required(fn (Get $get): bool => (string) $get('source_mode') === 'history')
+                            ->options(fn (): array => app(YandexMarketFeedSourceHistoryService::class)->historyOptions(limit: 100))
+                            ->getSearchResultsUsing(
+                                fn (string $search): array => app(YandexMarketFeedSourceHistoryService::class)->historyOptions(search: $search, limit: 100),
+                            )
+                            ->getOptionLabelUsing(fn ($value): ?string => app(YandexMarketFeedSourceHistoryService::class)->historyOptionLabel($value)),
                         Actions::make([
                             FormAction::make('load_categories')
                                 ->label('Загрузить категории <category>')
@@ -130,7 +189,7 @@ class YandexMarketFeedImport extends Page implements HasForms
                             ->getOptionLabelUsing(fn ($value): ?string => $this->categoryOptionLabel($value))
                             ->hintIcon(
                                 Heroicon::InformationCircle,
-                                'Сначала нажмите "Загрузить категории <category>", затем выберите нужную категорию. Оставьте пустым для импорта всего фида.',
+                                'Сначала нажмите "Загрузить категории <category>", затем выберите категорию. Для родительской категории будут импортированы товары из всех дочерних. Оставьте пустым для импорта всего фида.',
                             ),
                     ]),
                 Section::make('Параметры run')
@@ -155,30 +214,54 @@ class YandexMarketFeedImport extends Page implements HasForms
                             ->numeric()
                             ->integer()
                             ->minValue(0),
-                        Select::make('mode')
-                            ->label('Режим синхронизации')
+                        Select::make('sync_scenario')
+                            ->label('Сценарий импорта')
                             ->options([
-                                'partial_import' => 'partial_import',
-                                'full_sync_authoritative' => 'full_sync_authoritative',
+                                'standard' => 'Стандартный (создавать + обновлять)',
+                                'new_only' => 'Только новые товары',
+                                'full_sync' => 'Полная сверка (деактивировать отсутствующие)',
+                                'custom' => 'Пользовательский (расширенные настройки)',
                             ])
-                            ->default('partial_import')
-                            ->native(false),
+                            ->default('standard')
+                            ->native(false)
+                            ->live()
+                            ->helperText(fn (Get $get): string => $this->syncScenarioSummary((string) $get('sync_scenario'))),
                         Toggle::make('publish')
                             ->label('Публиковать импортированные товары'),
                         Toggle::make('download_images')
                             ->label('Скачивать изображения')
                             ->default(true),
+                    ]),
+                Section::make('Расширенные настройки (технические)')
+                    ->description('Изменяйте только при точном понимании последствий. Обычно достаточно выбрать сценарий импорта выше.')
+                    ->collapsible()
+                    ->collapsed()
+                    ->schema([
+                        Select::make('mode')
+                            ->label('Технический режим синхронизации')
+                            ->options([
+                                'partial_import' => 'partial_import',
+                                'full_sync_authoritative' => 'full_sync_authoritative',
+                            ])
+                            ->default('partial_import')
+                            ->live()
+                            ->native(false),
                         Toggle::make('finalize_missing')
-                            ->label('Finalize missing (только full_sync)')
+                            ->label('Деактивировать отсутствующие в фиде (Finalize missing)')
+                            ->helperText('Срабатывает только вместе с mode=full_sync_authoritative.')
                             ->default(false),
                         Toggle::make('create_missing')
                             ->label('Создавать новые товары')
                             ->default(true),
                         Toggle::make('update_existing')
                             ->label('Обновлять существующие товары')
+                            ->helperText('При включенном "Пропускать существующие" обновления не выполняются.')
+                            ->disabled(fn (Get $get): bool => (bool) $get('skip_existing'))
                             ->default(true),
                         Toggle::make('skip_existing')
-                            ->label('Пропускать уже существующие товары (prefilter)'),
+                            ->label('Пропускать существующие (prefilter)')
+                            ->helperText('Оптимизация для режима "только новые".')
+                            ->live(),
                     ]),
                 Section::make('Запуск')
                     ->schema([
@@ -204,31 +287,223 @@ class YandexMarketFeedImport extends Page implements HasForms
             ->statePath('data');
     }
 
-    public function updatedDataSource(mixed $value): void
+    public function updatedDataSourceMode(): void
     {
-        $source = is_string($value) ? trim($value) : '';
+        $this->resetCategoriesIfSourceChanged();
+    }
 
-        if ($source === $this->categoriesLoadedSource) {
+    public function updatedDataSourceUrl(): void
+    {
+        $this->resetCategoriesIfSourceChanged();
+    }
+
+    public function updatedDataSourceUpload(): void
+    {
+        $this->resetCategoriesIfSourceChanged();
+    }
+
+    public function updatedDataSourceHistoryId(): void
+    {
+        $this->resetCategoriesIfSourceChanged();
+    }
+
+    public function updatedDataSyncScenario(mixed $value): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
             return;
         }
 
-        $this->parsedCategories = [];
-        $this->categoriesLoadedAt = null;
-        $this->categoriesLoadedSource = null;
+        $scenario = is_string($value) ? trim($value) : '';
 
-        if (is_array($this->data)) {
-            $this->data['category_id'] = null;
+        if ($scenario === 'custom') {
+            return;
         }
+
+        $this->applySyncScenario($scenario);
+    }
+
+    public function updatedDataMode(mixed $value): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
+            return;
+        }
+
+        $mode = is_string($value) ? trim($value) : 'partial_import';
+
+        if ($mode !== 'full_sync_authoritative' && is_array($this->data)) {
+            $this->data['finalize_missing'] = false;
+        }
+
+        $this->syncScenarioFromFlags();
+    }
+
+    public function updatedDataFinalizeMissing(): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
+            return;
+        }
+
+        $this->syncScenarioFromFlags();
+    }
+
+    public function updatedDataCreateMissing(): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
+            return;
+        }
+
+        $this->syncScenarioFromFlags();
+    }
+
+    public function updatedDataUpdateExisting(): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
+            return;
+        }
+
+        $this->syncScenarioFromFlags();
+    }
+
+    public function updatedDataSkipExisting(mixed $value): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
+            return;
+        }
+
+        $skipExisting = (bool) $value;
+
+        if ($skipExisting && is_array($this->data)) {
+            $this->data['update_existing'] = false;
+        }
+
+        $this->syncScenarioFromFlags();
+    }
+
+    private function applySyncScenario(string $scenario): void
+    {
+        if (! is_array($this->data)) {
+            return;
+        }
+
+        $this->isSyncScenarioInternalUpdate = true;
+
+        if ($scenario === 'new_only') {
+            $this->data['mode'] = 'partial_import';
+            $this->data['finalize_missing'] = false;
+            $this->data['create_missing'] = true;
+            $this->data['update_existing'] = false;
+            $this->data['skip_existing'] = true;
+            $this->data['sync_scenario'] = 'new_only';
+            $this->isSyncScenarioInternalUpdate = false;
+
+            return;
+        }
+
+        if ($scenario === 'full_sync') {
+            $this->data['mode'] = 'full_sync_authoritative';
+            $this->data['finalize_missing'] = true;
+            $this->data['create_missing'] = true;
+            $this->data['update_existing'] = true;
+            $this->data['skip_existing'] = false;
+            $this->data['sync_scenario'] = 'full_sync';
+            $this->isSyncScenarioInternalUpdate = false;
+
+            return;
+        }
+
+        $this->data['mode'] = 'partial_import';
+        $this->data['finalize_missing'] = false;
+        $this->data['create_missing'] = true;
+        $this->data['update_existing'] = true;
+        $this->data['skip_existing'] = false;
+        $this->data['sync_scenario'] = 'standard';
+
+        $this->isSyncScenarioInternalUpdate = false;
+    }
+
+    private function syncScenarioFromFlags(): void
+    {
+        if (! is_array($this->data)) {
+            return;
+        }
+
+        $scenario = $this->resolveSyncScenarioFromFlags();
+
+        if ((string) ($this->data['sync_scenario'] ?? '') === $scenario) {
+            return;
+        }
+
+        $this->isSyncScenarioInternalUpdate = true;
+        $this->data['sync_scenario'] = $scenario;
+        $this->isSyncScenarioInternalUpdate = false;
+    }
+
+    private function resolveSyncScenarioFromFlags(): string
+    {
+        $mode = (string) ($this->data['mode'] ?? 'partial_import');
+        $finalizeMissing = (bool) ($this->data['finalize_missing'] ?? false);
+        $createMissing = (bool) ($this->data['create_missing'] ?? true);
+        $updateExisting = (bool) ($this->data['update_existing'] ?? true);
+        $skipExisting = (bool) ($this->data['skip_existing'] ?? false);
+
+        if (
+            $mode === 'partial_import'
+            && ! $finalizeMissing
+            && $createMissing
+            && $updateExisting
+            && ! $skipExisting
+        ) {
+            return 'standard';
+        }
+
+        if (
+            $mode === 'partial_import'
+            && ! $finalizeMissing
+            && $createMissing
+            && ! $updateExisting
+            && $skipExisting
+        ) {
+            return 'new_only';
+        }
+
+        if (
+            $mode === 'full_sync_authoritative'
+            && $finalizeMissing
+            && $createMissing
+            && $updateExisting
+            && ! $skipExisting
+        ) {
+            return 'full_sync';
+        }
+
+        return 'custom';
+    }
+
+    private function syncScenarioSummary(string $scenario): string
+    {
+        if ($scenario === 'new_only') {
+            return 'Создаются только новые товары. Существующие позиции пропускаются и не обновляются.';
+        }
+
+        if ($scenario === 'full_sync') {
+            return 'Создание + обновление + деактивация отсутствующих в фиде (в пределах выбранного scope).';
+        }
+
+        if ($scenario === 'custom') {
+            return 'Пользовательская комбинация параметров из раздела "Расширенные настройки".';
+        }
+
+        return 'Создаются новые и обновляются существующие товары. Отсутствующие в фиде не деактивируются.';
     }
 
     public function loadFeedCategories(): void
     {
-        $source = trim((string) ($this->data['source'] ?? ''));
-
-        if ($source === '') {
+        try {
+            $resolvedSource = $this->resolveSelectedSource();
+        } catch (RuntimeException $exception) {
             Notification::make()
                 ->title('Не указан источник фида')
-                ->body('Заполните поле "Источник фида" перед загрузкой категорий.')
+                ->body($exception->getMessage())
                 ->warning()
                 ->send();
 
@@ -236,10 +511,11 @@ class YandexMarketFeedImport extends Page implements HasForms
         }
 
         try {
-            $categories = app(YandexMarketFeedImportService::class)->listCategories([
-                'source' => $source,
+            $categories = app(YandexMarketFeedImportService::class)->listCategoryNodes([
+                'source' => $resolvedSource['source'],
                 'timeout' => max(1, (int) ($this->data['timeout'] ?? 25)),
             ]);
+            $resolvedSource = $this->rememberSuccessfulSource($resolvedSource);
         } catch (Throwable $exception) {
             Notification::make()
                 ->title('Не удалось загрузить категории')
@@ -251,29 +527,52 @@ class YandexMarketFeedImport extends Page implements HasForms
         }
 
         $this->parsedCategories = [];
+        $normalizedCategories = [];
 
-        foreach ($categories as $categoryId => $categoryName) {
-            if (! is_int($categoryId) || $categoryId <= 0) {
+        foreach ($categories as $rawCategory) {
+            if (! is_array($rawCategory)) {
                 continue;
             }
 
-            $name = trim((string) $categoryName);
+            $categoryId = $this->normalizeNullableInt($rawCategory['id'] ?? null);
 
+            if ($categoryId === null) {
+                continue;
+            }
+
+            $name = trim((string) ($rawCategory['name'] ?? ''));
+            $parentId = $this->normalizeNullableInt($rawCategory['parent_id'] ?? $rawCategory['parentId'] ?? null);
+
+            if ($parentId === $categoryId) {
+                $parentId = null;
+            }
+
+            $normalizedCategories[$categoryId] = [
+                'id' => $categoryId,
+                'name' => $name !== '' ? $name : ('Категория #'.$categoryId),
+                'parent_id' => $parentId,
+            ];
             $this->parsedCategories[$categoryId] = $name !== '' ? $name : ('Категория #'.$categoryId);
         }
 
+        [$this->parsedCategoryTree, $this->leafCategoryIds] = $this->buildCategoryTree($normalizedCategories);
+
         $selectedCategoryId = $this->normalizeNullableInt($this->data['category_id'] ?? null);
 
-        if ($selectedCategoryId !== null && ! isset($this->parsedCategories[$selectedCategoryId])) {
+        if ($selectedCategoryId !== null && ! isset($this->parsedCategoryTree[$selectedCategoryId])) {
             $this->data['category_id'] = null;
         }
 
         $this->categoriesLoadedAt = now()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i:s');
-        $this->categoriesLoadedSource = $source;
+        $this->categoriesLoadedSource = $resolvedSource['source_label'];
+        $this->categoriesLoadedSourceKey = $resolvedSource['source_key'];
 
         Notification::make()
             ->title('Категории загружены')
-            ->body('Найдено категорий: '.count($this->parsedCategories).'.')
+            ->body(
+                'Найдено категорий: '.count($this->parsedCategories)
+                .'. Листовых: '.count($this->leafCategoryIds).'.'
+            )
             ->success()
             ->send();
     }
@@ -341,16 +640,64 @@ class YandexMarketFeedImport extends Page implements HasForms
             return;
         }
 
-        $options = $this->buildOptions($write);
+        if (
+            $write
+            && ! ((bool) ($this->data['create_missing'] ?? true))
+            && ! ((bool) ($this->data['update_existing'] ?? true))
+        ) {
+            Notification::make()
+                ->title('Запуск не изменит данные')
+                ->body('Одновременно отключены создание новых и обновление существующих товаров.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        try {
+            $resolvedSource = $this->resolveSelectedSource();
+        } catch (RuntimeException $exception) {
+            Notification::make()
+                ->title('Не указан источник фида')
+                ->body($exception->getMessage())
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        try {
+            app(YandexMarketFeedImportService::class)->listCategoryNodes([
+                'source' => $resolvedSource['source'],
+                'timeout' => max(1, (int) ($this->data['timeout'] ?? 25)),
+            ]);
+            $resolvedSource = $this->rememberSuccessfulSource($resolvedSource);
+        } catch (Throwable $exception) {
+            Notification::make()
+                ->title('Фид не прошел предварительную валидацию')
+                ->body($exception->getMessage())
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $options = $this->buildOptions($write, $resolvedSource);
         $mode = $write ? 'write' : 'dry-run';
         $runs = app(ImportRunOrchestrator::class);
         $run = $runs->start(
             type: 'yandex_market_feed_products',
             columns: $options,
             mode: $mode,
-            sourceFilename: $options['source'],
+            sourceFilename: $options['source_label'] ?: $options['source'],
             userId: Auth::id(),
         );
+
+        $sourceId = $this->normalizeNullableInt($options['source_id'] ?? null);
+
+        if ($sourceId !== null) {
+            app(YandexMarketFeedSourceHistoryService::class)->markUsedById($sourceId, $run->id);
+        }
 
         RunYandexMarketFeedImportJob::dispatch($run->id, $options, $write);
 
@@ -371,6 +718,9 @@ class YandexMarketFeedImport extends Page implements HasForms
     /**
      * @return array{
      *     source: string,
+     *     source_type: string,
+     *     source_id: int|null,
+     *     source_label: string,
      *     category_id: int|null,
      *     limit: int,
      *     timeout: int,
@@ -386,7 +736,7 @@ class YandexMarketFeedImport extends Page implements HasForms
      *     update_existing: bool
      * }
      */
-    private function buildOptions(bool $write): array
+    private function buildOptions(bool $write, array $resolvedSource): array
     {
         $mode = (string) ($this->data['mode'] ?? 'partial_import');
 
@@ -394,10 +744,11 @@ class YandexMarketFeedImport extends Page implements HasForms
             $mode = 'partial_import';
         }
 
-        $source = trim((string) ($this->data['source'] ?? ''));
-
         return [
-            'source' => $source !== '' ? $source : $this->defaultSource(),
+            'source' => (string) $resolvedSource['source'],
+            'source_type' => (string) ($resolvedSource['source_type'] ?? YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL),
+            'source_id' => $this->normalizeNullableInt($resolvedSource['source_id'] ?? null),
+            'source_label' => (string) ($resolvedSource['source_label'] ?? $resolvedSource['source']),
             'category_id' => $this->normalizeNullableInt($this->data['category_id'] ?? null),
             'limit' => max(0, (int) ($this->data['limit'] ?? 0)),
             'timeout' => max(1, (int) ($this->data['timeout'] ?? 25)),
@@ -476,7 +827,7 @@ class YandexMarketFeedImport extends Page implements HasForms
             'image_download_failed' => (int) ($meta['image_download_failed'] ?? 0),
             'derivatives_queued' => (int) ($meta['derivatives_queued'] ?? 0),
             'samples_count' => count(is_array($totals['_samples'] ?? null) ? $totals['_samples'] : []),
-            'source' => (string) ($columns['source'] ?? ''),
+            'source' => trim((string) ($columns['source_label'] ?? $columns['source'] ?? '')),
             'category_id' => $this->normalizeNullableInt($columns['category_id'] ?? null),
             'finished_at' => $run->finished_at?->copy()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i'),
         ];
@@ -496,11 +847,15 @@ class YandexMarketFeedImport extends Page implements HasForms
     private function defaultData(): array
     {
         return [
-            'source' => $this->defaultSource(),
+            'source_mode' => 'url',
+            'source_url' => '',
+            'source_upload' => null,
+            'source_history_id' => null,
             'category_id' => null,
             'limit' => 0,
             'timeout' => 25,
             'delay_ms' => 0,
+            'sync_scenario' => 'standard',
             'publish' => false,
             'download_images' => true,
             'skip_existing' => false,
@@ -512,9 +867,292 @@ class YandexMarketFeedImport extends Page implements HasForms
         ];
     }
 
-    private function defaultSource(): string
+    private function resetCategoriesIfSourceChanged(): void
     {
-        return storage_path('app/parser/yandex-market-feed.xml');
+        if ($this->resolveSourceKeyFromState() === $this->categoriesLoadedSourceKey) {
+            return;
+        }
+
+        $this->parsedCategories = [];
+        $this->parsedCategoryTree = [];
+        $this->leafCategoryIds = [];
+        $this->categoriesLoadedAt = null;
+        $this->categoriesLoadedSource = null;
+        $this->categoriesLoadedSourceKey = null;
+
+        if (is_array($this->data)) {
+            $this->data['category_id'] = null;
+        }
+    }
+
+    private function resolveSourceKeyFromState(): string
+    {
+        $mode = (string) ($this->data['source_mode'] ?? 'url');
+
+        if ($mode === 'history') {
+            return 'history|'.(string) ($this->normalizeNullableInt($this->data['source_history_id'] ?? null) ?? '');
+        }
+
+        if ($mode === 'upload') {
+            return 'upload|'.(string) ($this->resolveStoredFeedUploadPath($this->data['source_upload'] ?? null) ?? '');
+        }
+
+        return 'url|'.trim((string) ($this->data['source_url'] ?? ''));
+    }
+
+    /**
+     * @return array{
+     *     source: string,
+     *     source_type: string,
+     *     source_id: int|null,
+     *     source_label: string,
+     *     source_url: string|null,
+     *     stored_path: string|null,
+     *     original_filename: string|null,
+     *     source_key: string
+     * }
+     */
+    private function resolveSelectedSource(): array
+    {
+        $mode = (string) ($this->data['source_mode'] ?? 'url');
+
+        if ($mode === 'history') {
+            $historyId = $this->normalizeNullableInt($this->data['source_history_id'] ?? null);
+
+            if ($historyId === null) {
+                throw new RuntimeException('Выберите источник из истории.');
+            }
+
+            $resolved = app(YandexMarketFeedSourceHistoryService::class)->resolveFromHistoryId($historyId);
+
+            if (! is_array($resolved)) {
+                throw new RuntimeException('Источник из истории недоступен. Выберите другой или загрузите новый.');
+            }
+
+            $sourceType = (string) ($resolved['source_type'] ?? '');
+            $storedPath = is_string($resolved['stored_path'] ?? null) ? trim((string) $resolved['stored_path']) : null;
+            $sourceUrl = is_string($resolved['source_url'] ?? null) ? trim((string) $resolved['source_url']) : null;
+
+            return [
+                'source' => (string) $resolved['source'],
+                'source_type' => $sourceType,
+                'source_id' => $this->normalizeNullableInt($resolved['source_id'] ?? null),
+                'source_label' => (string) ($resolved['source_label'] ?? ''),
+                'source_url' => $sourceUrl,
+                'stored_path' => $storedPath,
+                'original_filename' => $sourceType === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD
+                    ? (($storedPath !== null && $storedPath !== '') ? basename($storedPath) : null)
+                    : null,
+                'source_key' => 'history|'.$historyId,
+            ];
+        }
+
+        if ($mode === 'upload') {
+            $storedPath = $this->resolveStoredFeedUploadPath($this->data['source_upload'] ?? null);
+
+            if ($storedPath === null) {
+                throw new RuntimeException('Загрузите XML/YML файл фида перед запуском.');
+            }
+
+            if (! Storage::disk('local')->exists($storedPath)) {
+                throw new RuntimeException('Загруженный файл не найден. Повторите загрузку.');
+            }
+
+            return [
+                'source' => Storage::disk('local')->path($storedPath),
+                'source_type' => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD,
+                'source_id' => null,
+                'source_label' => basename($storedPath),
+                'source_url' => null,
+                'stored_path' => $storedPath,
+                'original_filename' => basename($storedPath),
+                'source_key' => 'upload|'.$storedPath,
+            ];
+        }
+
+        $sourceUrl = trim((string) ($this->data['source_url'] ?? ''));
+
+        if ($sourceUrl === '') {
+            throw new RuntimeException('Укажите URL фида перед запуском.');
+        }
+
+        return [
+            'source' => $sourceUrl,
+            'source_type' => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL,
+            'source_id' => null,
+            'source_label' => $sourceUrl,
+            'source_url' => $sourceUrl,
+            'stored_path' => null,
+            'original_filename' => null,
+            'source_key' => 'url|'.$sourceUrl,
+        ];
+    }
+
+    /**
+     * @param  array{
+     *     source: string,
+     *     source_type: string,
+     *     source_id: int|null,
+     *     source_label: string,
+     *     source_url: string|null,
+     *     stored_path: string|null,
+     *     original_filename: string|null,
+     *     source_key: string
+     * }  $resolvedSource
+     * @return array{
+     *     source: string,
+     *     source_type: string,
+     *     source_id: int|null,
+     *     source_label: string,
+     *     source_url: string|null,
+     *     stored_path: string|null,
+     *     original_filename: string|null,
+     *     source_key: string
+     * }
+     */
+    private function rememberSuccessfulSource(array $resolvedSource): array
+    {
+        $historyService = app(YandexMarketFeedSourceHistoryService::class);
+        $userId = Auth::id();
+        $record = null;
+
+        if (($resolvedSource['source_type'] ?? null) === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD) {
+            $storedPath = trim((string) ($resolvedSource['stored_path'] ?? ''));
+
+            if ($storedPath === '') {
+                return $resolvedSource;
+            }
+
+            $record = $historyService->rememberValidUploadedPath(
+                storedPath: $storedPath,
+                originalFilename: is_string($resolvedSource['original_filename'] ?? null)
+                    ? trim((string) $resolvedSource['original_filename'])
+                    : null,
+                userId: $userId,
+            );
+        } else {
+            $sourceUrl = trim((string) ($resolvedSource['source_url'] ?? $resolvedSource['source'] ?? ''));
+
+            if ($sourceUrl === '') {
+                return $resolvedSource;
+            }
+
+            $record = $historyService->rememberValidUrl(
+                url: $sourceUrl,
+                userId: $userId,
+            );
+        }
+
+        if (! $record instanceof ImportFeedSource) {
+            return $resolvedSource;
+        }
+
+        $resolvedSource = $this->applyRememberedSourceToState($resolvedSource, $record);
+        $resolvedSource['source_key'] = $this->resolveSourceKeyFromState();
+
+        return $resolvedSource;
+    }
+
+    /**
+     * @param  array{
+     *     source: string,
+     *     source_type: string,
+     *     source_id: int|null,
+     *     source_label: string,
+     *     source_url: string|null,
+     *     stored_path: string|null,
+     *     original_filename: string|null,
+     *     source_key: string
+     * }  $resolvedSource
+     * @return array{
+     *     source: string,
+     *     source_type: string,
+     *     source_id: int|null,
+     *     source_label: string,
+     *     source_url: string|null,
+     *     stored_path: string|null,
+     *     original_filename: string|null,
+     *     source_key: string
+     * }
+     */
+    private function applyRememberedSourceToState(array $resolvedSource, ImportFeedSource $record): array
+    {
+        $sourceType = (string) $record->source_type;
+
+        if ($sourceType === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD) {
+            $storedPath = trim((string) ($record->stored_path ?? ''));
+
+            if ($storedPath !== '') {
+                if (is_array($this->data)) {
+                    $this->data['source_upload'] = $storedPath;
+                }
+
+                $resolvedSource['source'] = Storage::disk('local')->path($storedPath);
+                $resolvedSource['source_type'] = $sourceType;
+                $resolvedSource['source_id'] = (int) $record->id;
+                $resolvedSource['source_label'] = trim((string) ($record->original_filename ?: basename($storedPath)));
+                $resolvedSource['source_url'] = null;
+                $resolvedSource['stored_path'] = $storedPath;
+                $resolvedSource['original_filename'] = trim((string) ($record->original_filename ?: basename($storedPath)));
+                $resolvedSource['source_key'] = 'upload|'.$storedPath;
+
+                return $resolvedSource;
+            }
+
+            return $resolvedSource;
+        }
+
+        $sourceUrl = trim((string) ($record->source_url ?? ''));
+
+        if ($sourceUrl !== '' && is_array($this->data)) {
+            $this->data['source_url'] = $sourceUrl;
+        }
+
+        if ($sourceUrl === '') {
+            return $resolvedSource;
+        }
+
+        $resolvedSource['source'] = $sourceUrl;
+        $resolvedSource['source_type'] = YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL;
+        $resolvedSource['source_id'] = (int) $record->id;
+        $resolvedSource['source_label'] = $sourceUrl;
+        $resolvedSource['source_url'] = $sourceUrl;
+        $resolvedSource['stored_path'] = null;
+        $resolvedSource['original_filename'] = null;
+        $resolvedSource['source_key'] = 'url|'.$sourceUrl;
+
+        return $resolvedSource;
+    }
+
+    private function resolveStoredFeedUploadPath(mixed $value): ?string
+    {
+        if ($value instanceof TemporaryUploadedFile) {
+            $storedPath = $value->store(path: YandexMarketFeedSourceHistoryService::temporaryUploadDirectory(), options: 'local');
+
+            return is_string($storedPath) && $storedPath !== '' ? $storedPath : null;
+        }
+
+        if (is_array($value)) {
+            $first = reset($value);
+
+            if ($first instanceof TemporaryUploadedFile) {
+                $storedPath = $first->store(path: YandexMarketFeedSourceHistoryService::temporaryUploadDirectory(), options: 'local');
+
+                return is_string($storedPath) && $storedPath !== '' ? $storedPath : null;
+            }
+
+            if (is_string($first) && trim($first) !== '') {
+                return ltrim(trim($first), '/');
+            }
+
+            return null;
+        }
+
+        if (is_string($value) && trim($value) !== '') {
+            return ltrim(trim($value), '/');
+        }
+
+        return null;
     }
 
     /**
@@ -522,22 +1160,27 @@ class YandexMarketFeedImport extends Page implements HasForms
      */
     private function categoryOptions(?string $search = null, int $limit = 100): array
     {
-        if ($this->parsedCategories === []) {
+        if ($this->parsedCategoryTree === []) {
             return [];
         }
 
         $options = [];
         $needle = $search !== null ? mb_strtolower(trim($search)) : null;
 
-        foreach ($this->parsedCategories as $categoryId => $categoryName) {
-            $id = (int) $categoryId;
+        foreach ($this->parsedCategoryTree as $category) {
+            if (! is_array($category)) {
+                continue;
+            }
+
+            $id = (int) ($category['id'] ?? 0);
 
             if ($id <= 0) {
                 continue;
             }
 
-            $name = trim((string) $categoryName);
-            $label = $this->categoryLabel($id, $name);
+            $name = trim((string) ($category['name'] ?? ''));
+            $depth = max(0, (int) ($category['depth'] ?? 0));
+            $label = $this->categoryLabel($id, $name, $depth);
 
             if ($needle !== null && $needle !== '') {
                 $idMatches = str_contains((string) $id, $needle);
@@ -566,22 +1209,147 @@ class YandexMarketFeedImport extends Page implements HasForms
             return null;
         }
 
-        $categoryName = $this->parsedCategories[$categoryId] ?? null;
+        $category = $this->parsedCategoryTree[$categoryId] ?? null;
 
-        if (! is_string($categoryName)) {
-            return (string) $categoryId;
+        if (! is_array($category)) {
+            $categoryName = $this->parsedCategories[$categoryId] ?? null;
+
+            if (! is_string($categoryName)) {
+                return (string) $categoryId;
+            }
+
+            return $this->categoryLabel($categoryId, trim($categoryName));
         }
 
-        return $this->categoryLabel($categoryId, trim($categoryName));
+        $categoryName = trim((string) ($category['name'] ?? ''));
+        $depth = max(0, (int) ($category['depth'] ?? 0));
+
+        return $this->categoryLabel($categoryId, $categoryName, $depth);
     }
 
-    private function categoryLabel(int $categoryId, string $categoryName): string
+    private function categoryLabel(int $categoryId, string $categoryName, int $depth = 0): string
     {
+        $prefix = $depth > 0 ? str_repeat('— ', $depth) : '';
+
         if ($categoryName === '') {
-            return '['.$categoryId.']';
+            return $prefix.'['.$categoryId.']';
         }
 
-        return '['.$categoryId.'] '.$categoryName;
+        return $prefix.'['.$categoryId.'] '.$categoryName;
+    }
+
+    /**
+     * @param  array<int, array{id: int, name: string, parent_id: int|null}>  $categories
+     * @return array{
+     *     0: array<int, array{id: int, name: string, parent_id: int|null, depth: int, is_leaf: bool, tree_name: string}>,
+     *     1: array<int, true>
+     * }
+     */
+    private function buildCategoryTree(array $categories): array
+    {
+        if ($categories === []) {
+            return [[], []];
+        }
+
+        $normalized = [];
+
+        foreach ($categories as $categoryId => $category) {
+            if (! is_array($category)) {
+                continue;
+            }
+
+            $id = (int) ($category['id'] ?? $categoryId);
+
+            if ($id <= 0) {
+                continue;
+            }
+
+            $name = trim((string) ($category['name'] ?? ''));
+            $parentId = $this->normalizeNullableInt($category['parent_id'] ?? null);
+
+            $normalized[$id] = [
+                'id' => $id,
+                'name' => $name !== '' ? $name : ('Категория #'.$id),
+                'parent_id' => $parentId,
+            ];
+        }
+
+        if ($normalized === []) {
+            return [[], []];
+        }
+
+        foreach ($normalized as $id => $category) {
+            $parentId = $category['parent_id'];
+
+            if ($parentId !== null && ! isset($normalized[$parentId])) {
+                $normalized[$id]['parent_id'] = null;
+            }
+        }
+
+        $childrenByParent = [];
+
+        foreach ($normalized as $id => $category) {
+            $parentId = $category['parent_id'] ?? 0;
+            $childrenByParent[$parentId][] = $id;
+        }
+
+        $tree = [];
+        $leafCategoryIds = [];
+        $visited = [];
+
+        $walk = function (int $categoryId, int $depth, array $path = []) use (&$walk, &$tree, &$leafCategoryIds, &$visited, $normalized, $childrenByParent): void {
+            if (isset($visited[$categoryId])) {
+                return;
+            }
+
+            if (isset($path[$categoryId])) {
+                return;
+            }
+
+            $path[$categoryId] = true;
+            $visited[$categoryId] = true;
+
+            $category = $normalized[$categoryId];
+            $children = $childrenByParent[$categoryId] ?? [];
+            $isLeaf = $children === [];
+
+            $tree[$categoryId] = [
+                'id' => $categoryId,
+                'name' => $category['name'],
+                'parent_id' => $category['parent_id'],
+                'depth' => $depth,
+                'is_leaf' => $isLeaf,
+                'tree_name' => ($depth > 0 ? str_repeat('— ', $depth) : '').$category['name'],
+            ];
+
+            if ($isLeaf) {
+                $leafCategoryIds[$categoryId] = true;
+
+                return;
+            }
+
+            foreach ($children as $childCategoryId) {
+                $walk($childCategoryId, $depth + 1, $path);
+            }
+        };
+
+        foreach ($normalized as $id => $category) {
+            if (($category['parent_id'] ?? null) !== null) {
+                continue;
+            }
+
+            $walk($id, 0);
+        }
+
+        foreach ($normalized as $id => $_category) {
+            if (isset($visited[$id])) {
+                continue;
+            }
+
+            $walk($id, 0);
+        }
+
+        return [$tree, $leafCategoryIds];
     }
 
     private function hasActiveRun(): bool

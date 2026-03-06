@@ -26,11 +26,42 @@ class YandexMarketFeedImportService
      */
     public function listCategories(array $options = []): array
     {
+        $categories = [];
+
+        foreach ($this->listCategoryNodes($options) as $categoryId => $node) {
+            $categories[$categoryId] = $node['name'];
+        }
+
+        return $categories;
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     * @return array<int, array{id: int, name: string, parent_id: int|null}>
+     */
+    public function listCategoryNodes(array $options = []): array
+    {
         $normalized = $this->normalizeOptions($options);
         $source = $this->resolveSource($normalized);
         $stream = $this->recordParser->open($source->resolvedPath);
 
-        return $stream->categories;
+        $categoryNodes = [];
+
+        foreach ($stream->categories as $categoryId => $categoryName) {
+            if (! is_int($categoryId) || $categoryId <= 0) {
+                continue;
+            }
+
+            $parentId = $stream->categoryParents[$categoryId] ?? null;
+
+            $categoryNodes[$categoryId] = [
+                'id' => $categoryId,
+                'name' => trim((string) $categoryName),
+                'parent_id' => is_int($parentId) && $parentId > 0 ? $parentId : null,
+            ];
+        }
+
+        return $categoryNodes;
     }
 
     /**
@@ -62,7 +93,7 @@ class YandexMarketFeedImportService
 
         try {
             $source = $this->resolveSource($normalized);
-            [$foundUrls, $prefilteredExternalIds] = $this->scanFeed($source, $normalized);
+            [$foundUrls, $prefilteredExternalIds, $categoryFilterIds] = $this->scanFeed($source, $normalized);
         } catch (Throwable $exception) {
             $this->emitProgress($progress, $this->makeProgressPayload(
                 foundUrls: 0,
@@ -167,7 +198,7 @@ class YandexMarketFeedImportService
                     continue;
                 }
 
-                if (! $this->passesCategoryFilter($record, $normalized['category_id'])) {
+                if (! $this->passesCategoryFilter($record, $categoryFilterIds)) {
                     continue;
                 }
 
@@ -438,19 +469,25 @@ class YandexMarketFeedImportService
 
     /**
      * @param  array<string, mixed>  $normalized
-     * @return array{0:int,1:array<string, true>}
+     * @return array{0:int,1:array<string, true>,2:array<int, true>}
      */
     private function scanFeed(ResolvedSource $source, array $normalized): array
     {
         $foundUrls = 0;
         $candidateExternalIds = [];
+        $stream = $this->recordParser->open($source->resolvedPath);
+        $categoryFilterIds = $this->resolveCategoryFilterIds(
+            selectedCategoryId: $normalized['category_id'],
+            categories: $stream->categories,
+            categoryParents: $stream->categoryParents,
+        );
 
-        foreach ($this->recordParser->parse($source, []) as $record) {
+        foreach ($stream->offers as $record) {
             if (! $record instanceof YmlOfferRecord) {
                 continue;
             }
 
-            if (! $this->passesCategoryFilter($record, $normalized['category_id'])) {
+            if (! $this->passesCategoryFilter($record, $categoryFilterIds)) {
                 continue;
             }
 
@@ -474,7 +511,7 @@ class YandexMarketFeedImportService
         }
 
         if (! $normalized['write'] || ! $normalized['skip_existing'] || $candidateExternalIds === []) {
-            return [$foundUrls, []];
+            return [$foundUrls, [], $categoryFilterIds];
         }
 
         $prefiltered = [];
@@ -492,7 +529,7 @@ class YandexMarketFeedImportService
             }
         }
 
-        return [$foundUrls, $prefiltered];
+        return [$foundUrls, $prefiltered, $categoryFilterIds];
     }
 
     /**
@@ -547,13 +584,78 @@ class YandexMarketFeedImportService
         ]);
     }
 
-    private function passesCategoryFilter(YmlOfferRecord $record, ?int $categoryId): bool
+    /**
+     * @param  array<int, true>  $categoryFilterIds
+     */
+    private function passesCategoryFilter(YmlOfferRecord $record, array $categoryFilterIds): bool
     {
-        if ($categoryId === null) {
+        if ($categoryFilterIds === []) {
             return true;
         }
 
-        return $record->categoryId === $categoryId;
+        if ($record->categoryId === null) {
+            return false;
+        }
+
+        return isset($categoryFilterIds[$record->categoryId]);
+    }
+
+    /**
+     * @param  array<int, string>  $categories
+     * @param  array<int, int|null>  $categoryParents
+     * @return array<int, true>
+     */
+    private function resolveCategoryFilterIds(?int $selectedCategoryId, array $categories, array $categoryParents): array
+    {
+        if ($selectedCategoryId === null) {
+            return [];
+        }
+
+        if (! isset($categories[$selectedCategoryId])) {
+            return [$selectedCategoryId => true];
+        }
+
+        $childrenByParent = [];
+
+        foreach ($categories as $categoryId => $_categoryName) {
+            if (! is_int($categoryId) || $categoryId <= 0) {
+                continue;
+            }
+
+            $parentId = $categoryParents[$categoryId] ?? null;
+
+            if (
+                ! is_int($parentId)
+                || $parentId <= 0
+                || $parentId === $categoryId
+                || ! isset($categories[$parentId])
+            ) {
+                $parentId = null;
+            }
+
+            $childrenByParent[$parentId ?? 0][] = $categoryId;
+        }
+
+        $filterIds = [];
+        $stack = [$selectedCategoryId];
+
+        while ($stack !== []) {
+            $currentId = array_pop($stack);
+
+            if (! is_int($currentId) || $currentId <= 0 || isset($filterIds[$currentId])) {
+                continue;
+            }
+
+            $filterIds[$currentId] = true;
+
+            foreach ($childrenByParent[$currentId] ?? [] as $childId) {
+                if (! isset($filterIds[$childId])) {
+                    $stack[] = $childId;
+                }
+            }
+        }
+
+        return $filterIds;
     }
 
     private function normalizeNullableInt(mixed $value): ?int

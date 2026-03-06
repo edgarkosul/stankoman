@@ -29,18 +29,19 @@ class YmlStreamParser implements RecordParserInterface
             throw new RuntimeException("Unable to open YML feed: {$path}");
         }
 
-        $categories = $this->readCategories($reader);
+        [$categories, $categoryParents] = $this->readCategories($reader);
         $offers = $this->iterateOffers($reader);
 
-        return new YmlStream($categories, $offers);
+        return new YmlStream($categories, $categoryParents, $offers);
     }
 
     /**
-     * @return array<int, string>
+     * @return array{0: array<int, string>, 1: array<int, int|null>}
      */
     private function readCategories(XMLReader $reader): array
     {
         $categories = [];
+        $categoryParents = [];
 
         while ($reader->read()) {
             if ($reader->nodeType !== XMLReader::ELEMENT) {
@@ -54,6 +55,7 @@ class YmlStreamParser implements RecordParserInterface
 
                 if ($parsed !== null) {
                     $categories[$parsed['id']] = $parsed['name'];
+                    $categoryParents[$parsed['id']] = $parsed['parent_id'];
                 }
 
                 $reader->next();
@@ -66,7 +68,7 @@ class YmlStreamParser implements RecordParserInterface
             }
         }
 
-        return $categories;
+        return [$categories, $categoryParents];
     }
 
     /**
@@ -130,7 +132,7 @@ class YmlStreamParser implements RecordParserInterface
     }
 
     /**
-     * @return array{id:int,name:string}|null
+     * @return array{id:int,name:string,parent_id:int|null}|null
      */
     private function parseCategory(string $xml): ?array
     {
@@ -156,10 +158,21 @@ class YmlStreamParser implements RecordParserInterface
             }
 
             $name = trim((string) $node);
+            $parentIdRaw = trim((string) ($node['parentId'] ?? ''));
+            $parentId = null;
+
+            if ($parentIdRaw !== '' && ctype_digit($parentIdRaw)) {
+                $parsedParentId = (int) $parentIdRaw;
+
+                if ($parsedParentId > 0 && $parsedParentId !== (int) $idRaw) {
+                    $parentId = $parsedParentId;
+                }
+            }
 
             return [
                 'id' => (int) $idRaw,
                 'name' => $name,
+                'parent_id' => $parentId,
             ];
         } finally {
             libxml_clear_errors();

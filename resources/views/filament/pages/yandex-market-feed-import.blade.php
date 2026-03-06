@@ -1,46 +1,6 @@
 <x-filament-panels::page>
     {{ $this->form }}
 
-    @if (!empty($parsedCategories))
-        @php
-            $previewCategories = array_slice($parsedCategories, 0, 200, true);
-            $hiddenCount = max(0, count($parsedCategories) - count($previewCategories));
-        @endphp
-
-        <div class="mt-6 space-y-3 rounded-xl border border-zinc-200 bg-white/60 p-4">
-            <div class="flex items-center justify-between gap-3">
-                <h2 class="text-sm font-semibold">Категории из фида</h2>
-                <div class="text-xs text-zinc-500">Всего: {{ count($parsedCategories) }}</div>
-            </div>
-
-            @if (!empty($categoriesLoadedSource))
-                <div class="text-xs text-zinc-500">
-                    Источник: {{ $categoriesLoadedSource }}
-                    @if (!empty($categoriesLoadedAt))
-                        · загружено: {{ $categoriesLoadedAt }}
-                    @endif
-                </div>
-            @endif
-
-            <div class="max-h-72 overflow-auto rounded-lg border border-zinc-200 bg-zinc-50">
-                <ul class="divide-y divide-zinc-200 text-xs sm:text-sm">
-                    @foreach ($previewCategories as $categoryId => $categoryName)
-                        <li class="px-3 py-2">
-                            <span class="font-semibold text-zinc-800">[{{ $categoryId }}]</span>
-                            <span class="text-zinc-700">{{ $categoryName }}</span>
-                        </li>
-                    @endforeach
-                </ul>
-            </div>
-
-            @if ($hiddenCount > 0)
-                <div class="text-xs text-zinc-500">
-                    Показаны первые {{ count($previewCategories) }} категорий. Осталось скрыто: {{ $hiddenCount }}.
-                </div>
-            @endif
-        </div>
-    @endif
-
     <div class="mt-6" wire:poll.2s="refreshLastSavedRun">
         @if ($lastSavedRun)
             @php
@@ -70,7 +30,8 @@
                 @endif
 
                 @if (($lastSavedRun['no_urls'] ?? false) === true)
-                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:text-sm">
+                    <div
+                        class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:text-sm">
                         Подходящие offer-записи не найдены.
                     </div>
                 @endif
@@ -130,7 +91,8 @@
                 </div>
 
                 @if (!empty($lastSavedRun['source']))
-                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700 sm:text-sm">
+                    <div
+                        class="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700 sm:text-sm">
                         Источник: {{ $lastSavedRun['source'] }}
                     </div>
                 @endif
@@ -158,4 +120,70 @@
             </div>
         @endif
     </div>
+
+    @if (!empty($parsedCategoryTree))
+        @php
+            $previewCategories = array_slice($parsedCategoryTree, 0, 300, true);
+            $hiddenCount = max(0, count($parsedCategoryTree) - count($previewCategories));
+        @endphp
+
+        <div class="mt-6 space-y-3 rounded-xl border border-zinc-200 bg-white/60 p-4">
+            <div class="flex items-center justify-between gap-3">
+                <h2 class="text-sm font-semibold">Категории из фида</h2>
+                <div class="text-xs text-zinc-500">
+                    Всего: {{ count($parsedCategoryTree) }}
+                    · листовых: {{ count($leafCategoryIds ?? []) }}
+                </div>
+            </div>
+
+            @if (!empty($categoriesLoadedSource))
+                <div class="text-xs text-zinc-500">
+                    Источник: {{ $categoriesLoadedSource }}
+                    @if (!empty($categoriesLoadedAt))
+                        · загружено: {{ $categoriesLoadedAt }}
+                    @endif
+                </div>
+            @endif
+
+            <div class="max-h-80 overflow-auto rounded-lg border border-zinc-200 bg-zinc-50">
+                <table class="min-w-full text-xs sm:text-sm">
+                    <thead class="sticky top-0 bg-zinc-100">
+                        <tr class="border-b border-zinc-200 text-left text-zinc-600">
+                            <th class="px-3 py-2 font-medium">ID</th>
+                            <th class="px-3 py-2 font-medium">Категория</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-zinc-200">
+                        @foreach ($previewCategories as $category)
+                            @php
+                                $depth = max(0, (int) ($category['depth'] ?? 0));
+                                $isLeaf = (bool) ($category['is_leaf'] ?? false);
+                            @endphp
+                            <tr class="{{ $isLeaf ? 'bg-white/70' : 'bg-transparent' }}">
+                                <td
+                                    class="whitespace-nowrap px-3 py-2 {{ $isLeaf ? 'font-semibold text-zinc-900' : 'text-zinc-500' }}">
+                                    [{{ $category['id'] }}]
+                                </td>
+                                <td class="px-3 py-2">
+                                    <div class="flex items-center gap-2" style="padding-left: {{ $depth * 18 }}px;">
+                                        <span class="{{ $isLeaf ? 'font-semibold text-zinc-900' : 'text-zinc-700' }}">
+                                            {{ $category['name'] }}
+                                        </span>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+            @if ($hiddenCount > 0)
+                <div class="text-xs text-zinc-500">
+                    Показаны первые {{ count($previewCategories) }} категорий. Осталось скрыто: {{ $hiddenCount }}.
+                </div>
+            @endif
+        </div>
+    @endif
+
+
 </x-filament-panels::page>

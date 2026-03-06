@@ -93,6 +93,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $description = $this->textOrNull($xml->description ?? null);
         $pictures = $this->extractPictures($xml);
         $params = $this->extractParams($xml);
+        $resolvedSku = $this->resolveSku($externalId, $name, $xml);
 
         return new RecordMappingResult(
             payload: new ProductPayload(
@@ -105,12 +106,14 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 inStock: $offer->available,
                 images: $pictures,
                 attributes: $params,
+                sku: $resolvedSku['sku'],
                 source: [
                     'supplier' => $this->profile->supplierKey(),
                     'profile' => $this->profile->profileName(),
                     'format' => 'yml',
                     'offer_type' => $offer->type,
                     'category_id' => $categoryId,
+                    'sku_source' => $resolvedSku['source'],
                 ],
             ),
             errors: $errors,
@@ -160,6 +163,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $description = $this->textOrNull($xml->description ?? null);
         $pictures = $this->extractPictures($xml);
         $params = $this->extractParams($xml);
+        $resolvedSku = $this->resolveSku($externalId, $name, $xml);
 
         return new RecordMappingResult(
             payload: new ProductPayload(
@@ -172,12 +176,14 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 inStock: $offer->available,
                 images: $pictures,
                 attributes: $params,
+                sku: $resolvedSku['sku'],
                 source: [
                     'supplier' => $this->profile->supplierKey(),
                     'profile' => $this->profile->profileName(),
                     'format' => 'yml',
                     'offer_type' => $offer->type,
                     'category_id' => $categoryId,
+                    'sku_source' => $resolvedSku['source'],
                 ],
             ),
             errors: $errors,
@@ -251,6 +257,114 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         }
 
         return (int) round((float) $normalized);
+    }
+
+    /**
+     * @return array{sku: string, source: string}
+     */
+    private function resolveSku(string $externalId, string $name, SimpleXMLElement $xml): array
+    {
+        $paramSku = $this->findSkuInParams($xml);
+        $shopSku = $this->textOrNull($xml->{'shop-sku'} ?? null);
+        $vendorCode = $this->textOrNull($xml->vendorCode ?? null);
+
+        $candidates = [
+            ['source' => 'shop-sku', 'value' => $shopSku],
+            ['source' => 'vendorCode', 'value' => $vendorCode],
+            ['source' => 'offer-id', 'value' => $externalId],
+            ['source' => 'param', 'value' => $paramSku],
+        ];
+
+        foreach ($candidates as $candidate) {
+            $normalized = $this->normalizeSku($candidate['value']);
+
+            if ($normalized === null) {
+                continue;
+            }
+
+            return [
+                'sku' => $normalized,
+                'source' => $candidate['source'],
+            ];
+        }
+
+        return [
+            'sku' => $this->generateFallbackSku($externalId, $name),
+            'source' => 'generated',
+        ];
+    }
+
+    private function normalizeSku(?string $value): ?string
+    {
+        $value = $this->textOrNull($value);
+
+        if ($value === null) {
+            return null;
+        }
+
+        $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE, 'UTF-8');
+        $value = preg_replace('/\s+/u', '-', $value) ?? $value;
+        $value = preg_replace('/[^\p{L}\p{N}\-._\/]+/u', '', $value) ?? $value;
+        $value = preg_replace('/-{2,}/', '-', $value) ?? $value;
+        $value = trim($value, "-._/\t\n\r\0\x0B ");
+
+        if ($value === '') {
+            return null;
+        }
+
+        return mb_strtoupper($value);
+    }
+
+    private function generateFallbackSku(string $externalId, string $name): string
+    {
+        $hash = strtoupper(substr(hash('sha256', $externalId.'|'.$name), 0, 12));
+
+        return 'YML-'.$hash;
+    }
+
+    private function findSkuInParams(SimpleXMLElement $xml): ?string
+    {
+        $supportedNames = [
+            'артикул',
+            'sku',
+            'код товара',
+            'vendor code',
+            'vendorcode',
+            'part number',
+            'partnumber',
+        ];
+        $lookup = array_fill_keys($supportedNames, true);
+
+        foreach ($xml->param as $paramNode) {
+            $name = $this->textOrNull((string) ($paramNode['name'] ?? ''));
+
+            if ($name === null) {
+                continue;
+            }
+
+            $normalizedName = $this->normalizeParamName($name);
+
+            if (! isset($lookup[$normalizedName])) {
+                continue;
+            }
+
+            $value = $this->textOrNull($paramNode);
+
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeParamName(string $name): string
+    {
+        $name = mb_strtolower($name);
+        $name = preg_replace('/[_\-]+/u', ' ', $name) ?? $name;
+        $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
+
+        return trim($name);
     }
 
     /**

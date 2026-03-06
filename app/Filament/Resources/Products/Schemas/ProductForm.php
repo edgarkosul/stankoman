@@ -206,6 +206,7 @@ class ProductForm
                                 'dom' => 'dom',
                                 'import' => 'import',
                                 'legacy' => 'legacy',
+                                'yml' => 'yml',
                             ])
                             ->default('manual')
                             ->native(false),
