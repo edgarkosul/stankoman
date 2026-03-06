@@ -6,11 +6,13 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductSupplierReference;
 use App\Support\CatalogImport\Contracts\ImportProcessorInterface;
+use App\Support\CatalogImport\Contracts\ImportRunEventLoggerInterface;
 use App\Support\CatalogImport\DTO\ImportError;
 use App\Support\CatalogImport\DTO\ImportProcessResult;
 use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\Enums\ImportErrorLevel;
 use App\Support\CatalogImport\Media\ProductImportMediaService;
+use App\Support\CatalogImport\Runs\ImportRunEventData;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -39,7 +41,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
             errors: [
                 new ImportError(
                     code: 'empty_batch',
-                    message: 'No payloads were provided for processing.',
+                    message: 'Не переданы данные товаров для обработки.',
                     level: ImportErrorLevel::Fatal,
                 ),
             ],
@@ -97,6 +99,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
     public function finalizeMissing(string $supplier, int $runId, array $options = []): array
     {
         $normalizedSupplier = $this->normalizeSupplier($supplier);
+        $eventLogger = $this->resolveEventLogger($options);
         $sourceCategoryId = $this->positiveIntOrNull(
             $options['source_category_id'] ?? $options['category_id'] ?? null,
         );
@@ -114,6 +117,17 @@ final class ProductImportProcessor implements ImportProcessorInterface
         $missingStrategy = (string) ($options['missing_strategy'] ?? 'deactivate');
 
         if ($sourceCategoryId !== null && ! $this->supportsSourceCategoryReference()) {
+            $this->logEvent(
+                logger: $eventLogger,
+                runId: $runId,
+                supplier: $normalizedSupplier,
+                stage: 'finalize',
+                result: 'skipped',
+                sourceCategoryId: $sourceCategoryId,
+                code: 'source_category_not_supported',
+                message: 'Ограничение по категории источника не поддерживается текущей схемой.',
+            );
+
             return [
                 'checked' => 0,
                 'deactivated' => 0,
@@ -142,6 +156,24 @@ final class ProductImportProcessor implements ImportProcessorInterface
         $checked = $productIds->count();
 
         if (! $isFullSync || ! $finalizeMissing || $missingStrategy !== 'deactivate') {
+            $this->logEvent(
+                logger: $eventLogger,
+                runId: $runId,
+                supplier: $normalizedSupplier,
+                stage: 'finalize',
+                result: 'skipped',
+                sourceCategoryId: $sourceCategoryId,
+                code: ! $isFullSync
+                    ? 'mode_not_full_sync'
+                    : (! $finalizeMissing ? 'finalize_missing_disabled' : 'missing_strategy_not_supported'),
+                message: 'Финализация отсутствующих товаров не активна для текущих параметров синхронизации.',
+                context: [
+                    'checked' => $checked,
+                    'mode' => $options['mode'] ?? null,
+                    'missing_strategy' => $missingStrategy,
+                ],
+            );
+
             return [
                 'checked' => $checked,
                 'deactivated' => 0,
@@ -150,6 +182,17 @@ final class ProductImportProcessor implements ImportProcessorInterface
         }
 
         if ($checked === 0) {
+            $this->logEvent(
+                logger: $eventLogger,
+                runId: $runId,
+                supplier: $normalizedSupplier,
+                stage: 'finalize',
+                result: 'skipped',
+                sourceCategoryId: $sourceCategoryId,
+                code: 'nothing_to_finalize',
+                message: 'В текущей области запуска нет ранее известных отсутствующих товаров.',
+            );
+
             return [
                 'checked' => 0,
                 'deactivated' => 0,
@@ -165,6 +208,23 @@ final class ProductImportProcessor implements ImportProcessorInterface
                 'qty' => 0,
                 'updated_at' => now(),
             ]);
+
+        if ($deactivated > 0) {
+            $events = $productIds
+                ->map(fn (int $productId): ImportRunEventData => new ImportRunEventData(
+                    runId: $runId,
+                    supplier: $normalizedSupplier,
+                    stage: 'finalize',
+                    result: 'deactivated',
+                    productId: $productId,
+                    sourceCategoryId: $sourceCategoryId,
+                    code: 'missing_in_feed',
+                    message: 'Товар деактивирован, так как отсутствует в текущем полном синхронизируемом фиде.',
+                ))
+                ->all();
+
+            $eventLogger?->logMany($events);
+        }
 
         return [
             'checked' => $checked,
@@ -182,6 +242,8 @@ final class ProductImportProcessor implements ImportProcessorInterface
     {
         $normalizedItems = [];
         $summary = $this->emptySummary();
+        $eventLogger = $this->resolveEventLogger($options);
+        $defaultSourceRef = $this->normalizeSourceRef($options['source_ref'] ?? null);
         $queueMedia = ($options['download_media'] ?? false) === true;
         $pendingMediaIds = [];
 
@@ -198,6 +260,23 @@ final class ProductImportProcessor implements ImportProcessorInterface
                     errors: $errors,
                     meta: ['external_id' => $normalized->externalId],
                 );
+
+                foreach ($errors as $error) {
+                    $this->logEvent(
+                        logger: $eventLogger,
+                        runId: $runId,
+                        supplier: $supplier,
+                        stage: 'processing',
+                        result: 'error',
+                        sourceRef: $this->sourceString($normalized, 'source_ref')
+                            ?? $this->sourceString($normalized, 'url')
+                            ?? $defaultSourceRef,
+                        externalId: $normalized->externalId,
+                        sourceCategoryId: $this->positiveIntOrNull($normalized->source['category_id'] ?? null),
+                        code: $error->code,
+                        message: $error->message,
+                    );
+                }
 
                 continue;
             }
@@ -239,6 +318,8 @@ final class ProductImportProcessor implements ImportProcessorInterface
             $queueMedia,
             $options,
             $supportsSourceCategoryReference,
+            $eventLogger,
+            $defaultSourceRef,
             &$pendingMediaIds,
             &$summary,
         ): void {
@@ -256,6 +337,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
                 $operation = 'skipped';
                 $errors = [];
+                $skipCode = null;
                 $mediaQueueStats = [
                     'queued' => 0,
                     'reused' => 0,
@@ -265,12 +347,20 @@ final class ProductImportProcessor implements ImportProcessorInterface
                 if ($product instanceof Product) {
                     if ($canUpdate) {
                         $product->fill($this->buildProductAttributes($payload, $options, isNew: false));
-                        $product->save();
 
-                        $operation = 'updated';
-                        $summary['updated']++;
+                        if ($product->isDirty()) {
+                            $product->save();
+
+                            $operation = 'updated';
+                            $summary['updated']++;
+                        } else {
+                            $operation = 'unchanged';
+                            $skipCode = 'unchanged';
+                            $summary['skipped']++;
+                        }
                     } else {
                         $operation = 'skipped';
+                        $skipCode = 'update_disabled';
                         $summary['skipped']++;
                     }
                 } elseif ($canCreate) {
@@ -284,8 +374,11 @@ final class ProductImportProcessor implements ImportProcessorInterface
                     $summary['created']++;
                 } else {
                     $operation = 'skipped';
+                    $skipCode = 'create_disabled';
                     $summary['skipped']++;
                 }
+
+                $resolvedSourceCategoryId = null;
 
                 if ($product instanceof Product) {
                     if ($queueMedia && $payload->images !== []) {
@@ -316,7 +409,8 @@ final class ProductImportProcessor implements ImportProcessorInterface
                     ];
 
                     if ($supportsSourceCategoryReference) {
-                        $referenceUpsert['source_category_id'] = $this->resolveSourceCategoryId($payload, $reference);
+                        $resolvedSourceCategoryId = $this->resolveSourceCategoryId($payload, $reference);
+                        $referenceUpsert['source_category_id'] = $resolvedSourceCategoryId;
                     }
 
                     $referenceUpserts[] = $referenceUpsert;
@@ -330,6 +424,27 @@ final class ProductImportProcessor implements ImportProcessorInterface
                     meta: [
                         'external_id' => $payload->externalId,
                         'product_id' => $product?->id,
+                        'media_queued' => $mediaQueueStats['queued'],
+                        'media_reused' => $mediaQueueStats['reused'],
+                        'media_deduplicated' => $mediaQueueStats['deduplicated'],
+                    ],
+                );
+
+                $this->logEvent(
+                    logger: $eventLogger,
+                    runId: $runId,
+                    supplier: $supplier,
+                    stage: 'processing',
+                    result: $operation,
+                    sourceRef: $this->sourceString($payload, 'source_ref')
+                        ?? $this->sourceString($payload, 'url')
+                        ?? $defaultSourceRef,
+                    externalId: $payload->externalId,
+                    productId: $product?->id,
+                    sourceCategoryId: $resolvedSourceCategoryId,
+                    code: in_array($operation, ['skipped', 'unchanged'], true) ? $skipCode : null,
+                    message: in_array($operation, ['skipped', 'unchanged'], true) ? $this->skippedMessage($skipCode) : null,
+                    context: [
                         'media_queued' => $mediaQueueStats['queued'],
                         'media_reused' => $mediaQueueStats['reused'],
                         'media_deduplicated' => $mediaQueueStats['deduplicated'],
@@ -369,14 +484,14 @@ final class ProductImportProcessor implements ImportProcessorInterface
         if ($payload->externalId === '') {
             $errors[] = new ImportError(
                 code: 'missing_external_id',
-                message: 'Product payload must contain a non-empty external_id.',
+                message: 'Поле external_id в данных товара должно быть непустым.',
             );
         }
 
         if ($payload->name === '') {
             $errors[] = new ImportError(
                 code: 'missing_name',
-                message: 'Product payload must contain a non-empty name.',
+                message: 'Поле name в данных товара должно быть непустым.',
             );
         }
 
@@ -803,6 +918,75 @@ final class ProductImportProcessor implements ImportProcessorInterface
         return 250;
     }
 
+    private function skippedMessage(?string $skipCode): ?string
+    {
+        return match ($skipCode) {
+            'update_disabled' => 'Обновление существующих товаров отключено параметрами импорта.',
+            'create_disabled' => 'Создание отсутствующих товаров отключено параметрами импорта.',
+            'unchanged' => 'Изменений атрибутов товара не обнаружено.',
+            default => null,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function resolveEventLogger(array $options): ?ImportRunEventLoggerInterface
+    {
+        $candidate = $options['event_logger'] ?? null;
+
+        return $candidate instanceof ImportRunEventLoggerInterface ? $candidate : null;
+    }
+
+    private function normalizeSourceRef(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function logEvent(
+        ?ImportRunEventLoggerInterface $logger,
+        ?int $runId,
+        string $supplier,
+        string $stage,
+        string $result,
+        ?string $sourceRef = null,
+        ?string $externalId = null,
+        ?int $productId = null,
+        ?int $sourceCategoryId = null,
+        ?int $rowIndex = null,
+        ?string $code = null,
+        ?string $message = null,
+        array $context = [],
+    ): void {
+        if (! $logger instanceof ImportRunEventLoggerInterface || $runId === null || $runId <= 0) {
+            return;
+        }
+
+        $logger->log(new ImportRunEventData(
+            runId: $runId,
+            supplier: $supplier,
+            stage: $stage,
+            result: $result,
+            sourceRef: $sourceRef,
+            externalId: $externalId,
+            productId: $productId,
+            sourceCategoryId: $sourceCategoryId,
+            rowIndex: $rowIndex,
+            code: $code,
+            message: $message,
+            context: $context,
+        ));
+    }
+
     /**
      * @param  array<int, ImportError>  $errors
      */
@@ -833,7 +1017,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
     {
         $error = new ImportError(
             code: 'missing_supplier',
-            message: 'Import processor option "supplier" is required.',
+            message: 'Для процессора импорта обязателен параметр "supplier".',
             level: ImportErrorLevel::Fatal,
         );
 

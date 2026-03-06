@@ -94,7 +94,7 @@ XML;
         expect($result['success'])->toBeFalse();
         expect($result['url_errors'])->toHaveCount(1);
         expect($result['url_errors'][0]['url'])->toBe('offer:A2');
-        expect($result['url_errors'][0]['message'])->toContain('required field');
+        expect($result['url_errors'][0]['message'])->toContain('обязательное поле');
     } finally {
         @unlink($path);
     }

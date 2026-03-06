@@ -144,6 +144,7 @@ test('metalmaster product import page has expected header actions', function () 
 test('import runs resource metadata is configured', function () {
     expect(ImportRunResource::getNavigationGroup())->toBe('Экспорт/Импорт');
     expect(ImportRunResource::getNavigationLabel())->toBe('История импортов');
+    expect(Route::has('filament.admin.resources.import-runs.view'))->toBeTrue();
 });
 
 test('download routes for import export tools are registered with auth middleware', function () {

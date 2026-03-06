@@ -26,7 +26,7 @@ final class VactoolSupplierAdapter implements SupplierAdapterInterface
                 errors: [
                     new ImportError(
                         code: 'invalid_record_type',
-                        message: 'Expected HtmlDocumentRecord instance.',
+                        message: 'Ожидался экземпляр HtmlDocumentRecord.',
                         level: ImportErrorLevel::Fatal,
                     ),
                 ],
@@ -41,7 +41,7 @@ final class VactoolSupplierAdapter implements SupplierAdapterInterface
                 errors: [
                     new ImportError(
                         code: 'record_parse_failed',
-                        message: $exception->getMessage(),
+                        message: 'Не удалось разобрать HTML-документ: '.$exception->getMessage(),
                     ),
                 ],
             );
@@ -56,7 +56,7 @@ final class VactoolSupplierAdapter implements SupplierAdapterInterface
                 errors: [
                     new ImportError(
                         code: 'missing_name',
-                        message: 'Vactool record does not contain a product title.',
+                        message: 'Запись Vactool не содержит названия товара.',
                     ),
                 ],
             );

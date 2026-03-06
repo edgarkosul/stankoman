@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ImportRuns\Tables;
 
+use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Models\ImportRun;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
@@ -204,6 +205,13 @@ class ImportRunsTable
                 //
             ])
             ->recordActions([
+                Action::make('view_event_log')
+                    ->label('Детальный лог')
+                    ->icon('heroicon-o-list-bullet')
+                    ->url(fn (ImportRun $record): string => ImportRunResource::getUrl('view', [
+                        'record' => $record,
+                    ])),
+
                 Action::make('download_source')
                     ->label('Скачать файл')
                     ->icon('heroicon-o-arrow-down-tray')

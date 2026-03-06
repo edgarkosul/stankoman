@@ -3,13 +3,17 @@
 namespace App\Support\Metalmaster;
 
 use App\Models\ProductSupplierReference;
+use App\Support\CatalogImport\Contracts\ImportRunEventLoggerInterface;
 use App\Support\CatalogImport\Contracts\SourceResolverInterface;
 use App\Support\CatalogImport\Html\HtmlDocumentParser;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
+use App\Support\CatalogImport\Runs\DatabaseImportRunEventLogger;
+use App\Support\CatalogImport\Runs\ImportRunEventData;
 use App\Support\CatalogImport\Sources\SourceResolver;
 use App\Support\CatalogImport\Suppliers\Metalmaster\MetalmasterSupplierAdapter;
 use App\Support\CatalogImport\Suppliers\Metalmaster\MetalmasterSupplierProfile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Throwable;
 
@@ -49,154 +53,160 @@ class MetalmasterProductImportService
     public function run(array $options = [], ?callable $output = null, ?callable $progress = null): array
     {
         $normalized = $this->normalizeOptions($options);
+        $eventLogger = $this->makeEventLogger($normalized['run_id']);
 
         try {
-            $targets = $this->loadTargets(
-                $normalized['buckets_file'],
-                $normalized['bucket'],
-                $normalized['limit'],
-            );
-        } catch (Throwable $exception) {
-            $this->emitProgress($progress, $this->makeProgressPayload(
-                foundUrls: 0,
-                processed: 0,
-                errors: 0,
-                created: 0,
-                updated: 0,
-                skipped: 0,
-                imagesDownloaded: 0,
-                imageDownloadFailed: 0,
-                derivativesQueued: 0,
-                noUrls: false,
-            ));
-
-            return [
-                'options' => $normalized,
-                'write_mode' => $normalized['write'],
-                'found_urls' => 0,
-                'processed' => 0,
-                'errors' => 0,
-                'created' => 0,
-                'updated' => 0,
-                'skipped' => 0,
-                'images_downloaded' => 0,
-                'image_download_failed' => 0,
-                'derivatives_queued' => 0,
-                'samples' => [],
-                'url_errors' => [],
-                'fatal_error' => $exception->getMessage(),
-                'no_urls' => false,
-                'success' => false,
-            ];
-        }
-
-        if ($targets->isEmpty()) {
-            $this->emit($output, 'warn', 'Подходящие URL товаров не найдены.');
-            $this->emitProgress($progress, $this->makeProgressPayload(
-                foundUrls: 0,
-                processed: 0,
-                errors: 0,
-                created: 0,
-                updated: 0,
-                skipped: 0,
-                imagesDownloaded: 0,
-                imageDownloadFailed: 0,
-                derivativesQueued: 0,
-                noUrls: true,
-            ));
-
-            return [
-                'options' => $normalized,
-                'write_mode' => $normalized['write'],
-                'found_urls' => 0,
-                'processed' => 0,
-                'errors' => 0,
-                'created' => 0,
-                'updated' => 0,
-                'skipped' => 0,
-                'images_downloaded' => 0,
-                'image_download_failed' => 0,
-                'derivatives_queued' => 0,
-                'samples' => [],
-                'url_errors' => [],
-                'fatal_error' => null,
-                'no_urls' => true,
-                'success' => true,
-            ];
-        }
-
-        $this->emit($output, 'info', 'Найдено URL товаров: '.$targets->count());
-        $this->emit($output, 'line', 'Режим: '.($normalized['write'] ? 'write' : 'dry-run'));
-
-        $foundUrls = $targets->count();
-        $processed = 0;
-        $errors = 0;
-        $created = 0;
-        $updated = 0;
-        $skipped = 0;
-        $imagesDownloaded = 0;
-        $imageDownloadFailed = 0;
-        $derivativesQueued = 0;
-        $samples = [];
-        $urlErrors = [];
-        $prefilteredExternalIds = $this->resolvePrefilteredExternalIds($targets, $normalized);
-
-        if ($prefilteredExternalIds !== [] && $normalized['run_id'] !== null) {
-            $this->touchPrefilteredReferences($prefilteredExternalIds, $normalized['run_id']);
-        }
-
-        $this->emitProgress($progress, $this->makeProgressPayload(
-            foundUrls: $foundUrls,
-            processed: 0,
-            errors: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            imagesDownloaded: $imagesDownloaded,
-            imageDownloadFailed: $imageDownloadFailed,
-            derivativesQueued: $derivativesQueued,
-            noUrls: false,
-        ));
-
-        foreach ($targets as $target) {
-            $url = (string) $target['url'];
-            $bucket = (string) $target['bucket'];
-            $externalId = $this->profile->resolveExternalId($url);
-
-            if (isset($prefilteredExternalIds[$externalId])) {
-                $processed++;
-                $skipped++;
-
-                $this->emit($output, 'line', 'SKIP: '.$url.' | existing product reference.');
-
+            try {
+                $targets = $this->loadTargets(
+                    $normalized['buckets_file'],
+                    $normalized['bucket'],
+                    $normalized['limit'],
+                );
+            } catch (Throwable $exception) {
                 $this->emitProgress($progress, $this->makeProgressPayload(
-                    foundUrls: $foundUrls,
-                    processed: $processed,
-                    errors: $errors,
-                    created: $created,
-                    updated: $updated,
-                    skipped: $skipped,
-                    imagesDownloaded: $imagesDownloaded,
-                    imageDownloadFailed: $imageDownloadFailed,
-                    derivativesQueued: $derivativesQueued,
+                    foundUrls: 0,
+                    processed: 0,
+                    errors: 0,
+                    created: 0,
+                    updated: 0,
+                    skipped: 0,
+                    imagesDownloaded: 0,
+                    imageDownloadFailed: 0,
+                    derivativesQueued: 0,
                     noUrls: false,
                 ));
 
-                continue;
+                $this->logRunEvent(
+                    logger: $eventLogger,
+                    runId: $normalized['run_id'],
+                    stage: 'runtime',
+                    result: 'fatal',
+                    code: 'targets_load_failed',
+                    message: 'Не удалось загрузить список URL из buckets-файла: '.$exception->getMessage(),
+                    context: [
+                        'buckets_file' => $normalized['buckets_file'],
+                        'bucket' => $normalized['bucket'],
+                    ],
+                );
+
+                return [
+                    'options' => $normalized,
+                    'write_mode' => $normalized['write'],
+                    'found_urls' => 0,
+                    'processed' => 0,
+                    'errors' => 0,
+                    'created' => 0,
+                    'updated' => 0,
+                    'skipped' => 0,
+                    'images_downloaded' => 0,
+                    'image_download_failed' => 0,
+                    'derivatives_queued' => 0,
+                    'samples' => [],
+                    'url_errors' => [],
+                    'fatal_error' => $exception->getMessage(),
+                    'no_urls' => false,
+                    'success' => false,
+                ];
             }
 
-            try {
-                $recordResult = $this->mapTargetToPayload($url, $bucket, $normalized);
+            if ($targets->isEmpty()) {
+                $this->emit($output, 'warn', 'Подходящие URL товаров не найдены.');
+                $this->emitProgress($progress, $this->makeProgressPayload(
+                    foundUrls: 0,
+                    processed: 0,
+                    errors: 0,
+                    created: 0,
+                    updated: 0,
+                    skipped: 0,
+                    imagesDownloaded: 0,
+                    imageDownloadFailed: 0,
+                    derivativesQueued: 0,
+                    noUrls: true,
+                ));
 
-                if ($recordResult['payload'] === null) {
-                    $errors += $recordResult['errors_count'];
+                $this->logRunEvent(
+                    logger: $eventLogger,
+                    runId: $normalized['run_id'],
+                    stage: 'runtime',
+                    result: 'skipped',
+                    code: 'no_matching_urls',
+                    message: 'Не найдено URL товаров, подходящих под текущие фильтры запуска.',
+                );
 
-                    $urlErrors[] = [
-                        'url' => $url,
-                        'message' => $recordResult['first_error'] ?? 'Record mapping failed.',
-                    ];
+                return [
+                    'options' => $normalized,
+                    'write_mode' => $normalized['write'],
+                    'found_urls' => 0,
+                    'processed' => 0,
+                    'errors' => 0,
+                    'created' => 0,
+                    'updated' => 0,
+                    'skipped' => 0,
+                    'images_downloaded' => 0,
+                    'image_download_failed' => 0,
+                    'derivatives_queued' => 0,
+                    'samples' => [],
+                    'url_errors' => [],
+                    'fatal_error' => null,
+                    'no_urls' => true,
+                    'success' => true,
+                ];
+            }
 
-                    $this->emit($output, 'error', 'ERR: '.$url.' | '.($recordResult['first_error'] ?? 'Record mapping failed.'));
+            $this->emit($output, 'info', 'Найдено URL товаров: '.$targets->count());
+            $this->emit($output, 'line', 'Режим: '.($normalized['write'] ? 'write' : 'dry-run'));
+
+            $foundUrls = $targets->count();
+            $processed = 0;
+            $errors = 0;
+            $created = 0;
+            $updated = 0;
+            $skipped = 0;
+            $imagesDownloaded = 0;
+            $imageDownloadFailed = 0;
+            $derivativesQueued = 0;
+            $samples = [];
+            $urlErrors = [];
+            $prefilteredExternalIds = $this->resolvePrefilteredExternalIds($targets, $normalized);
+
+            if ($prefilteredExternalIds !== [] && $normalized['run_id'] !== null) {
+                $this->touchPrefilteredReferences($prefilteredExternalIds, $normalized['run_id']);
+            }
+
+            $this->emitProgress($progress, $this->makeProgressPayload(
+                foundUrls: $foundUrls,
+                processed: 0,
+                errors: 0,
+                created: 0,
+                updated: 0,
+                skipped: 0,
+                imagesDownloaded: $imagesDownloaded,
+                imageDownloadFailed: $imageDownloadFailed,
+                derivativesQueued: $derivativesQueued,
+                noUrls: false,
+            ));
+
+            foreach ($targets as $target) {
+                $url = (string) $target['url'];
+                $bucket = (string) $target['bucket'];
+                $externalId = $this->profile->resolveExternalId($url);
+
+                if (isset($prefilteredExternalIds[$externalId])) {
+                    $processed++;
+                    $skipped++;
+
+                    $this->logRunEvent(
+                        logger: $eventLogger,
+                        runId: $normalized['run_id'],
+                        stage: 'prefilter',
+                        result: 'skipped',
+                        sourceRef: $url,
+                        externalId: $externalId !== '' ? $externalId : null,
+                        code: 'existing_reference',
+                        message: 'URL пропущен на предфильтре: ссылка поставщика уже существует.',
+                    );
+
+                    $this->emit($output, 'line', 'SKIP: '.$url.' | existing product reference.');
 
                     $this->emitProgress($progress, $this->makeProgressPayload(
                         foundUrls: $foundUrls,
@@ -214,119 +224,176 @@ class MetalmasterProductImportService
                     continue;
                 }
 
-                $errors += $recordResult['errors_count'];
+                try {
+                    $recordResult = $this->mapTargetToPayload($url, $bucket, $normalized);
 
-                if ($normalized['write']) {
-                    $processResult = $this->processor->process(
-                        $recordResult['payload'],
-                        $this->processorOptions($normalized),
-                    );
+                    if ($recordResult['payload'] === null) {
+                        $errors += $recordResult['errors_count'];
 
-                    if ($processResult->operation === 'created') {
-                        $created++;
-                    } elseif ($processResult->operation === 'updated') {
-                        $updated++;
-                    } else {
-                        $skipped++;
+                        $urlErrors[] = [
+                            'url' => $url,
+                            'message' => $recordResult['first_error'] ?? 'Не удалось сопоставить запись.',
+                        ];
+
+                        foreach ($recordResult['errors'] as $mappingError) {
+                            $this->logRunEvent(
+                                logger: $eventLogger,
+                                runId: $normalized['run_id'],
+                                stage: 'mapping',
+                                result: 'error',
+                                sourceRef: $url,
+                                externalId: $externalId !== '' ? $externalId : null,
+                                code: $mappingError['code'] ?? null,
+                                message: $mappingError['message'] ?? null,
+                            );
+                        }
+
+                        $this->emit($output, 'error', 'ERR: '.$url.' | '.($recordResult['first_error'] ?? 'Не удалось сопоставить запись.'));
+
+                        $this->emitProgress($progress, $this->makeProgressPayload(
+                            foundUrls: $foundUrls,
+                            processed: $processed,
+                            errors: $errors,
+                            created: $created,
+                            updated: $updated,
+                            skipped: $skipped,
+                            imagesDownloaded: $imagesDownloaded,
+                            imageDownloadFailed: $imageDownloadFailed,
+                            derivativesQueued: $derivativesQueued,
+                            noUrls: false,
+                        ));
+
+                        continue;
                     }
 
-                    $processed++;
-                    $errors += count($processResult->errors);
+                    $errors += $recordResult['errors_count'];
 
-                    $imagesDownloaded += (int) ($processResult->meta['media_reused'] ?? 0);
-                    $derivativesQueued += (int) ($processResult->meta['media_queued'] ?? 0);
-                    $imageDownloadFailed += $this->countMediaErrors($processResult->errors);
-                } elseif (count($samples) < $normalized['show_samples']) {
-                    $samples[] = $this->sampleRow($recordResult['payload'], $url, $bucket);
-                    $processed++;
-                } else {
-                    $processed++;
+                    if ($normalized['write']) {
+                        $processResult = $this->processor->process(
+                            $recordResult['payload'],
+                            $this->processorOptions($normalized, $eventLogger, $url),
+                        );
+
+                        if ($processResult->operation === 'created') {
+                            $created++;
+                        } elseif ($processResult->operation === 'updated') {
+                            $updated++;
+                        } else {
+                            $skipped++;
+                        }
+
+                        $processed++;
+                        $errors += count($processResult->errors);
+
+                        $imagesDownloaded += (int) ($processResult->meta['media_reused'] ?? 0);
+                        $derivativesQueued += (int) ($processResult->meta['media_queued'] ?? 0);
+                        $imageDownloadFailed += $this->countMediaErrors($processResult->errors);
+                    } elseif (count($samples) < $normalized['show_samples']) {
+                        $samples[] = $this->sampleRow($recordResult['payload'], $url, $bucket);
+                        $processed++;
+                    } else {
+                        $processed++;
+                    }
+
+                    $this->emit($output, 'line', 'OK: '.$url);
+
+                    if ($normalized['delay_ms'] > 0) {
+                        usleep($normalized['delay_ms'] * 1000);
+                    }
+                } catch (Throwable $exception) {
+                    $errors++;
+                    $urlErrors[] = [
+                        'url' => $url,
+                        'message' => $exception->getMessage(),
+                    ];
+
+                    $this->logRunEvent(
+                        logger: $eventLogger,
+                        runId: $normalized['run_id'],
+                        stage: 'runtime',
+                        result: 'error',
+                        sourceRef: $url,
+                        externalId: $externalId !== '' ? $externalId : null,
+                        code: 'record_exception',
+                        message: 'Ошибка обработки URL товара: '.$exception->getMessage(),
+                    );
+
+                    $this->emit($output, 'error', 'ERR: '.$url.' | '.$exception->getMessage());
                 }
 
-                $this->emit($output, 'line', 'OK: '.$url);
-
-                if ($normalized['delay_ms'] > 0) {
-                    usleep($normalized['delay_ms'] * 1000);
-                }
-            } catch (Throwable $exception) {
-                $errors++;
-                $urlErrors[] = [
-                    'url' => $url,
-                    'message' => $exception->getMessage(),
-                ];
-
-                $this->emit($output, 'error', 'ERR: '.$url.' | '.$exception->getMessage());
+                $this->emitProgress($progress, $this->makeProgressPayload(
+                    foundUrls: $foundUrls,
+                    processed: $processed,
+                    errors: $errors,
+                    created: $created,
+                    updated: $updated,
+                    skipped: $skipped,
+                    imagesDownloaded: $imagesDownloaded,
+                    imageDownloadFailed: $imageDownloadFailed,
+                    derivativesQueued: $derivativesQueued,
+                    noUrls: false,
+                ));
             }
 
-            $this->emitProgress($progress, $this->makeProgressPayload(
-                foundUrls: $foundUrls,
-                processed: $processed,
-                errors: $errors,
-                created: $created,
-                updated: $updated,
-                skipped: $skipped,
-                imagesDownloaded: $imagesDownloaded,
-                imageDownloadFailed: $imageDownloadFailed,
-                derivativesQueued: $derivativesQueued,
-                noUrls: false,
-            ));
-        }
-
-        if ($normalized['write'] && $normalized['run_id'] !== null) {
-            $this->processor->finalizeMissing(
-                supplier: $this->profile->supplierKey(),
-                runId: $normalized['run_id'],
-                options: [
-                    'mode' => $normalized['mode'],
-                    'finalize_missing' => $normalized['finalize_missing'],
-                ],
-            );
-        }
-
-        $this->emit($output, 'new_line', '');
-        $this->emit($output, 'info', 'Итого: processed='.$processed.', errors='.$errors.'.');
-
-        if ($normalized['write']) {
-            $this->emit($output, 'line', 'DB: created='.$created.', updated='.$updated.', skipped='.$skipped.'.');
-
-            if ($normalized['download_images']) {
-                $this->emit(
-                    $output,
-                    'line',
-                    'Images: downloaded='.$imagesDownloaded
-                    .', failed='.$imageDownloadFailed
-                    .', derivatives_queued='.$derivativesQueued
-                    .'.'
+            if ($normalized['write'] && $normalized['run_id'] !== null) {
+                $this->processor->finalizeMissing(
+                    supplier: $this->profile->supplierKey(),
+                    runId: $normalized['run_id'],
+                    options: [
+                        'mode' => $normalized['mode'],
+                        'finalize_missing' => $normalized['finalize_missing'],
+                        'event_logger' => $eventLogger,
+                    ],
                 );
             }
-        }
 
-        if (! $normalized['write'] && $samples !== []) {
             $this->emit($output, 'new_line', '');
-            $this->emit($output, 'table', [
-                'headers' => ['url', 'bucket', 'title', 'price', 'brand', 'images', 'specs'],
-                'rows' => $samples,
-            ]);
-        }
+            $this->emit($output, 'info', 'Итого: processed='.$processed.', errors='.$errors.'.');
 
-        return [
-            'options' => $normalized,
-            'write_mode' => $normalized['write'],
-            'found_urls' => $foundUrls,
-            'processed' => $processed,
-            'errors' => $errors,
-            'created' => $created,
-            'updated' => $updated,
-            'skipped' => $skipped,
-            'images_downloaded' => $imagesDownloaded,
-            'image_download_failed' => $imageDownloadFailed,
-            'derivatives_queued' => $derivativesQueued,
-            'samples' => $samples,
-            'url_errors' => $urlErrors,
-            'fatal_error' => null,
-            'no_urls' => false,
-            'success' => $processed > 0,
-        ];
+            if ($normalized['write']) {
+                $this->emit($output, 'line', 'DB: created='.$created.', updated='.$updated.', skipped='.$skipped.'.');
+
+                if ($normalized['download_images']) {
+                    $this->emit(
+                        $output,
+                        'line',
+                        'Images: downloaded='.$imagesDownloaded
+                        .', failed='.$imageDownloadFailed
+                        .', derivatives_queued='.$derivativesQueued
+                        .'.'
+                    );
+                }
+            }
+
+            if (! $normalized['write'] && $samples !== []) {
+                $this->emit($output, 'new_line', '');
+                $this->emit($output, 'table', [
+                    'headers' => ['url', 'bucket', 'title', 'price', 'brand', 'images', 'specs'],
+                    'rows' => $samples,
+                ]);
+            }
+
+            return [
+                'options' => $normalized,
+                'write_mode' => $normalized['write'],
+                'found_urls' => $foundUrls,
+                'processed' => $processed,
+                'errors' => $errors,
+                'created' => $created,
+                'updated' => $updated,
+                'skipped' => $skipped,
+                'images_downloaded' => $imagesDownloaded,
+                'image_download_failed' => $imageDownloadFailed,
+                'derivatives_queued' => $derivativesQueued,
+                'samples' => $samples,
+                'url_errors' => $urlErrors,
+                'fatal_error' => null,
+                'no_urls' => false,
+                'success' => $processed > 0,
+            ];
+        } finally {
+            $eventLogger?->flush();
+        }
     }
 
     /**
@@ -474,7 +541,12 @@ class MetalmasterProductImportService
 
     /**
      * @param  array<string, mixed>  $normalized
-     * @return array{payload:\App\Support\CatalogImport\DTO\ProductPayload|null,errors_count:int,first_error:string|null}
+     * @return array{
+     *     payload:\App\Support\CatalogImport\DTO\ProductPayload|null,
+     *     errors_count:int,
+     *     first_error:string|null,
+     *     errors:array<int, array{code:string, message:string}>
+     * }
      */
     private function mapTargetToPayload(string $url, string $bucket, array $normalized): array
     {
@@ -504,13 +576,24 @@ class MetalmasterProductImportService
                 'payload' => $mapping->payload,
                 'errors_count' => count($mapping->errors),
                 'first_error' => $mapping->errors[0]->message ?? null,
+                'errors' => collect($mapping->errors)
+                    ->map(fn ($error): array => [
+                        'code' => (string) ($error->code ?? 'mapping_error'),
+                        'message' => (string) ($error->message ?? 'Не удалось сопоставить запись.'),
+                    ])
+                    ->values()
+                    ->all(),
             ];
         }
 
         return [
             'payload' => null,
             'errors_count' => 1,
-            'first_error' => 'HTML parser returned no records.',
+            'first_error' => 'HTML-парсер не вернул ни одной записи.',
+            'errors' => [[
+                'code' => 'parse_no_records',
+                'message' => 'HTML-парсер не вернул ни одной записи.',
+            ]],
         ];
     }
 
@@ -518,8 +601,11 @@ class MetalmasterProductImportService
      * @param  array<string, mixed>  $normalized
      * @return array<string, mixed>
      */
-    private function processorOptions(array $normalized): array
-    {
+    private function processorOptions(
+        array $normalized,
+        ?ImportRunEventLoggerInterface $eventLogger = null,
+        ?string $sourceRef = null,
+    ): array {
         return [
             'supplier' => $this->profile->supplierKey(),
             'run_id' => $normalized['run_id'],
@@ -531,6 +617,8 @@ class MetalmasterProductImportService
             'legacy_match' => $this->profile->defaults()['legacy_match'] ?? null,
             'use_source_slug' => true,
             'mode' => $normalized['mode'],
+            'event_logger' => $eventLogger,
+            'source_ref' => $sourceRef,
         ];
     }
 
@@ -629,6 +717,50 @@ class MetalmasterProductImportService
         }
 
         return (bool) $value;
+    }
+
+    private function makeEventLogger(?int $runId): ?ImportRunEventLoggerInterface
+    {
+        if ($runId === null || $runId <= 0 || ! Schema::hasTable('import_run_events')) {
+            return null;
+        }
+
+        return new DatabaseImportRunEventLogger;
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function logRunEvent(
+        ?ImportRunEventLoggerInterface $logger,
+        ?int $runId,
+        string $stage,
+        string $result,
+        ?string $sourceRef = null,
+        ?string $externalId = null,
+        ?int $productId = null,
+        ?int $sourceCategoryId = null,
+        ?string $code = null,
+        ?string $message = null,
+        array $context = [],
+    ): void {
+        if (! $logger instanceof ImportRunEventLoggerInterface || $runId === null || $runId <= 0) {
+            return;
+        }
+
+        $logger->log(new ImportRunEventData(
+            runId: $runId,
+            supplier: $this->profile->supplierKey(),
+            stage: $stage,
+            result: $result,
+            sourceRef: $sourceRef,
+            externalId: $externalId,
+            productId: $productId,
+            sourceCategoryId: $sourceCategoryId,
+            code: $code,
+            message: $message,
+            context: $context,
+        ));
     }
 
     /**

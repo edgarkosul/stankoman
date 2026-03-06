@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\ImportRuns;
 
 use App\Filament\Resources\ImportRuns\Pages\ListImportRuns;
+use App\Filament\Resources\ImportRuns\Pages\ViewImportRun;
+use App\Filament\Resources\ImportRuns\RelationManagers\EventsRelationManager;
 use App\Filament\Resources\ImportRuns\Tables\ImportRunsTable;
 use App\Models\ImportRun;
 use BackedEnum;
@@ -34,7 +36,7 @@ class ImportRunResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            EventsRelationManager::class,
         ];
     }
 
@@ -42,6 +44,7 @@ class ImportRunResource extends Resource
     {
         return [
             'index' => ListImportRuns::route('/'),
+            'view' => ViewImportRun::route('/{record}'),
         ];
     }
 }

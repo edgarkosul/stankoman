@@ -3,11 +3,15 @@
 namespace App\Support\CatalogImport\Yml;
 
 use App\Models\ProductSupplierReference;
+use App\Support\CatalogImport\Contracts\ImportRunEventLoggerInterface;
 use App\Support\CatalogImport\Contracts\SourceResolverInterface;
 use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\DTO\ResolvedSource;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
+use App\Support\CatalogImport\Runs\DatabaseImportRunEventLogger;
+use App\Support\CatalogImport\Runs\ImportRunEventData;
 use App\Support\CatalogImport\Sources\SourceResolver;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class YandexMarketFeedImportService
@@ -90,165 +94,171 @@ class YandexMarketFeedImportService
     public function run(array $options = [], ?callable $output = null, ?callable $progress = null): array
     {
         $normalized = $this->normalizeOptions($options);
+        $eventLogger = $this->makeEventLogger($normalized['run_id']);
 
         try {
-            $source = $this->resolveSource($normalized);
-            [$foundUrls, $prefilteredExternalIds, $categoryFilterIds] = $this->scanFeed($source, $normalized);
-        } catch (Throwable $exception) {
+            try {
+                $source = $this->resolveSource($normalized);
+                [$foundUrls, $prefilteredExternalIds, $categoryFilterIds] = $this->scanFeed($source, $normalized);
+            } catch (Throwable $exception) {
+                $this->emitProgress($progress, $this->makeProgressPayload(
+                    foundUrls: 0,
+                    processed: 0,
+                    errors: 0,
+                    created: 0,
+                    updated: 0,
+                    skipped: 0,
+                    imagesDownloaded: 0,
+                    imageDownloadFailed: 0,
+                    derivativesQueued: 0,
+                    noUrls: false,
+                ));
+
+                $this->logRunEvent(
+                    logger: $eventLogger,
+                    runId: $normalized['run_id'],
+                    stage: 'runtime',
+                    result: 'fatal',
+                    code: 'source_resolve_failed',
+                    message: 'Не удалось подготовить источник импорта: '.$exception->getMessage(),
+                    context: [
+                        'source' => $normalized['source'],
+                    ],
+                );
+
+                return [
+                    'options' => $normalized,
+                    'write_mode' => $normalized['write'],
+                    'found_urls' => 0,
+                    'processed' => 0,
+                    'errors' => 0,
+                    'created' => 0,
+                    'updated' => 0,
+                    'skipped' => 0,
+                    'images_downloaded' => 0,
+                    'image_download_failed' => 0,
+                    'derivatives_queued' => 0,
+                    'samples' => [],
+                    'url_errors' => [],
+                    'fatal_error' => $exception->getMessage(),
+                    'no_urls' => false,
+                    'success' => false,
+                ];
+            }
+
+            if ($foundUrls === 0) {
+                $this->emit($output, 'warn', 'Подходящие offer-записи не найдены.');
+                $this->emitProgress($progress, $this->makeProgressPayload(
+                    foundUrls: 0,
+                    processed: 0,
+                    errors: 0,
+                    created: 0,
+                    updated: 0,
+                    skipped: 0,
+                    imagesDownloaded: 0,
+                    imageDownloadFailed: 0,
+                    derivativesQueued: 0,
+                    noUrls: true,
+                ));
+
+                $this->logRunEvent(
+                    logger: $eventLogger,
+                    runId: $normalized['run_id'],
+                    stage: 'runtime',
+                    result: 'skipped',
+                    code: 'no_matching_offers',
+                    message: 'Не найдено YML offer-записей, подходящих под текущие фильтры запуска.',
+                );
+
+                return [
+                    'options' => $normalized,
+                    'write_mode' => $normalized['write'],
+                    'found_urls' => 0,
+                    'processed' => 0,
+                    'errors' => 0,
+                    'created' => 0,
+                    'updated' => 0,
+                    'skipped' => 0,
+                    'images_downloaded' => 0,
+                    'image_download_failed' => 0,
+                    'derivatives_queued' => 0,
+                    'samples' => [],
+                    'url_errors' => [],
+                    'fatal_error' => null,
+                    'no_urls' => true,
+                    'success' => true,
+                ];
+            }
+
+            $this->emit($output, 'info', 'Найдено offer-записей: '.$foundUrls);
+            $this->emit($output, 'line', 'Режим: '.($normalized['write'] ? 'write' : 'dry-run'));
+
+            $processed = 0;
+            $errors = 0;
+            $created = 0;
+            $updated = 0;
+            $skipped = 0;
+            $imagesDownloaded = 0;
+            $imageDownloadFailed = 0;
+            $derivativesQueued = 0;
+            $samples = [];
+            $urlErrors = [];
+            $processedOffers = 0;
+            $touchedPrefilteredExternalIds = [];
+
             $this->emitProgress($progress, $this->makeProgressPayload(
-                foundUrls: 0,
-                processed: 0,
-                errors: 0,
-                created: 0,
-                updated: 0,
-                skipped: 0,
-                imagesDownloaded: 0,
-                imageDownloadFailed: 0,
-                derivativesQueued: 0,
+                foundUrls: $foundUrls,
+                processed: $processed,
+                errors: $errors,
+                created: $created,
+                updated: $updated,
+                skipped: $skipped,
+                imagesDownloaded: $imagesDownloaded,
+                imageDownloadFailed: $imageDownloadFailed,
+                derivativesQueued: $derivativesQueued,
                 noUrls: false,
             ));
 
-            return [
-                'options' => $normalized,
-                'write_mode' => $normalized['write'],
-                'found_urls' => 0,
-                'processed' => 0,
-                'errors' => 0,
-                'created' => 0,
-                'updated' => 0,
-                'skipped' => 0,
-                'images_downloaded' => 0,
-                'image_download_failed' => 0,
-                'derivatives_queued' => 0,
-                'samples' => [],
-                'url_errors' => [],
-                'fatal_error' => $exception->getMessage(),
-                'no_urls' => false,
-                'success' => false,
-            ];
-        }
+            try {
+                foreach ($this->recordParser->parse($source, []) as $record) {
+                    if (! $record instanceof YmlOfferRecord) {
+                        continue;
+                    }
 
-        if ($foundUrls === 0) {
-            $this->emit($output, 'warn', 'Подходящие offer-записи не найдены.');
-            $this->emitProgress($progress, $this->makeProgressPayload(
-                foundUrls: 0,
-                processed: 0,
-                errors: 0,
-                created: 0,
-                updated: 0,
-                skipped: 0,
-                imagesDownloaded: 0,
-                imageDownloadFailed: 0,
-                derivativesQueued: 0,
-                noUrls: true,
-            ));
+                    if (! $this->passesCategoryFilter($record, $categoryFilterIds)) {
+                        continue;
+                    }
 
-            return [
-                'options' => $normalized,
-                'write_mode' => $normalized['write'],
-                'found_urls' => 0,
-                'processed' => 0,
-                'errors' => 0,
-                'created' => 0,
-                'updated' => 0,
-                'skipped' => 0,
-                'images_downloaded' => 0,
-                'image_download_failed' => 0,
-                'derivatives_queued' => 0,
-                'samples' => [],
-                'url_errors' => [],
-                'fatal_error' => null,
-                'no_urls' => true,
-                'success' => true,
-            ];
-        }
+                    if ($normalized['limit'] > 0 && $processedOffers >= $normalized['limit']) {
+                        break;
+                    }
 
-        $this->emit($output, 'info', 'Найдено offer-записей: '.$foundUrls);
-        $this->emit($output, 'line', 'Режим: '.($normalized['write'] ? 'write' : 'dry-run'));
+                    $processedOffers++;
+                    $externalId = trim($record->id);
+                    $errorRow = $externalId !== '' ? 'offer:'.$externalId : 'offer#'.$processedOffers;
 
-        $processed = 0;
-        $errors = 0;
-        $created = 0;
-        $updated = 0;
-        $skipped = 0;
-        $imagesDownloaded = 0;
-        $imageDownloadFailed = 0;
-        $derivativesQueued = 0;
-        $samples = [];
-        $urlErrors = [];
-        $processedOffers = 0;
-        $touchedPrefilteredExternalIds = [];
+                    if (
+                        $normalized['write']
+                        && $normalized['skip_existing']
+                        && $externalId !== ''
+                        && isset($prefilteredExternalIds[$externalId])
+                    ) {
+                        $processed++;
+                        $skipped++;
+                        $touchedPrefilteredExternalIds[$externalId] = true;
 
-        $this->emitProgress($progress, $this->makeProgressPayload(
-            foundUrls: $foundUrls,
-            processed: $processed,
-            errors: $errors,
-            created: $created,
-            updated: $updated,
-            skipped: $skipped,
-            imagesDownloaded: $imagesDownloaded,
-            imageDownloadFailed: $imageDownloadFailed,
-            derivativesQueued: $derivativesQueued,
-            noUrls: false,
-        ));
+                        $this->logRunEvent(
+                            logger: $eventLogger,
+                            runId: $normalized['run_id'],
+                            stage: 'prefilter',
+                            result: 'skipped',
+                            sourceRef: $errorRow,
+                            externalId: $externalId,
+                            code: 'existing_reference',
+                            message: 'Offer-запись пропущена на предфильтре: ссылка поставщика уже существует.',
+                        );
 
-        try {
-            foreach ($this->recordParser->parse($source, []) as $record) {
-                if (! $record instanceof YmlOfferRecord) {
-                    continue;
-                }
-
-                if (! $this->passesCategoryFilter($record, $categoryFilterIds)) {
-                    continue;
-                }
-
-                if ($normalized['limit'] > 0 && $processedOffers >= $normalized['limit']) {
-                    break;
-                }
-
-                $processedOffers++;
-                $externalId = trim($record->id);
-                $errorRow = $externalId !== '' ? 'offer:'.$externalId : 'offer#'.$processedOffers;
-
-                if (
-                    $normalized['write']
-                    && $normalized['skip_existing']
-                    && $externalId !== ''
-                    && isset($prefilteredExternalIds[$externalId])
-                ) {
-                    $processed++;
-                    $skipped++;
-                    $touchedPrefilteredExternalIds[$externalId] = true;
-
-                    $this->emit($output, 'line', 'SKIP: '.$errorRow.' | existing product reference.');
-
-                    $this->emitProgress($progress, $this->makeProgressPayload(
-                        foundUrls: $foundUrls,
-                        processed: $processed,
-                        errors: $errors,
-                        created: $created,
-                        updated: $updated,
-                        skipped: $skipped,
-                        imagesDownloaded: $imagesDownloaded,
-                        imageDownloadFailed: $imageDownloadFailed,
-                        derivativesQueued: $derivativesQueued,
-                        noUrls: false,
-                    ));
-
-                    continue;
-                }
-
-                try {
-                    $mapping = $this->adapter->mapRecord($record);
-
-                    if ($mapping->payload === null) {
-                        $errors += count($mapping->errors);
-                        $urlErrors[] = [
-                            'url' => $errorRow,
-                            'message' => $mapping->errors[0]->message ?? 'Record mapping failed.',
-                        ];
-
-                        $this->emit($output, 'error', 'ERR: '.$errorRow.' | '.($mapping->errors[0]->message ?? 'Record mapping failed.'));
+                        $this->emit($output, 'line', 'SKIP: '.$errorRow.' | existing product reference.');
 
                         $this->emitProgress($progress, $this->makeProgressPayload(
                             foundUrls: $foundUrls,
@@ -266,70 +276,198 @@ class YandexMarketFeedImportService
                         continue;
                     }
 
-                    $errors += count($mapping->errors);
+                    try {
+                        $mapping = $this->adapter->mapRecord($record);
 
-                    if ($normalized['write']) {
-                        $processResult = $this->processor->process(
-                            $mapping->payload,
-                            $this->processorOptions($normalized),
-                        );
+                        if ($mapping->payload === null) {
+                            $errors += count($mapping->errors);
+                            $urlErrors[] = [
+                                'url' => $errorRow,
+                                'message' => $mapping->errors[0]->message ?? 'Не удалось сопоставить запись.',
+                            ];
 
-                        if ($processResult->operation === 'created') {
-                            $created++;
-                        } elseif ($processResult->operation === 'updated') {
-                            $updated++;
-                        } else {
-                            $skipped++;
+                            foreach ($mapping->errors as $mappingError) {
+                                $this->logRunEvent(
+                                    logger: $eventLogger,
+                                    runId: $normalized['run_id'],
+                                    stage: 'mapping',
+                                    result: 'error',
+                                    sourceRef: $errorRow,
+                                    externalId: $externalId !== '' ? $externalId : null,
+                                    code: $mappingError->code,
+                                    message: $mappingError->message,
+                                );
+                            }
+
+                            $this->emit($output, 'error', 'ERR: '.$errorRow.' | '.($mapping->errors[0]->message ?? 'Не удалось сопоставить запись.'));
+
+                            $this->emitProgress($progress, $this->makeProgressPayload(
+                                foundUrls: $foundUrls,
+                                processed: $processed,
+                                errors: $errors,
+                                created: $created,
+                                updated: $updated,
+                                skipped: $skipped,
+                                imagesDownloaded: $imagesDownloaded,
+                                imageDownloadFailed: $imageDownloadFailed,
+                                derivativesQueued: $derivativesQueued,
+                                noUrls: false,
+                            ));
+
+                            continue;
                         }
 
-                        $processed++;
-                        $errors += count($processResult->errors);
+                        $errors += count($mapping->errors);
 
-                        $imagesDownloaded += (int) ($processResult->meta['media_reused'] ?? 0);
-                        $derivativesQueued += (int) ($processResult->meta['media_queued'] ?? 0);
-                        $imageDownloadFailed += $this->countMediaErrors($processResult->errors);
-                    } elseif (count($samples) < $normalized['show_samples']) {
-                        $samples[] = $this->sampleRow($mapping->payload, $record->type);
-                        $processed++;
-                    } else {
-                        $processed++;
+                        if ($normalized['write']) {
+                            $processResult = $this->processor->process(
+                                $mapping->payload,
+                                $this->processorOptions($normalized, $eventLogger, $errorRow),
+                            );
+
+                            if ($processResult->operation === 'created') {
+                                $created++;
+                            } elseif ($processResult->operation === 'updated') {
+                                $updated++;
+                            } else {
+                                $skipped++;
+                            }
+
+                            $processed++;
+                            $errors += count($processResult->errors);
+
+                            $imagesDownloaded += (int) ($processResult->meta['media_reused'] ?? 0);
+                            $derivativesQueued += (int) ($processResult->meta['media_queued'] ?? 0);
+                            $imageDownloadFailed += $this->countMediaErrors($processResult->errors);
+                        } elseif (count($samples) < $normalized['show_samples']) {
+                            $samples[] = $this->sampleRow($mapping->payload, $record->type);
+                            $processed++;
+                        } else {
+                            $processed++;
+                        }
+
+                        $this->emit($output, 'line', 'OK: '.$errorRow);
+
+                        if ($normalized['delay_ms'] > 0) {
+                            usleep($normalized['delay_ms'] * 1000);
+                        }
+                    } catch (Throwable $exception) {
+                        $errors++;
+                        $urlErrors[] = [
+                            'url' => $errorRow,
+                            'message' => $exception->getMessage(),
+                        ];
+
+                        $this->logRunEvent(
+                            logger: $eventLogger,
+                            runId: $normalized['run_id'],
+                            stage: 'runtime',
+                            result: 'error',
+                            sourceRef: $errorRow,
+                            externalId: $externalId !== '' ? $externalId : null,
+                            code: 'record_exception',
+                            message: 'Ошибка обработки offer-записи: '.$exception->getMessage(),
+                        );
+
+                        $this->emit($output, 'error', 'ERR: '.$errorRow.' | '.$exception->getMessage());
                     }
 
-                    $this->emit($output, 'line', 'OK: '.$errorRow);
-
-                    if ($normalized['delay_ms'] > 0) {
-                        usleep($normalized['delay_ms'] * 1000);
-                    }
-                } catch (Throwable $exception) {
-                    $errors++;
-                    $urlErrors[] = [
-                        'url' => $errorRow,
-                        'message' => $exception->getMessage(),
-                    ];
-
-                    $this->emit($output, 'error', 'ERR: '.$errorRow.' | '.$exception->getMessage());
+                    $this->emitProgress($progress, $this->makeProgressPayload(
+                        foundUrls: $foundUrls,
+                        processed: $processed,
+                        errors: $errors,
+                        created: $created,
+                        updated: $updated,
+                        skipped: $skipped,
+                        imagesDownloaded: $imagesDownloaded,
+                        imageDownloadFailed: $imageDownloadFailed,
+                        derivativesQueued: $derivativesQueued,
+                        noUrls: false,
+                    ));
                 }
+            } catch (Throwable $exception) {
+                $this->logRunEvent(
+                    logger: $eventLogger,
+                    runId: $normalized['run_id'],
+                    stage: 'runtime',
+                    result: 'fatal',
+                    code: 'feed_parse_exception',
+                    message: 'Ошибка разбора YML-потока: '.$exception->getMessage(),
+                    context: [
+                        'source' => $normalized['source'],
+                    ],
+                );
 
-                $this->emitProgress($progress, $this->makeProgressPayload(
-                    foundUrls: $foundUrls,
-                    processed: $processed,
-                    errors: $errors,
-                    created: $created,
-                    updated: $updated,
-                    skipped: $skipped,
-                    imagesDownloaded: $imagesDownloaded,
-                    imageDownloadFailed: $imageDownloadFailed,
-                    derivativesQueued: $derivativesQueued,
-                    noUrls: false,
-                ));
+                return [
+                    'options' => $normalized,
+                    'write_mode' => $normalized['write'],
+                    'found_urls' => $foundUrls,
+                    'processed' => $processed,
+                    'errors' => $errors + 1,
+                    'created' => $created,
+                    'updated' => $updated,
+                    'skipped' => $skipped,
+                    'images_downloaded' => $imagesDownloaded,
+                    'image_download_failed' => $imageDownloadFailed,
+                    'derivatives_queued' => $derivativesQueued,
+                    'samples' => $samples,
+                    'url_errors' => array_merge($urlErrors, [[
+                        'url' => 'feed',
+                        'message' => $exception->getMessage(),
+                    ]]),
+                    'fatal_error' => $exception->getMessage(),
+                    'no_urls' => false,
+                    'success' => false,
+                ];
             }
-        } catch (Throwable $exception) {
+
+            if ($normalized['write'] && $normalized['run_id'] !== null) {
+                $this->touchPrefilteredReferences($touchedPrefilteredExternalIds, $normalized['run_id']);
+
+                $this->processor->finalizeMissing(
+                    supplier: $this->profile->supplierKey(),
+                    runId: $normalized['run_id'],
+                    options: [
+                        'mode' => $normalized['mode'],
+                        'finalize_missing' => $normalized['finalize_missing'],
+                        'source_category_id' => $normalized['category_id'],
+                        'event_logger' => $eventLogger,
+                    ],
+                );
+            }
+
+            $this->emit($output, 'new_line', '');
+            $this->emit($output, 'info', 'Итого: processed='.$processed.', errors='.$errors.'.');
+
+            if ($normalized['write']) {
+                $this->emit($output, 'line', 'DB: created='.$created.', updated='.$updated.', skipped='.$skipped.'.');
+
+                if ($normalized['download_images']) {
+                    $this->emit(
+                        $output,
+                        'line',
+                        'Images: downloaded='.$imagesDownloaded
+                        .', failed='.$imageDownloadFailed
+                        .', derivatives_queued='.$derivativesQueued
+                        .'.'
+                    );
+                }
+            }
+
+            if (! $normalized['write'] && $samples !== []) {
+                $this->emit($output, 'new_line', '');
+                $this->emit($output, 'table', [
+                    'headers' => ['external_id', 'name', 'price', 'currency', 'offer_type'],
+                    'rows' => $samples,
+                ]);
+            }
+
             return [
                 'options' => $normalized,
                 'write_mode' => $normalized['write'],
                 'found_urls' => $foundUrls,
                 'processed' => $processed,
-                'errors' => $errors + 1,
+                'errors' => $errors,
                 'created' => $created,
                 'updated' => $updated,
                 'skipped' => $skipped,
@@ -337,74 +475,14 @@ class YandexMarketFeedImportService
                 'image_download_failed' => $imageDownloadFailed,
                 'derivatives_queued' => $derivativesQueued,
                 'samples' => $samples,
-                'url_errors' => array_merge($urlErrors, [[
-                    'url' => 'feed',
-                    'message' => $exception->getMessage(),
-                ]]),
-                'fatal_error' => $exception->getMessage(),
+                'url_errors' => $urlErrors,
+                'fatal_error' => null,
                 'no_urls' => false,
-                'success' => false,
+                'success' => $processed > 0,
             ];
+        } finally {
+            $eventLogger?->flush();
         }
-
-        if ($normalized['write'] && $normalized['run_id'] !== null) {
-            $this->touchPrefilteredReferences($touchedPrefilteredExternalIds, $normalized['run_id']);
-
-            $this->processor->finalizeMissing(
-                supplier: $this->profile->supplierKey(),
-                runId: $normalized['run_id'],
-                options: [
-                    'mode' => $normalized['mode'],
-                    'finalize_missing' => $normalized['finalize_missing'],
-                    'source_category_id' => $normalized['category_id'],
-                ],
-            );
-        }
-
-        $this->emit($output, 'new_line', '');
-        $this->emit($output, 'info', 'Итого: processed='.$processed.', errors='.$errors.'.');
-
-        if ($normalized['write']) {
-            $this->emit($output, 'line', 'DB: created='.$created.', updated='.$updated.', skipped='.$skipped.'.');
-
-            if ($normalized['download_images']) {
-                $this->emit(
-                    $output,
-                    'line',
-                    'Images: downloaded='.$imagesDownloaded
-                    .', failed='.$imageDownloadFailed
-                    .', derivatives_queued='.$derivativesQueued
-                    .'.'
-                );
-            }
-        }
-
-        if (! $normalized['write'] && $samples !== []) {
-            $this->emit($output, 'new_line', '');
-            $this->emit($output, 'table', [
-                'headers' => ['external_id', 'name', 'price', 'currency', 'offer_type'],
-                'rows' => $samples,
-            ]);
-        }
-
-        return [
-            'options' => $normalized,
-            'write_mode' => $normalized['write'],
-            'found_urls' => $foundUrls,
-            'processed' => $processed,
-            'errors' => $errors,
-            'created' => $created,
-            'updated' => $updated,
-            'skipped' => $skipped,
-            'images_downloaded' => $imagesDownloaded,
-            'image_download_failed' => $imageDownloadFailed,
-            'derivatives_queued' => $derivativesQueued,
-            'samples' => $samples,
-            'url_errors' => $urlErrors,
-            'fatal_error' => null,
-            'no_urls' => false,
-            'success' => $processed > 0,
-        ];
     }
 
     /**
@@ -536,8 +614,11 @@ class YandexMarketFeedImportService
      * @param  array<string, mixed>  $normalized
      * @return array<string, mixed>
      */
-    private function processorOptions(array $normalized): array
-    {
+    private function processorOptions(
+        array $normalized,
+        ?ImportRunEventLoggerInterface $eventLogger = null,
+        ?string $sourceRef = null,
+    ): array {
         return [
             'supplier' => $this->profile->supplierKey(),
             'run_id' => $normalized['run_id'],
@@ -548,6 +629,8 @@ class YandexMarketFeedImportService
             'download_media' => $normalized['download_images'],
             'use_source_slug' => false,
             'mode' => $normalized['mode'],
+            'event_logger' => $eventLogger,
+            'source_ref' => $sourceRef,
         ];
     }
 
@@ -723,6 +806,50 @@ class YandexMarketFeedImportService
         }
 
         return (bool) $value;
+    }
+
+    private function makeEventLogger(?int $runId): ?ImportRunEventLoggerInterface
+    {
+        if ($runId === null || $runId <= 0 || ! Schema::hasTable('import_run_events')) {
+            return null;
+        }
+
+        return new DatabaseImportRunEventLogger;
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function logRunEvent(
+        ?ImportRunEventLoggerInterface $logger,
+        ?int $runId,
+        string $stage,
+        string $result,
+        ?string $sourceRef = null,
+        ?string $externalId = null,
+        ?int $productId = null,
+        ?int $sourceCategoryId = null,
+        ?string $code = null,
+        ?string $message = null,
+        array $context = [],
+    ): void {
+        if (! $logger instanceof ImportRunEventLoggerInterface || $runId === null || $runId <= 0) {
+            return;
+        }
+
+        $logger->log(new ImportRunEventData(
+            runId: $runId,
+            supplier: $this->profile->supplierKey(),
+            stage: $stage,
+            result: $result,
+            sourceRef: $sourceRef,
+            externalId: $externalId,
+            productId: $productId,
+            sourceCategoryId: $sourceCategoryId,
+            code: $code,
+            message: $message,
+            context: $context,
+        ));
     }
 
     /**

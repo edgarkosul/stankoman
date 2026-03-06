@@ -35,6 +35,11 @@ class ImportRun extends Model
         return $this->hasMany(ImportIssue::class, 'run_id');
     }
 
+    public function events(): HasMany
+    {
+        return $this->hasMany(ImportRunEvent::class, 'run_id');
+    }
+
     public function media(): HasMany
     {
         return $this->hasMany(ProductImportMedia::class, 'run_id');

@@ -23,7 +23,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 errors: [
                     new ImportError(
                         code: 'invalid_record_type',
-                        message: 'Expected YmlOfferRecord instance.',
+                        message: 'Ожидался экземпляр YmlOfferRecord.',
                         level: ImportErrorLevel::Fatal,
                     ),
                 ],
@@ -42,7 +42,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         if ($externalId === '') {
             $errors[] = new ImportError(
                 code: 'missing_offer_id',
-                message: 'Offer attribute "id" is required.',
+                message: 'Атрибут offer "id" обязателен.',
             );
 
             return new RecordMappingResult(payload: null, errors: $errors);
@@ -200,7 +200,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         if ($xml === '') {
             $errors[] = new ImportError(
                 code: 'empty_offer_xml',
-                message: 'Offer XML is empty.',
+                message: 'XML offer-записи пуст.',
             );
 
             return null;
@@ -214,7 +214,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
             if (! $node) {
                 $errors[] = new ImportError(
                     code: 'invalid_offer_xml',
-                    message: 'Offer XML is not a valid XML document.',
+                    message: 'XML offer-записи не является корректным XML-документом.',
                 );
 
                 return null;
@@ -386,7 +386,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
 
             $errors[] = new ImportError(
                 code: 'missing_required_'.$field,
-                message: sprintf('Offer is missing required field <%s>.', $field),
+                message: sprintf('В offer-записи отсутствует обязательное поле <%s>.', $field),
             );
         }
     }

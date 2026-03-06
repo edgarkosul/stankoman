@@ -2,11 +2,13 @@
 
 use App\Models\Category;
 use App\Models\ImportRun;
+use App\Models\ImportRunEvent;
 use App\Models\Product;
 use App\Models\ProductSupplierReference;
 use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
 use App\Support\CatalogImport\Processing\ProductPayloadNormalizer;
+use App\Support\CatalogImport\Runs\DatabaseImportRunEventLogger;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -172,6 +174,78 @@ it('updates existing product by supplier and external id without changing catego
         ->and($reference?->last_seen_run_id)->toBe($secondRun->id);
 });
 
+it('marks existing product as unchanged when payload has no effective changes', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Без изменений',
+        'title' => 'Без изменений',
+        'slug' => 'unchanged-product',
+        'price_amount' => 0,
+        'currency' => 'RUB',
+        'in_stock' => false,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+        'description' => '<p></p>',
+        'extra_description' => '<p></p>',
+        'meta_title' => 'Без изменений',
+    ]);
+
+    $originalUpdatedAt = optional($product->updated_at)->toDateTimeString();
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_same',
+        'external_id' => 'SAME-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+    $logger = new DatabaseImportRunEventLogger(batchSize: 1);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'SAME-1',
+            name: 'Без изменений',
+        ),
+    ], [
+        'supplier' => 'supplier_same',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'event_logger' => $logger,
+        'source_ref' => 'offer:SAME-1',
+    ]);
+
+    $logger->flush();
+    $product->refresh();
+
+    expect($summary['processed'])->toBe(1)
+        ->and($summary['created'])->toBe(0)
+        ->and($summary['updated'])->toBe(0)
+        ->and($summary['skipped'])->toBe(1)
+        ->and($summary['results'])->toHaveCount(1)
+        ->and($summary['results'][0]->operation)->toBe('unchanged');
+
+    $event = ImportRunEvent::query()->where('run_id', $secondRun->id)->latest('id')->first();
+
+    expect($event)->not->toBeNull()
+        ->and($event?->stage)->toBe('processing')
+        ->and($event?->result)->toBe('unchanged')
+        ->and($event?->code)->toBe('unchanged');
+
+    expect(optional($product->updated_at)->toDateTimeString())->toBe($originalUpdatedAt);
+    expect(
+        ProductSupplierReference::query()
+            ->where('supplier', 'supplier_same')
+            ->where('external_id', 'SAME-1')
+            ->value('last_seen_run_id')
+    )->toBe($secondRun->id);
+});
+
 it('processes payloads in batches', function (): void {
     $run = createImportRun('catalog_import_yml');
 
@@ -194,6 +268,36 @@ it('processes payloads in batches', function (): void {
         ->and($summary['errors'])->toBe(0)
         ->and(ProductSupplierReference::query()->where('supplier', 'batch_feed')->count())->toBe(3)
         ->and(Product::query()->count())->toBe(3);
+});
+
+it('writes detailed run events when event logger is provided', function (): void {
+    $run = createImportRun('catalog_import_yml');
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+    $logger = new DatabaseImportRunEventLogger(batchSize: 1);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(externalId: 'LOG-1', name: 'Логируемый товар'),
+    ], [
+        'supplier' => 'event_feed',
+        'run_id' => $run->id,
+        'event_logger' => $logger,
+        'source_ref' => 'offer:LOG-1',
+    ]);
+
+    $logger->flush();
+
+    expect($summary['created'])->toBe(1);
+    expect(ImportRunEvent::query()->count())->toBe(1);
+
+    $event = ImportRunEvent::query()->first();
+
+    expect($event)->not->toBeNull()
+        ->and($event?->stage)->toBe('processing')
+        ->and($event?->result)->toBe('created')
+        ->and($event?->external_id)->toBe('LOG-1')
+        ->and($event?->source_ref)->toBe('offer:LOG-1')
+        ->and((int) $event?->run_id)->toBe($run->id);
 });
 
 it('finalizes missing only in full sync authoritative mode', function (): void {
@@ -257,6 +361,48 @@ it('finalizes missing only in full sync authoritative mode', function (): void {
     expect(Product::query()->whereKey((int) $seenProductId)->value('is_active'))->toBeTrue();
 });
 
+it('logs finalize deactivation events when finalize missing is applied', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+    $logger = new DatabaseImportRunEventLogger(batchSize: 1);
+
+    $processor->processBatch([
+        new ProductPayload(externalId: 'F-1', name: 'Остается', inStock: true, qty: 10),
+        new ProductPayload(externalId: 'F-2', name: 'Исчезает', inStock: true, qty: 1),
+    ], [
+        'supplier' => 'finalize_feed',
+        'run_id' => $firstRun->id,
+        'event_logger' => $logger,
+    ]);
+
+    $processor->processBatch([
+        new ProductPayload(externalId: 'F-1', name: 'Остается', inStock: true, qty: 8),
+    ], [
+        'supplier' => 'finalize_feed',
+        'run_id' => $secondRun->id,
+        'event_logger' => $logger,
+    ]);
+
+    $processor->finalizeMissing('finalize_feed', $secondRun->id, [
+        'mode' => 'full_sync_authoritative',
+        'finalize_missing' => true,
+        'event_logger' => $logger,
+    ]);
+
+    $logger->flush();
+
+    expect(
+        ImportRunEvent::query()
+            ->where('run_id', $secondRun->id)
+            ->where('stage', 'finalize')
+            ->where('result', 'deactivated')
+            ->where('code', 'missing_in_feed')
+            ->exists()
+    )->toBeTrue();
+});
+
 it('finalizes missing only inside selected source category when scoped category is provided', function (): void {
     $firstRun = createImportRun('catalog_import_yml');
     $secondRun = createImportRun('catalog_import_yml');
@@ -316,6 +462,7 @@ function createImportRun(string $type): ImportRun
 
 function prepareProductImportProcessorTables(): void
 {
+    Schema::dropIfExists('import_run_events');
     Schema::dropIfExists('product_supplier_references');
     Schema::dropIfExists('product_categories');
     Schema::dropIfExists('products');
@@ -333,6 +480,23 @@ function prepareProductImportProcessorTables(): void
         $table->unsignedBigInteger('user_id')->nullable();
         $table->timestamp('started_at')->nullable();
         $table->timestamp('finished_at')->nullable();
+        $table->timestamps();
+    });
+
+    Schema::create('import_run_events', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('run_id');
+        $table->string('supplier', 120)->nullable();
+        $table->string('stage', 32);
+        $table->string('result', 32);
+        $table->string('source_ref', 2048)->nullable();
+        $table->string('external_id')->nullable();
+        $table->unsignedBigInteger('product_id')->nullable();
+        $table->unsignedInteger('source_category_id')->nullable();
+        $table->integer('row_index')->nullable();
+        $table->string('code', 64)->nullable();
+        $table->text('message')->nullable();
+        $table->json('context')->nullable();
         $table->timestamps();
     });
 

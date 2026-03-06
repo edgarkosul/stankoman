@@ -16,11 +16,15 @@ it('applies import infrastructure migrations', function () {
         ->first();
     $importMigrationPath = collect(glob(database_path('migrations/*_create_import_runs_and_issues_tables.php')))
         ->first();
+    $eventLogMigrationPath = collect(glob(database_path('migrations/*_create_import_run_events_table.php')))
+        ->first();
 
     expect($nameMigrationPath)->not->toBeNull();
     expect($nameBackfillMigrationPath)->not->toBeNull();
     expect($importMigrationPath)->not->toBeNull();
+    expect($eventLogMigrationPath)->not->toBeNull();
 
+    Schema::dropIfExists('import_run_events');
     Schema::dropIfExists('import_issues');
     Schema::dropIfExists('import_runs');
     Schema::dropIfExists('products');
@@ -53,9 +57,13 @@ it('applies import infrastructure migrations', function () {
     $importMigration = require $importMigrationPath;
     $importMigration->up();
 
+    $eventLogMigration = require $eventLogMigrationPath;
+    $eventLogMigration->up();
+
     expect(Schema::hasColumn('products', 'name_normalized'))->toBeTrue();
     expect(Schema::hasTable('import_runs'))->toBeTrue();
     expect(Schema::hasTable('import_issues'))->toBeTrue();
+    expect(Schema::hasTable('import_run_events'))->toBeTrue();
 
     expect(
         DB::table('products')
