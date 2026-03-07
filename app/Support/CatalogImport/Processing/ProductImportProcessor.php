@@ -21,6 +21,46 @@ use Throwable;
 
 final class ProductImportProcessor implements ImportProcessorInterface
 {
+    /**
+     * @var array<int, string>
+     */
+    private const EVENT_CONTEXT_PRODUCT_FIELDS = [
+        'name',
+        'slug',
+        'sku',
+        'brand',
+        'country',
+        'price_amount',
+        'discount_price',
+        'currency',
+        'in_stock',
+        'qty',
+        'is_active',
+        'is_in_yml_feed',
+        'with_dns',
+        'image',
+        'thumb',
+        'gallery',
+        'promo_info',
+    ];
+
+    /**
+     * @var array<int, string>
+     */
+    private const EVENT_CONTEXT_JSON_FIELDS = [
+        'gallery',
+        'specs',
+    ];
+
+    /**
+     * @var array<int, string>
+     */
+    private const DEFERRED_MEDIA_EVENT_FIELDS = [
+        'image',
+        'thumb',
+        'gallery',
+    ];
+
     private bool $stagingCategoryResolved = false;
 
     private ?int $stagingCategoryId = null;
@@ -343,12 +383,34 @@ final class ProductImportProcessor implements ImportProcessorInterface
                     'reused' => 0,
                     'deduplicated' => 0,
                 ];
+                $changedAttributes = [];
+                $otherChangedFields = [];
+                $deferredChangedFields = [];
+                $createdSnapshot = null;
 
                 if ($product instanceof Product) {
                     if ($canUpdate) {
                         $product->fill($this->buildProductAttributes($payload, $options, isNew: false));
 
                         if ($product->isDirty()) {
+                            $dirtyAttributes = $product->getDirty();
+                            $changeContext = $this->buildChangedAttributesContext($product, $dirtyAttributes);
+                            $changedAttributes = $changeContext['changes'];
+                            $otherChangedFields = $changeContext['other_changed_fields'];
+
+                            $deferredChangedFields = $this->resolveDeferredMediaEventFields(
+                                changedAttributes: $changedAttributes,
+                                queueMedia: $queueMedia,
+                                hasPayloadImages: $payload->images !== [],
+                            );
+
+                            if ($deferredChangedFields !== []) {
+                                $changedAttributes = array_diff_key(
+                                    $changedAttributes,
+                                    array_flip($deferredChangedFields),
+                                );
+                            }
+
                             $product->save();
 
                             $operation = 'updated';
@@ -369,6 +431,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
                     );
 
                     $this->attachToStagingCategory($product);
+                    $createdSnapshot = $this->buildProductContextSnapshot($product);
 
                     $operation = 'created';
                     $summary['created']++;
@@ -444,11 +507,14 @@ final class ProductImportProcessor implements ImportProcessorInterface
                     sourceCategoryId: $resolvedSourceCategoryId,
                     code: in_array($operation, ['skipped', 'unchanged'], true) ? $skipCode : null,
                     message: in_array($operation, ['skipped', 'unchanged'], true) ? $this->skippedMessage($skipCode) : null,
-                    context: [
-                        'media_queued' => $mediaQueueStats['queued'],
-                        'media_reused' => $mediaQueueStats['reused'],
-                        'media_deduplicated' => $mediaQueueStats['deduplicated'],
-                    ],
+                    context: $this->buildProcessingEventContext(
+                        operation: $operation,
+                        mediaQueueStats: $mediaQueueStats,
+                        createdSnapshot: $createdSnapshot,
+                        changedAttributes: $changedAttributes,
+                        otherChangedFields: $otherChangedFields,
+                        deferredChangedFields: $deferredChangedFields,
+                    ),
                 );
             }
 
@@ -947,6 +1013,168 @@ final class ProductImportProcessor implements ImportProcessorInterface
         $value = trim($value);
 
         return $value !== '' ? $value : null;
+    }
+
+    /**
+     * @param  array{queued:int,reused:int,deduplicated:int}  $mediaQueueStats
+     * @param  array<string, mixed>|null  $createdSnapshot
+     * @param  array<string, array{before:mixed,after:mixed}>  $changedAttributes
+     * @param  array<int, string>  $otherChangedFields
+     * @param  array<int, string>  $deferredChangedFields
+     * @return array<string, mixed>
+     */
+    private function buildProcessingEventContext(
+        string $operation,
+        array $mediaQueueStats,
+        ?array $createdSnapshot = null,
+        array $changedAttributes = [],
+        array $otherChangedFields = [],
+        array $deferredChangedFields = [],
+    ): array {
+        $context = [
+            'media' => [
+                'queued' => $mediaQueueStats['queued'],
+                'reused' => $mediaQueueStats['reused'],
+                'deduplicated' => $mediaQueueStats['deduplicated'],
+            ],
+            'media_queued' => $mediaQueueStats['queued'],
+            'media_reused' => $mediaQueueStats['reused'],
+            'media_deduplicated' => $mediaQueueStats['deduplicated'],
+        ];
+
+        if ($operation === 'created' && is_array($createdSnapshot) && $createdSnapshot !== []) {
+            $context['created'] = $createdSnapshot;
+        }
+
+        if ($operation === 'updated' && $changedAttributes !== []) {
+            $context['changes'] = $changedAttributes;
+        }
+
+        if ($operation === 'updated' && $otherChangedFields !== []) {
+            $context['other_changed_fields'] = array_values($otherChangedFields);
+        }
+
+        if ($operation === 'updated' && $deferredChangedFields !== []) {
+            $context['deferred_changes'] = array_values($deferredChangedFields);
+        }
+
+        return $context;
+    }
+
+    /**
+     * @param  array<string, array{before:mixed,after:mixed}>  $changedAttributes
+     * @return array<int, string>
+     */
+    private function resolveDeferredMediaEventFields(
+        array $changedAttributes,
+        bool $queueMedia,
+        bool $hasPayloadImages,
+    ): array {
+        if (! $queueMedia || ! $hasPayloadImages || $changedAttributes === []) {
+            return [];
+        }
+
+        $deferredFields = array_values(array_intersect(
+            array_keys($changedAttributes),
+            self::DEFERRED_MEDIA_EVENT_FIELDS,
+        ));
+
+        return array_values(array_unique($deferredFields));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildProductContextSnapshot(Product $product): array
+    {
+        $snapshot = [];
+
+        foreach (self::EVENT_CONTEXT_PRODUCT_FIELDS as $field) {
+            $snapshot[$field] = $this->normalizeEventContextValue($product->getAttribute($field));
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * @param  array<string, mixed>  $dirtyAttributes
+     * @return array{changes:array<string, array{before:mixed,after:mixed}>,other_changed_fields:array<int, string>}
+     */
+    private function buildChangedAttributesContext(Product $product, array $dirtyAttributes): array
+    {
+        $changes = [];
+        $otherChangedFields = [];
+
+        foreach (array_keys($dirtyAttributes) as $attribute) {
+            if (! in_array($attribute, self::EVENT_CONTEXT_PRODUCT_FIELDS, true)) {
+                $otherChangedFields[] = $attribute;
+
+                continue;
+            }
+
+            $beforeValue = $product->getOriginal($attribute);
+            $afterValue = $dirtyAttributes[$attribute];
+
+            if ($this->isEventContextJsonField($attribute)) {
+                $beforeValue = $this->normalizeEventContextJsonValue($beforeValue);
+                $afterValue = $this->normalizeEventContextJsonValue($afterValue);
+            }
+
+            $changes[$attribute] = [
+                'before' => $this->normalizeEventContextValue($beforeValue),
+                'after' => $this->normalizeEventContextValue($afterValue),
+            ];
+        }
+
+        return [
+            'changes' => $changes,
+            'other_changed_fields' => $otherChangedFields,
+        ];
+    }
+
+    private function normalizeEventContextValue(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return Str::limit($value, 300, '...');
+        }
+
+        if (is_array($value)) {
+            $normalized = [];
+
+            foreach ($value as $key => $item) {
+                $normalized[$key] = $this->normalizeEventContextValue($item);
+            }
+
+            return $normalized;
+        }
+
+        return $value;
+    }
+
+    private function isEventContextJsonField(string $attribute): bool
+    {
+        return in_array($attribute, self::EVENT_CONTEXT_JSON_FIELDS, true);
+    }
+
+    private function normalizeEventContextJsonValue(mixed $value): mixed
+    {
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        $trimmed = trim($value);
+
+        if ($trimmed === '') {
+            return $value;
+        }
+
+        $decoded = json_decode($trimmed, true);
+
+        if (json_last_error() === JSON_ERROR_NONE) {
+            return $decoded;
+        }
+
+        return $value;
     }
 
     /**

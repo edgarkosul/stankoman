@@ -66,7 +66,7 @@ final class VactoolSupplierAdapter implements SupplierAdapterInterface
         $currency = $this->normalizeCurrency($parsed['currency'] ?? null);
         $qty = $this->normalizeQuantity($parsed['stock_qty'] ?? null);
         $inStock = $this->resolveInStock($parsed['availability'] ?? null, $qty);
-        $images = $this->normalizeImages($parsed['images'] ?? []);
+        $images = $this->normalizeImages($parsed['images'] ?? [], $record->url);
 
         return new RecordMappingResult(
             payload: new ProductPayload(
@@ -218,7 +218,7 @@ final class VactoolSupplierAdapter implements SupplierAdapterInterface
     /**
      * @return array<int, string>
      */
-    private function normalizeImages(mixed $rawImages): array
+    private function normalizeImages(mixed $rawImages, string $baseUrl): array
     {
         if (! is_array($rawImages)) {
             return [];
@@ -237,11 +237,52 @@ final class VactoolSupplierAdapter implements SupplierAdapterInterface
                 continue;
             }
 
-            $key = mb_strtolower($image);
-            $images[$key] = $image;
+            $resolvedImage = $this->resolveImageUrl($image, $baseUrl);
+
+            if ($resolvedImage === null) {
+                continue;
+            }
+
+            $key = mb_strtolower($resolvedImage);
+            $images[$key] = $resolvedImage;
         }
 
         return array_values($images);
+    }
+
+    private function resolveImageUrl(string $image, string $baseUrl): ?string
+    {
+        if (filter_var($image, FILTER_VALIDATE_URL) !== false) {
+            return $image;
+        }
+
+        $baseHost = parse_url($baseUrl, PHP_URL_HOST);
+
+        if (! is_string($baseHost) || trim($baseHost) === '') {
+            return null;
+        }
+
+        $baseScheme = parse_url($baseUrl, PHP_URL_SCHEME);
+        $baseScheme = is_string($baseScheme) && $baseScheme !== '' ? $baseScheme : 'https';
+        $basePort = parse_url($baseUrl, PHP_URL_PORT);
+        $basePath = parse_url($baseUrl, PHP_URL_PATH);
+        $basePath = is_string($basePath) ? $basePath : '/';
+        $hostWithPort = is_int($basePort) ? $baseHost.':'.$basePort : $baseHost;
+
+        if (str_starts_with($image, '//')) {
+            return $baseScheme.':'.$image;
+        }
+
+        if (str_starts_with($image, '/')) {
+            return $baseScheme.'://'.$hostWithPort.$image;
+        }
+
+        $baseDir = dirname($basePath);
+        $baseDir = $baseDir === '.' ? '' : $baseDir;
+        $baseDir = trim($baseDir, '/');
+        $relativePath = $baseDir !== '' ? $baseDir.'/'.$image : $image;
+
+        return $baseScheme.'://'.$hostWithPort.'/'.ltrim($relativePath, '/');
     }
 
     /**

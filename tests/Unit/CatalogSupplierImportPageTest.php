@@ -1,14 +1,15 @@
 <?php
 
 use App\Filament\Pages\CatalogSupplierImport;
+use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Jobs\RunMetalmasterProductImportJob;
 use App\Jobs\RunVactoolProductImportJob;
 use App\Models\ImportRun;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema as DatabaseSchema;
@@ -30,29 +31,85 @@ test('catalog supplier import page metadata and route are configured', function 
 
 test('catalog supplier import form has source and run controls', function () {
     $page = new CatalogSupplierImport;
+    $page->data = array_merge($page->data ?? [], [
+        'supplier' => 'metalmaster',
+    ]);
+
     $schema = $page->form(Schema::make($page));
 
     $supplierField = $schema->getComponent(
         fn ($component) => $component instanceof Select && $component->getName() === 'supplier',
     );
-    $profileField = $schema->getComponent(
-        fn ($component) => $component instanceof Select && $component->getName() === 'profile',
-    );
-    $sourceField = $schema->getComponent(
-        fn ($component) => $component instanceof TextInput && $component->getName() === 'source',
-    );
     $modeField = $schema->getComponent(
         fn ($component) => $component instanceof Select && $component->getName() === 'mode',
+    );
+    $syncScenarioField = $schema->getComponent(
+        fn ($component) => $component instanceof Select && $component->getName() === 'sync_scenario',
+    );
+    $scopeField = $schema->getComponent(
+        fn ($component) => $component instanceof Select && $component->getName() === 'scope',
     );
     $skipExistingField = $schema->getComponent(
         fn ($component) => $component instanceof Toggle && $component->getName() === 'skip_existing',
     );
 
     expect($supplierField)->not->toBeNull();
-    expect($profileField)->not->toBeNull();
-    expect($sourceField)->not->toBeNull();
     expect($modeField)->not->toBeNull();
+    expect($syncScenarioField)->not->toBeNull();
+    expect($scopeField)->not->toBeNull();
     expect($skipExistingField)->not->toBeNull();
+});
+
+test('catalog supplier import page has supplier-aware header actions', function () {
+    $page = new CatalogSupplierImport;
+    $page->data = array_merge($page->data ?? [], [
+        'supplier' => 'vactool',
+    ]);
+
+    $method = new ReflectionMethod(CatalogSupplierImport::class, 'getHeaderActions');
+    $method->setAccessible(true);
+
+    $actions = $method->invoke($page);
+
+    expect($actions)->toHaveCount(2);
+    expect($actions[0]->getName())->toBe('instructions');
+    expect($actions[0]->getUrl())->toBe('https://help.stankoman.ru/import/vactool-import/');
+    expect($actions[1]->getName())->toBe('history');
+    expect($actions[1]->getUrl())->toBe(ImportRunResource::getUrl());
+
+    $page->data['supplier'] = 'metalmaster';
+    $actions = $method->invoke($page);
+
+    expect($actions[0]->getUrl())->toBe('https://help.stankoman.ru/import/metalmaster-import/');
+});
+
+test('catalog supplier import page applies sync scenario to technical flags', function () {
+    $page = new CatalogSupplierImport;
+
+    $page->data = array_merge($page->data ?? [], [
+        'sync_scenario' => 'new_only',
+    ]);
+
+    $page->updatedDataSyncScenario('new_only');
+
+    expect(data_get($page->data, 'mode'))->toBe('partial_import');
+    expect(data_get($page->data, 'finalize_missing'))->toBeFalse();
+    expect(data_get($page->data, 'create_missing'))->toBeTrue();
+    expect(data_get($page->data, 'update_existing'))->toBeFalse();
+    expect(data_get($page->data, 'skip_existing'))->toBeTrue();
+});
+
+test('catalog supplier import page switches scenario to custom for manual technical flags', function () {
+    $page = new CatalogSupplierImport;
+
+    $page->data = array_merge($page->data ?? [], [
+        'create_missing' => false,
+        'update_existing' => false,
+    ]);
+
+    $page->updatedDataUpdateExisting();
+
+    expect(data_get($page->data, 'sync_scenario'))->toBe('custom');
 });
 
 test('catalog supplier import page dispatches vactool and metalmaster jobs', function () {
@@ -64,8 +121,6 @@ test('catalog supplier import page dispatches vactool and metalmaster jobs', fun
 
     $page->data = array_merge($page->data ?? [], [
         'supplier' => 'vactool',
-        'profile' => 'vactool_html',
-        'source' => 'https://vactool.ru/sitemap.xml',
         'mode' => 'partial_import',
     ]);
     $page->doDryRun();
@@ -74,14 +129,15 @@ test('catalog supplier import page dispatches vactool and metalmaster jobs', fun
     expect($vactoolRun?->type)->toBe('vactool_products');
 
     Queue::assertPushed(RunVactoolProductImportJob::class, function (RunVactoolProductImportJob $job) use ($page): bool {
-        return $job->runId === $page->lastRunId;
+        return $job->runId === $page->lastRunId
+            && ($job->options['sitemap'] ?? null) === 'https://vactool.ru/sitemap.xml'
+            && ($job->options['match'] ?? null) === '/catalog/product-'
+            && ($job->options['profile'] ?? null) === 'vactool_html';
     });
 
     $page->data = array_merge($page->data ?? [], [
         'supplier' => 'metalmaster',
-        'profile' => 'metalmaster_html',
-        'source' => storage_path('app/parser/metalmaster-buckets.json'),
-        'bucket' => 'promyshlennye',
+        'scope' => 'promyshlennye',
         'mode' => 'full_sync_authoritative',
     ]);
     $page->doImport();
@@ -91,8 +147,119 @@ test('catalog supplier import page dispatches vactool and metalmaster jobs', fun
     expect(data_get($metalmasterRun?->columns, 'mode'))->toBe('full_sync_authoritative');
 
     Queue::assertPushed(RunMetalmasterProductImportJob::class, function (RunMetalmasterProductImportJob $job) use ($page): bool {
-        return $job->runId === $page->lastRunId && $job->write === true;
+        return $job->runId === $page->lastRunId
+            && $job->write === true
+            && ($job->options['buckets_file'] ?? null) === storage_path('app/parser/metalmaster-buckets.json')
+            && ($job->options['bucket'] ?? null) === 'promyshlennye'
+            && ($job->options['profile'] ?? null) === 'metalmaster_html';
     });
+});
+
+test('catalog supplier import page loads supplier scopes from metalmaster buckets file', function () {
+    $bucketsPath = storage_path('app/parser/metalmaster-buckets.json');
+    $originalBuckets = is_file($bucketsPath) ? file_get_contents($bucketsPath) : null;
+
+    try {
+        if (! is_dir(dirname($bucketsPath))) {
+            mkdir(dirname($bucketsPath), 0777, true);
+        }
+
+        file_put_contents($bucketsPath, json_encode([
+            [
+                'bucket' => 'promyshlennye',
+                'category_url' => 'https://metalmaster.ru/promyshlennye/',
+                'products_count' => 20,
+            ],
+            [
+                'bucket' => 'instrument',
+                'category_url' => 'https://metalmaster.ru/instrument/',
+                'products_count' => 5,
+            ],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+
+        $page = new CatalogSupplierImport;
+        $page->data = array_merge($page->data ?? [], [
+            'supplier' => 'metalmaster',
+            'scope' => 'unknown-scope',
+        ]);
+
+        $page->loadSupplierScopes();
+
+        expect($page->parsedScopeTree)->toHaveCount(2);
+        expect(array_key_exists('promyshlennye', $page->parsedScopeTree))->toBeTrue();
+        expect(data_get($page->parsedScopeTree, 'promyshlennye.items_count'))->toBe(20);
+        expect(data_get($page->data, 'scope'))->toBe('');
+        expect($page->scopesLoadedSource)->toBe($bucketsPath);
+        expect($page->scopesLoadedAt)->not->toBeNull();
+    } finally {
+        if (is_string($originalBuckets)) {
+            file_put_contents($bucketsPath, $originalBuckets);
+        } elseif (is_file($bucketsPath)) {
+            @unlink($bucketsPath);
+        }
+    }
+});
+
+test('catalog supplier import page can regenerate supplier scopes for metalmaster', function () {
+    Artisan::shouldReceive('call')
+        ->once()
+        ->with('parser:sitemap-buckets', ['--no-interaction' => true])
+        ->andReturn(0);
+
+    Artisan::shouldReceive('output')
+        ->once()
+        ->andReturn('Buckets saved: 12');
+
+    $page = new CatalogSupplierImport;
+    $page->data = array_merge($page->data ?? [], [
+        'supplier' => 'metalmaster',
+        'scope' => 'promyshlennye',
+    ]);
+
+    $page->regenerateSupplierScopes();
+
+    expect($page->data)->toBeArray();
+    expect($page->data['scope'])->toBe('');
+});
+
+test('catalog supplier import page stores metalmaster run summary extras', function () {
+    prepareCatalogSupplierImportPageTables();
+
+    $run = ImportRun::query()->create([
+        'type' => 'metalmaster_products',
+        'status' => 'completed',
+        'columns' => [
+            'bucket' => 'promyshlennye',
+            'buckets_file' => storage_path('app/parser/metalmaster-buckets.json'),
+        ],
+        'totals' => [
+            'create' => 1,
+            'update' => 2,
+            'same' => 3,
+            'error' => 0,
+            'scanned' => 6,
+            '_meta' => [
+                'mode' => 'dry-run',
+                'is_running' => false,
+                'found_urls' => 6,
+                'no_urls' => true,
+            ],
+            '_samples' => [],
+        ],
+    ]);
+
+    $page = new CatalogSupplierImport;
+    $page->data = array_merge($page->data ?? [], [
+        'supplier' => 'metalmaster',
+    ]);
+    $page->lastRunId = $run->id;
+
+    $page->refreshLastSavedRun();
+
+    expect($page->lastSavedRun)->toBeArray();
+    expect($page->lastSavedRun['supplier_label'])->toBe('Metalmaster');
+    expect($page->lastSavedRun['no_urls'])->toBeTrue();
+    expect($page->lastSavedRun['buckets_file'])->toBe(storage_path('app/parser/metalmaster-buckets.json'));
 });
 
 function prepareCatalogSupplierImportPageTables(): void

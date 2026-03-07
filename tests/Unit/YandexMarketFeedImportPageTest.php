@@ -2,8 +2,10 @@
 
 use App\Filament\Pages\YandexMarketFeedImport;
 use App\Jobs\RunYandexMarketFeedImportJob;
+use App\Models\ImportFeedSource;
 use App\Models\ImportRun;
 use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
+use App\Support\CatalogImport\Yml\YandexMarketFeedSourceHistoryService;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -102,6 +104,44 @@ test('yandex market feed import page switches scenario to custom for manual tech
     $page->updatedDataUpdateExisting();
 
     expect(data_get($page->data, 'sync_scenario'))->toBe('custom');
+});
+
+test('yandex market feed import page keeps remembered uploaded source in file upload array state', function () {
+    $page = new YandexMarketFeedImport;
+    $page->mount();
+    $page->data = array_merge($page->data ?? [], [
+        'source_mode' => 'upload',
+        'source_upload' => null,
+    ]);
+
+    $storedPath = 'imports/yandex_feed.xml';
+
+    $record = new ImportFeedSource([
+        'source_type' => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD,
+        'stored_path' => $storedPath,
+        'original_filename' => 'yandex_feed.xml',
+    ]);
+    $record->id = 123;
+
+    $resolvedSource = [
+        'source' => '/tmp/yandex_feed.xml',
+        'source_type' => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD,
+        'source_id' => null,
+        'source_label' => 'yandex_feed.xml',
+        'source_url' => null,
+        'stored_path' => $storedPath,
+        'original_filename' => 'yandex_feed.xml',
+        'source_key' => 'upload|'.$storedPath,
+    ];
+
+    $method = new ReflectionMethod(YandexMarketFeedImport::class, 'applyRememberedSourceToState');
+    $method->setAccessible(true);
+
+    $result = $method->invoke($page, $resolvedSource, $record);
+
+    expect(data_get($page->data, 'source_upload'))->toBe([$storedPath]);
+    expect(data_get($result, 'source_id'))->toBe(123);
+    expect(data_get($result, 'source_key'))->toBe('upload|'.$storedPath);
 });
 
 test('yandex market feed import page loads categories from feed source', function () {

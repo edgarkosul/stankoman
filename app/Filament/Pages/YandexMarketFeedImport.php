@@ -42,7 +42,7 @@ class YandexMarketFeedImport extends Page implements HasForms
 
     protected static string|UnitEnum|null $navigationGroup = 'Экспорт/Импорт';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $navigationLabel = 'Импорт Yandex Feed';
 
@@ -1084,7 +1084,7 @@ class YandexMarketFeedImport extends Page implements HasForms
 
             if ($storedPath !== '') {
                 if (is_array($this->data)) {
-                    $this->data['source_upload'] = $storedPath;
+                    $this->data['source_upload'] = [$storedPath];
                 }
 
                 $resolvedSource['source'] = Storage::disk('local')->path($storedPath);

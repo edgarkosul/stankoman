@@ -16,6 +16,11 @@ final class MetalmasterSupplierProfile
         return 'metalmaster_html';
     }
 
+    public function defaultBucketsFile(): string
+    {
+        return storage_path('app/parser/metalmaster-buckets.json');
+    }
+
     /**
      * @return array<string, mixed>
      */

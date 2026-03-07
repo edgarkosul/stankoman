@@ -69,17 +69,30 @@ class DownloadProductImportMediaJob implements ShouldQueue
             return;
         }
 
+        $sourceUrl = $this->normalizeSourceUrl($media->source_url);
+
+        if ($sourceUrl === null) {
+            $mediaService->failMedia(
+                media: $media,
+                code: 'invalid_source_url',
+                message: 'Media source URL must be absolute HTTP(S) URL.',
+                context: ['url' => $media->source_url],
+            );
+
+            return;
+        }
+
         try {
             $response = Http::timeout($mediaService->timeoutSeconds())
                 ->retry($mediaService->retryDelaysMs(), throw: false)
                 ->accept('*/*')
-                ->get($media->source_url);
+                ->get($sourceUrl);
         } catch (ConnectionException $exception) {
             $mediaService->failMedia(
                 media: $media,
                 code: 'connection_failed',
                 message: $exception->getMessage(),
-                context: ['url' => $media->source_url],
+                context: ['url' => $sourceUrl],
             );
 
             return;
@@ -88,7 +101,7 @@ class DownloadProductImportMediaJob implements ShouldQueue
                 media: $media,
                 code: 'download_failed',
                 message: $exception->getMessage(),
-                context: ['url' => $media->source_url],
+                context: ['url' => $sourceUrl],
             );
 
             return;
@@ -100,7 +113,7 @@ class DownloadProductImportMediaJob implements ShouldQueue
                 code: 'http_error',
                 message: sprintf('Media download failed with HTTP %d.', $response->status()),
                 context: [
-                    'url' => $media->source_url,
+                    'url' => $sourceUrl,
                     'status' => $response->status(),
                 ],
             );
@@ -115,7 +128,7 @@ class DownloadProductImportMediaJob implements ShouldQueue
                 media: $media,
                 code: 'empty_body',
                 message: 'Downloaded media body is empty.',
-                context: ['url' => $media->source_url],
+                context: ['url' => $sourceUrl],
             );
 
             return;
@@ -129,7 +142,7 @@ class DownloadProductImportMediaJob implements ShouldQueue
                 code: 'file_too_large',
                 message: 'Downloaded media exceeds size limit.',
                 context: [
-                    'url' => $media->source_url,
+                    'url' => $sourceUrl,
                     'bytes' => $bytes,
                     'max_bytes' => $mediaService->maxBytes(),
                 ],
@@ -146,7 +159,7 @@ class DownloadProductImportMediaJob implements ShouldQueue
                 code: 'unsupported_mime_type',
                 message: 'Downloaded media has unsupported MIME type.',
                 context: [
-                    'url' => $media->source_url,
+                    'url' => $sourceUrl,
                     'mime_type' => $mimeType,
                 ],
             );
@@ -180,7 +193,7 @@ class DownloadProductImportMediaJob implements ShouldQueue
                 code: 'unsupported_extension',
                 message: 'Unable to resolve file extension for media.',
                 context: [
-                    'url' => $media->source_url,
+                    'url' => $sourceUrl,
                     'mime_type' => $mimeType,
                 ],
             );
@@ -198,7 +211,7 @@ class DownloadProductImportMediaJob implements ShouldQueue
                     code: 'storage_write_failed',
                     message: 'Unable to write media file to storage.',
                     context: [
-                        'url' => $media->source_url,
+                        'url' => $sourceUrl,
                         'path' => $storagePath,
                     ],
                 );
@@ -299,5 +312,40 @@ class DownloadProductImportMediaJob implements ShouldQueue
             'text/plain' => 'txt',
             default => null,
         };
+    }
+
+    private function normalizeSourceUrl(mixed $sourceUrl): ?string
+    {
+        if (! is_string($sourceUrl)) {
+            return null;
+        }
+
+        $sourceUrl = trim($sourceUrl);
+
+        if ($sourceUrl === '') {
+            return null;
+        }
+
+        if (str_starts_with($sourceUrl, '//')) {
+            $sourceUrl = 'https:'.$sourceUrl;
+        }
+
+        if (filter_var($sourceUrl, FILTER_VALIDATE_URL) === false) {
+            return null;
+        }
+
+        $scheme = parse_url($sourceUrl, PHP_URL_SCHEME);
+
+        if (! is_string($scheme)) {
+            return null;
+        }
+
+        $scheme = strtolower($scheme);
+
+        if (! in_array($scheme, ['http', 'https'], true)) {
+            return null;
+        }
+
+        return $sourceUrl;
     }
 }

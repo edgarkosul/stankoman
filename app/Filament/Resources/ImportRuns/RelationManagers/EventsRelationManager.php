@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\ImportRuns\RelationManagers;
 
+use App\Filament\Resources\Products\ProductResource;
 use App\Models\ImportRun;
 use App\Models\ImportRunEvent;
+use App\Models\Product;
 use App\Support\CatalogImport\Runs\ImportRunEventLabels;
 use App\Support\CatalogImport\Runs\ImportRunEventsExportService;
 use Filament\Actions\Action;
@@ -54,16 +56,24 @@ class EventsRelationManager extends RelationManager
                     ->wrap()
                     ->searchable(),
                 TextColumn::make('external_id')
-                    ->label('External ID')
+                    ->label('Внешний ID')
                     ->toggleable()
                     ->searchable(),
                 TextColumn::make('product_id')
-                    ->label('Product ID')
+                    ->label('ID товара')
+                    ->url(
+                        fn (ImportRunEvent $record): ?string => filled($record->product_id)
+                            ? ProductResource::getUrl('edit', [
+                                'record' => Product::query()->whereKey($record->product_id)->value('slug'),
+                            ])
+                            : null
+                    )
+                    ->openUrlInNewTab()
                     ->toggleable()
                     ->sortable()
                     ->searchable(),
                 TextColumn::make('source_ref')
-                    ->label('Source')
+                    ->label('Источник')
                     ->toggleable()
                     ->searchable(),
                 TextColumn::make('source_category_id')
@@ -146,14 +156,17 @@ class EventsRelationManager extends RelationManager
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Закрыть')
                     ->modalContent(function (ImportRunEvent $record) {
+                        $context = null;
                         $json = null;
 
                         if (is_array($record->context) && $record->context !== []) {
+                            $context = $record->context;
                             $encoded = json_encode($record->context, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                             $json = $encoded === false ? null : $encoded;
                         }
 
                         return view('filament.import-runs.event-context', [
+                            'context' => $context,
                             'json' => $json,
                         ]);
                     }),

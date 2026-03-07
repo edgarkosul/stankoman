@@ -57,6 +57,11 @@ class ProductsTable
             ->reorderable('popularity')
             ->defaultSort('popularity')
             ->columns([
+                TextColumn::make('id')
+                    ->label('ID')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->searchable(),
                 TextColumn::make('name')
                     ->label('Название')
                     ->color('primary')

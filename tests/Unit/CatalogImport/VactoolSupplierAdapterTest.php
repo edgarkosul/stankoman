@@ -45,6 +45,42 @@ it('maps vactool html document record into product payload', function () {
     expect($result->payload?->attributes)->toHaveCount(1);
 });
 
+it('normalizes relative vactool image urls into absolute urls', function () {
+    $jsonLd = json_encode([
+        '@context' => 'https://schema.org',
+        '@type' => 'Product',
+        'name' => 'Пылесос VT-9100',
+        'description' => 'Описание',
+        'image' => [
+            '/storage/100/main.jpg',
+            'storage/101/alt.jpg',
+            '//cdn.vactool.ru/images/vt-9100-extra.jpg',
+        ],
+        'offers' => [
+            'price' => '15000',
+            'priceCurrency' => 'RUB',
+            'availability' => 'https://schema.org/InStock',
+            'inventoryLevel' => ['value' => 2],
+        ],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    $html = '<html><head><script type="application/ld+json">'.$jsonLd.'</script></head><body></body></html>';
+
+    $record = new HtmlDocumentRecord(
+        url: 'https://vactool.ru/catalog/product-vt-9100',
+        document: new HtmlRecord(index: 0, html: $html),
+    );
+
+    $result = (new VactoolSupplierAdapter)->mapRecord($record);
+
+    expect($result->isSuccess())->toBeTrue();
+    expect($result->payload?->images)->toContain(
+        'https://vactool.ru/storage/100/main.jpg',
+        'https://vactool.ru/catalog/storage/101/alt.jpg',
+        'https://cdn.vactool.ru/images/vt-9100-extra.jpg',
+    );
+});
+
 it('returns fatal error for invalid record type in vactool adapter', function () {
     $result = (new VactoolSupplierAdapter)->mapRecord(['invalid']);
 

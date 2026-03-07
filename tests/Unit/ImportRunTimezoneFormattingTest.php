@@ -1,7 +1,6 @@
 <?php
 
-use App\Filament\Pages\MetalmasterProductImport;
-use App\Filament\Pages\VactoolProductImport;
+use App\Filament\Pages\CatalogSupplierImport;
 use App\Models\ImportRun;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Schema\Blueprint;
@@ -42,7 +41,7 @@ function ensureImportRunPageTablesExist(): void
     }
 }
 
-test('metalmaster product import formats finished at in moscow timezone', function () {
+test('catalog supplier import formats finished at in moscow timezone for metalmaster', function () {
     ensureImportRunPageTablesExist();
     config(['app.timezone' => 'UTC']);
 
@@ -73,15 +72,20 @@ test('metalmaster product import formats finished at in moscow timezone', functi
         'finished_at' => CarbonImmutable::parse('2026-01-10 12:00:00', 'UTC'),
     ]);
 
-    $page = new MetalmasterProductImport;
+    $page = new CatalogSupplierImport;
+    $page->data = array_merge($page->data ?? [], [
+        'supplier' => 'metalmaster',
+    ]);
     $page->lastRunId = $run->id;
     $page->refreshLastSavedRun();
 
     expect($page->lastSavedRun)->toBeArray();
-    expect($page->lastSavedRun['finished_at'])->toBe('2026-01-10 15:00');
+    expect($page->lastSavedRun['finished_at'])->toBe(
+        $run->finished_at?->copy()->setTimezone('Europe/Moscow')->format('Y-m-d H:i'),
+    );
 });
 
-test('vactool product import formats finished at in moscow timezone', function () {
+test('catalog supplier import formats finished at in moscow timezone for vactool', function () {
     ensureImportRunPageTablesExist();
     config(['app.timezone' => 'UTC']);
 
@@ -108,10 +112,15 @@ test('vactool product import formats finished at in moscow timezone', function (
         'finished_at' => CarbonImmutable::parse('2026-01-10 12:00:00', 'UTC'),
     ]);
 
-    $page = new VactoolProductImport;
+    $page = new CatalogSupplierImport;
+    $page->data = array_merge($page->data ?? [], [
+        'supplier' => 'vactool',
+    ]);
     $page->lastRunId = $run->id;
     $page->refreshLastSavedRun();
 
     expect($page->lastSavedRun)->toBeArray();
-    expect($page->lastSavedRun['finished_at'])->toBe('2026-01-10 15:00');
+    expect($page->lastSavedRun['finished_at'])->toBe(
+        $run->finished_at?->copy()->setTimezone('Europe/Moscow')->format('Y-m-d H:i'),
+    );
 });

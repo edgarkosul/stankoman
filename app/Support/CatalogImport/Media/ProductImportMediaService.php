@@ -27,10 +27,46 @@ final class ProductImportMediaService
             $existingForProduct = ProductImportMedia::query()
                 ->where('product_id', $product->id)
                 ->where('source_url_hash', $sourceUrlHash)
+                ->orderByDesc('id')
                 ->first();
 
             if ($existingForProduct instanceof ProductImportMedia) {
-                $deduplicated++;
+                if (
+                    $existingForProduct->status === ProductImportMedia::STATUS_COMPLETED
+                    && is_string($existingForProduct->local_path)
+                    && trim($existingForProduct->local_path) !== ''
+                ) {
+                    $reused++;
+                    $this->syncProductImageFields($product->id);
+
+                    continue;
+                }
+
+                if (in_array($existingForProduct->status, [
+                    ProductImportMedia::STATUS_PENDING,
+                    ProductImportMedia::STATUS_PROCESSING,
+                ], true)) {
+                    $deduplicated++;
+
+                    continue;
+                }
+
+                $existingForProduct->fill([
+                    'run_id' => $runId,
+                    'status' => ProductImportMedia::STATUS_PENDING,
+                    'source_kind' => $this->guessSourceKindFromUrl($sourceUrl),
+                    'mime_type' => null,
+                    'bytes' => null,
+                    'content_hash' => null,
+                    'local_path' => null,
+                    'attempts' => 0,
+                    'last_error' => null,
+                    'processed_at' => null,
+                ]);
+                $existingForProduct->save();
+
+                $queued++;
+                $pendingMediaIds[] = $existingForProduct->id;
 
                 continue;
             }

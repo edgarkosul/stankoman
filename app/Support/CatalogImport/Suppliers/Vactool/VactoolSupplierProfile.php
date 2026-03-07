@@ -16,6 +16,16 @@ final class VactoolSupplierProfile
         return 'vactool_html';
     }
 
+    public function defaultSitemap(): string
+    {
+        return 'https://vactool.ru/sitemap.xml';
+    }
+
+    public function defaultUrlMatch(): string
+    {
+        return '/catalog/product-';
+    }
+
     /**
      * @return array<string, mixed>
      */

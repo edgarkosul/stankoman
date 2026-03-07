@@ -10,6 +10,7 @@ use App\Support\CatalogImport\Processing\ProductImportProcessor;
 use App\Support\CatalogImport\Processing\ProductPayloadNormalizer;
 use App\Support\CatalogImport\Runs\DatabaseImportRunEventLogger;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -297,7 +298,199 @@ it('writes detailed run events when event logger is provided', function (): void
         ->and($event?->result)->toBe('created')
         ->and($event?->external_id)->toBe('LOG-1')
         ->and($event?->source_ref)->toBe('offer:LOG-1')
-        ->and((int) $event?->run_id)->toBe($run->id);
+        ->and((int) $event?->run_id)->toBe($run->id)
+        ->and($event?->context)->toBeArray()
+        ->and($event?->context['created']['name'] ?? null)->toBe('Логируемый товар')
+        ->and($event?->context['media']['queued'] ?? null)->toBe(0)
+        ->and($event?->context['media']['reused'] ?? null)->toBe(0)
+        ->and($event?->context['media']['deduplicated'] ?? null)->toBe(0);
+});
+
+it('writes changed fields to event context for updated products', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Старое имя',
+        'slug' => 'event-context-update-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => false,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'context_feed',
+        'external_id' => 'CTX-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+    $logger = new DatabaseImportRunEventLogger(batchSize: 1);
+
+    $processor->processBatch([
+        new ProductPayload(
+            externalId: 'CTX-1',
+            name: 'Новое имя',
+            priceAmount: 150,
+            inStock: true,
+        ),
+    ], [
+        'supplier' => 'context_feed',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'event_logger' => $logger,
+    ]);
+
+    $logger->flush();
+
+    $event = ImportRunEvent::query()
+        ->where('run_id', $secondRun->id)
+        ->where('result', 'updated')
+        ->latest('id')
+        ->first();
+
+    expect($event)->not->toBeNull()
+        ->and($event?->context)->toBeArray()
+        ->and($event?->context['changes']['name']['before'] ?? null)->toBe('Старое имя')
+        ->and($event?->context['changes']['name']['after'] ?? null)->toBe('Новое имя')
+        ->and($event?->context['changes']['price_amount']['before'] ?? null)->toBe(100)
+        ->and($event?->context['changes']['price_amount']['after'] ?? null)->toBe(150)
+        ->and($event?->context['changes']['in_stock']['before'] ?? null)->toBeFalse()
+        ->and($event?->context['changes']['in_stock']['after'] ?? null)->toBeTrue();
+});
+
+it('writes gallery changes to event context as arrays, not json strings', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Товар с галереей',
+        'slug' => 'gallery-context-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+        'image' => '/storage/184/LB22M70.jpg',
+        'thumb' => '/storage/184/LB22M70.jpg',
+        'gallery' => ['/storage/184/LB22M70.jpg', '/storage/185/kit.jpg'],
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'gallery_feed',
+        'external_id' => 'GALLERY-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+    $logger = new DatabaseImportRunEventLogger(batchSize: 1);
+
+    $processor->processBatch([
+        new ProductPayload(
+            externalId: 'GALLERY-1',
+            name: 'Товар с галереей',
+            images: [
+                'https://vactool.ru/storage/184/LB22M70.jpg',
+                'https://vactool.ru/storage/185/kit.jpg',
+            ],
+        ),
+    ], [
+        'supplier' => 'gallery_feed',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'event_logger' => $logger,
+    ]);
+
+    $logger->flush();
+
+    $event = ImportRunEvent::query()
+        ->where('run_id', $secondRun->id)
+        ->where('result', 'updated')
+        ->latest('id')
+        ->first();
+
+    expect($event)->not->toBeNull()
+        ->and($event?->context)->toBeArray()
+        ->and($event?->context['changes']['gallery']['before'] ?? null)->toBe([
+            '/storage/184/LB22M70.jpg',
+            '/storage/185/kit.jpg',
+        ])
+        ->and($event?->context['changes']['gallery']['after'] ?? null)->toBe([
+            'https://vactool.ru/storage/184/LB22M70.jpg',
+            'https://vactool.ru/storage/185/kit.jpg',
+        ]);
+});
+
+it('defers image field changes in processing event context when media download is enabled', function (): void {
+    Queue::fake();
+
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Товар с изображением',
+        'slug' => 'deferred-image-context-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+        'image' => '/storage/281/SP502.jpg',
+        'thumb' => '/storage/281/SP502.jpg',
+        'gallery' => ['/storage/281/SP502.jpg'],
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'deferred_media_feed',
+        'external_id' => 'DEFERRED-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+    $logger = new DatabaseImportRunEventLogger(batchSize: 1);
+
+    $processor->processBatch([
+        new ProductPayload(
+            externalId: 'DEFERRED-1',
+            name: 'Товар с изображением',
+            images: ['https://vactool.ru/storage/281/SP502.jpg'],
+        ),
+    ], [
+        'supplier' => 'deferred_media_feed',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'download_media' => true,
+        'event_logger' => $logger,
+    ]);
+
+    $logger->flush();
+
+    $event = ImportRunEvent::query()
+        ->where('run_id', $secondRun->id)
+        ->where('result', 'updated')
+        ->latest('id')
+        ->first();
+
+    expect($event)->not->toBeNull()
+        ->and($event?->context)->toBeArray()
+        ->and($event?->context['changes']['image'] ?? null)->toBeNull()
+        ->and($event?->context['changes']['thumb'] ?? null)->toBeNull()
+        ->and($event?->context['changes']['gallery'] ?? null)->toBeNull()
+        ->and($event?->context['deferred_changes'] ?? null)->toBe(['image', 'thumb', 'gallery']);
 });
 
 it('finalizes missing only in full sync authoritative mode', function (): void {
@@ -465,6 +658,7 @@ function prepareProductImportProcessorTables(): void
     Schema::dropIfExists('import_run_events');
     Schema::dropIfExists('product_supplier_references');
     Schema::dropIfExists('product_categories');
+    Schema::dropIfExists('product_import_media');
     Schema::dropIfExists('products');
     Schema::dropIfExists('categories');
     Schema::dropIfExists('import_runs');
@@ -575,5 +769,32 @@ function prepareProductImportProcessorTables(): void
         $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
         $table->foreign('first_seen_run_id')->references('id')->on('import_runs')->nullOnDelete();
         $table->foreign('last_seen_run_id')->references('id')->on('import_runs')->nullOnDelete();
+    });
+
+    Schema::create('product_import_media', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('run_id')->nullable();
+        $table->unsignedBigInteger('product_id');
+        $table->text('source_url');
+        $table->char('source_url_hash', 64);
+        $table->string('source_kind', 24)->default('image');
+        $table->string('status', 16)->default('pending');
+        $table->string('mime_type', 191)->nullable();
+        $table->unsignedBigInteger('bytes')->nullable();
+        $table->char('content_hash', 64)->nullable();
+        $table->string('local_path')->nullable();
+        $table->unsignedInteger('attempts')->default(0);
+        $table->text('last_error')->nullable();
+        $table->timestamp('processed_at')->nullable();
+        $table->json('meta')->nullable();
+        $table->timestamps();
+
+        $table->unique(['product_id', 'source_url_hash']);
+        $table->index(['status', 'created_at']);
+        $table->index('source_url_hash');
+        $table->index('content_hash');
+
+        $table->foreign('run_id')->references('id')->on('import_runs')->nullOnDelete();
+        $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
     });
 }

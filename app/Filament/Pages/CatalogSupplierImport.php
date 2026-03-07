@@ -20,9 +20,13 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema as DatabaseSchema;
+use Throwable;
 use UnitEnum;
 
 class CatalogSupplierImport extends Page implements HasForms
@@ -30,8 +34,6 @@ class CatalogSupplierImport extends Page implements HasForms
     use InteractsWithForms;
 
     private const DISPLAY_TIMEZONE = 'Europe/Moscow';
-
-    private const DEFAULT_VACTOOL_SOURCE = 'https://vactool.ru/sitemap.xml';
 
     protected string $view = 'filament.pages.catalog-supplier-import';
 
@@ -47,14 +49,12 @@ class CatalogSupplierImport extends Page implements HasForms
 
     /** @var array{
      *     supplier: string,
-     *     profile: string,
-     *     source: string,
-     *     bucket: string,
-     *     match: string,
+     *     scope: string,
      *     limit: int,
      *     timeout: int,
      *     delay_ms: int,
      *     show_samples: int,
+     *     sync_scenario: string,
      *     publish: bool,
      *     download_images: bool,
      *     skip_existing: bool,
@@ -68,14 +68,12 @@ class CatalogSupplierImport extends Page implements HasForms
      */
     public ?array $data = [
         'supplier' => 'vactool',
-        'profile' => 'vactool_html',
-        'source' => self::DEFAULT_VACTOOL_SOURCE,
-        'bucket' => '',
-        'match' => '/catalog/product-',
+        'scope' => '',
         'limit' => 0,
         'timeout' => 25,
         'delay_ms' => 250,
         'show_samples' => 3,
+        'sync_scenario' => 'standard',
         'publish' => false,
         'download_images' => true,
         'skip_existing' => false,
@@ -92,6 +90,17 @@ class CatalogSupplierImport extends Page implements HasForms
 
     /** @var array<int, string> */
     public array $lastSavedIssues = [];
+
+    /** @var array<string, array{key: string, name: string, depth: int, is_leaf: bool, items_count: int, source_url: string}> */
+    public array $parsedScopeTree = [];
+
+    public ?string $scopesLoadedAt = null;
+
+    public ?string $scopesLoadedSource = null;
+
+    public ?string $scopesLoadedSupplier = null;
+
+    private bool $isSyncScenarioInternalUpdate = false;
 
     public ?int $lastRunId = null;
 
@@ -112,6 +121,11 @@ class CatalogSupplierImport extends Page implements HasForms
     protected function getHeaderActions(): array
     {
         return [
+            FormAction::make('instructions')
+                ->label('Инструкция')
+                ->icon('heroicon-o-question-mark-circle')
+                ->color('gray')
+                ->url(fn (): string => $this->instructionsUrlForSupplier((string) ($this->data['supplier'] ?? 'vactool')), true),
             FormAction::make('history')
                 ->label('История импортов')
                 ->icon('heroicon-o-clock')
@@ -124,7 +138,7 @@ class CatalogSupplierImport extends Page implements HasForms
     {
         return $schema
             ->components([
-                Section::make('Источник и профиль')
+                Section::make('Поставщик')
                     ->schema([
                         Select::make('supplier')
                             ->label('Поставщик')
@@ -135,20 +149,30 @@ class CatalogSupplierImport extends Page implements HasForms
                             ->default('vactool')
                             ->live()
                             ->native(false),
-                        Select::make('profile')
-                            ->label('Профиль')
-                            ->options(fn (): array => $this->profileOptions((string) ($this->data['supplier'] ?? 'vactool')))
-                            ->native(false),
-                        TextInput::make('source')
-                            ->label('Источник (URL или путь к файлу)')
-                            ->helperText('Для Vactool: sitemap URL. Для Metalmaster: buckets JSON.')
-                            ->required(),
-                        TextInput::make('bucket')
-                            ->label('Bucket (только для Metalmaster)')
-                            ->placeholder('Например: promyshlennye'),
-                        TextInput::make('match')
-                            ->label('URL match (только для Vactool)')
-                            ->placeholder('/catalog/product-'),
+                        Actions::make([
+                            FormAction::make('load_supplier_scopes')
+                                ->label('Загрузить разделы')
+                                ->color('gray')
+                                ->action('loadSupplierScopes')
+                                ->visible(fn (Get $get): bool => $this->supportsSupplierScopes((string) $get('supplier'))),
+                            FormAction::make('regenerate_supplier_scopes')
+                                ->label('Перегенерировать разделы')
+                                ->color('gray')
+                                ->requiresConfirmation()
+                                ->action('regenerateSupplierScopes')
+                                ->visible(fn (Get $get): bool => $this->canRegenerateSupplierScopes((string) $get('supplier'))),
+                        ]),
+                        Select::make('scope')
+                            ->label(fn (Get $get): string => $this->scopeFieldLabel((string) $get('supplier')))
+                            ->placeholder('Все разделы')
+                            ->searchable()
+                            ->native(false)
+                            ->options(fn (): array => $this->scopeOptions(limit: 100))
+                            ->getSearchResultsUsing(fn (string $search): array => $this->scopeOptions(search: $search, limit: 100))
+                            ->getOptionLabelUsing(fn ($value): ?string => $this->scopeOptionLabel($value))
+                            ->optionsLimit(100)
+                            ->hintIcon(Heroicon::InformationCircle, 'Показаны первые 100 разделов. Поиск работает по всему доступному списку.')
+                            ->visible(fn (Get $get): bool => $this->supportsSupplierScopes((string) $get('supplier'))),
                     ]),
                 Section::make('Параметры run')
                     ->schema([
@@ -161,7 +185,8 @@ class CatalogSupplierImport extends Page implements HasForms
                             ->label('Таймаут запроса, сек (Metalmaster)')
                             ->numeric()
                             ->integer()
-                            ->minValue(1),
+                            ->minValue(1)
+                            ->visible(fn (Get $get): bool => (string) $get('supplier') === 'metalmaster'),
                         TextInput::make('delay_ms')
                             ->label('Задержка между запросами, мс')
                             ->numeric()
@@ -172,30 +197,53 @@ class CatalogSupplierImport extends Page implements HasForms
                             ->numeric()
                             ->integer()
                             ->minValue(0),
-                        Select::make('mode')
-                            ->label('Режим синхронизации')
+                        Select::make('sync_scenario')
+                            ->label('Сценарий импорта')
                             ->options([
-                                'partial_import' => 'partial_import',
-                                'full_sync_authoritative' => 'full_sync_authoritative',
+                                'standard' => 'Стандартный (создавать + обновлять)',
+                                'new_only' => 'Только новые товары',
+                                'full_sync' => 'Полная сверка (деактивировать отсутствующие)',
+                                'custom' => 'Пользовательский (расширенные настройки)',
                             ])
-                            ->default('partial_import')
-                            ->native(false),
+                            ->default('standard')
+                            ->native(false)
+                            ->live()
+                            ->helperText(fn (Get $get): string => $this->syncScenarioSummary((string) $get('sync_scenario'))),
                         Toggle::make('publish')
                             ->label('Публиковать импортированные товары'),
                         Toggle::make('download_images')
                             ->label('Скачивать изображения')
                             ->default(true),
-                        Toggle::make('skip_existing')
-                            ->label('Пропускать уже существующие товары (prefilter)'),
+                    ]),
+                Section::make('Расширенные настройки (технические)')
+                    ->description('Изменяйте только при точном понимании последствий. Обычно достаточно выбрать сценарий импорта выше.')
+                    ->collapsible()
+                    ->collapsed()
+                    ->schema([
+                        Select::make('mode')
+                            ->label('Технический режим синхронизации')
+                            ->options([
+                                'partial_import' => 'partial_import',
+                                'full_sync_authoritative' => 'full_sync_authoritative',
+                            ])
+                            ->default('partial_import')
+                            ->live()
+                            ->native(false),
                         Toggle::make('finalize_missing')
-                            ->label('Finalize missing (только full_sync)')
+                            ->label('Деактивировать отсутствующие (Finalize missing)')
+                            ->helperText('Срабатывает только вместе с mode=full_sync_authoritative.')
                             ->default(false),
                         Toggle::make('create_missing')
                             ->label('Создавать новые товары')
                             ->default(true),
                         Toggle::make('update_existing')
                             ->label('Обновлять существующие товары')
+                            ->helperText('При включенном "Пропускать существующие" обновления не выполняются.')
+                            ->disabled(fn (Get $get): bool => (bool) $get('skip_existing'))
                             ->default(true),
+                        Toggle::make('skip_existing')
+                            ->label('Пропускать уже существующие товары (prefilter)')
+                            ->live(),
                         TextInput::make('error_threshold_count')
                             ->label('Порог ошибок (count)')
                             ->numeric()
@@ -233,11 +281,194 @@ class CatalogSupplierImport extends Page implements HasForms
     public function updatedDataSupplier(mixed $value): void
     {
         $supplier = is_string($value) ? $value : 'vactool';
-        $this->data['profile'] = $this->defaultProfileForSupplier($supplier);
-        $this->data['source'] = $this->defaultSourceForSupplier($supplier);
-        $this->data['match'] = $supplier === 'vactool' ? '/catalog/product-' : '';
-        $this->data['bucket'] = $supplier === 'metalmaster' ? (string) ($this->data['bucket'] ?? '') : '';
+        $this->data['scope'] = '';
+        $this->resetLoadedScopes($supplier);
+        $this->syncScenarioFromFlags();
         $this->refreshLastSavedRun();
+    }
+
+    public function loadSupplierScopes(): void
+    {
+        $supplier = (string) ($this->data['supplier'] ?? 'vactool');
+
+        if (! $this->supportsSupplierScopes($supplier)) {
+            Notification::make()
+                ->title('Разделы недоступны')
+                ->body('Для выбранного поставщика список разделов пока не поддерживается.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        try {
+            $rows = $this->supplierScopeRows($supplier);
+        } catch (Throwable $exception) {
+            Notification::make()
+                ->title('Не удалось загрузить разделы')
+                ->body($exception->getMessage())
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        if ($rows === []) {
+            $this->resetLoadedScopes($supplier);
+
+            Notification::make()
+                ->title('Разделы не найдены')
+                ->body('Список разделов пуст. Проверьте источник и попробуйте перегенерацию.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        $this->parsedScopeTree = $rows;
+        $this->scopesLoadedAt = now()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i:s');
+        $this->scopesLoadedSource = $this->scopeSourceLabel($supplier);
+        $this->scopesLoadedSupplier = $supplier;
+
+        $selectedScope = trim((string) ($this->data['scope'] ?? ''));
+
+        if ($selectedScope !== '' && ! isset($this->parsedScopeTree[$selectedScope])) {
+            $this->data['scope'] = '';
+        }
+
+        Notification::make()
+            ->title('Разделы загружены')
+            ->body('Найдено разделов: '.count($this->parsedScopeTree).'.')
+            ->success()
+            ->send();
+    }
+
+    public function regenerateSupplierScopes(): void
+    {
+        $supplier = (string) ($this->data['supplier'] ?? 'vactool');
+
+        if (! $this->canRegenerateSupplierScopes($supplier)) {
+            Notification::make()
+                ->title('Перегенерация недоступна')
+                ->body('Для выбранного поставщика перегенерация разделов пока не поддерживается.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        if ($supplier === 'metalmaster') {
+            try {
+                $exitCode = Artisan::call('parser:sitemap-buckets', [
+                    '--no-interaction' => true,
+                ]);
+            } catch (Throwable $exception) {
+                Notification::make()
+                    ->title('Не удалось перегенерировать разделы')
+                    ->body($exception->getMessage())
+                    ->danger()
+                    ->send();
+
+                return;
+            }
+
+            if ($exitCode !== 0) {
+                $output = trim(Artisan::output());
+
+                Notification::make()
+                    ->title('Команда завершилась с ошибкой')
+                    ->body($output !== '' ? $output : 'parser:sitemap-buckets завершилась с кодом '.$exitCode.'.')
+                    ->danger()
+                    ->send();
+
+                return;
+            }
+
+            $this->data['scope'] = '';
+            $this->resetLoadedScopes($supplier);
+
+            $output = trim(Artisan::output());
+
+            Notification::make()
+                ->title('Разделы перегенерированы')
+                ->body($output !== '' ? $output : 'Команда parser:sitemap-buckets выполнена успешно.')
+                ->success()
+                ->send();
+
+            return;
+        }
+    }
+
+    public function updatedDataSyncScenario(mixed $value): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
+            return;
+        }
+
+        $scenario = is_string($value) ? trim($value) : '';
+
+        if ($scenario === 'custom') {
+            return;
+        }
+
+        $this->applySyncScenario($scenario);
+    }
+
+    public function updatedDataMode(mixed $value): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
+            return;
+        }
+
+        $mode = is_string($value) ? trim($value) : 'partial_import';
+
+        if ($mode !== 'full_sync_authoritative' && is_array($this->data)) {
+            $this->data['finalize_missing'] = false;
+        }
+
+        $this->syncScenarioFromFlags();
+    }
+
+    public function updatedDataFinalizeMissing(): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
+            return;
+        }
+
+        $this->syncScenarioFromFlags();
+    }
+
+    public function updatedDataCreateMissing(): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
+            return;
+        }
+
+        $this->syncScenarioFromFlags();
+    }
+
+    public function updatedDataUpdateExisting(): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
+            return;
+        }
+
+        $this->syncScenarioFromFlags();
+    }
+
+    public function updatedDataSkipExisting(mixed $value): void
+    {
+        if ($this->isSyncScenarioInternalUpdate) {
+            return;
+        }
+
+        $skipExisting = (bool) $value;
+
+        if ($skipExisting && is_array($this->data)) {
+            $this->data['update_existing'] = false;
+        }
+
+        $this->syncScenarioFromFlags();
     }
 
     public function doDryRun(): void
@@ -297,6 +528,8 @@ class CatalogSupplierImport extends Page implements HasForms
                 ->warning()
                 ->send();
 
+            $this->refreshLastSavedRun();
+
             return;
         }
 
@@ -310,11 +543,12 @@ class CatalogSupplierImport extends Page implements HasForms
             type: $runType,
             columns: $options,
             mode: $mode,
-            sourceFilename: (string) ($options['sitemap'] ?? $options['buckets_file'] ?? $options['source'] ?? null),
+            sourceFilename: (string) ($options['sitemap'] ?? $options['buckets_file'] ?? null),
             userId: Auth::id(),
             meta: [
                 'supplier' => $supplier,
-                'profile' => (string) ($options['profile'] ?? ''),
+                'profile' => $this->defaultProfileForSupplier($supplier),
+                'scope' => trim((string) ($this->data['scope'] ?? '')),
             ],
         );
 
@@ -338,6 +572,123 @@ class CatalogSupplierImport extends Page implements HasForms
             ->send();
     }
 
+    private function applySyncScenario(string $scenario): void
+    {
+        if (! is_array($this->data)) {
+            return;
+        }
+
+        $this->isSyncScenarioInternalUpdate = true;
+
+        if ($scenario === 'new_only') {
+            $this->data['mode'] = 'partial_import';
+            $this->data['finalize_missing'] = false;
+            $this->data['create_missing'] = true;
+            $this->data['update_existing'] = false;
+            $this->data['skip_existing'] = true;
+            $this->data['sync_scenario'] = 'new_only';
+            $this->isSyncScenarioInternalUpdate = false;
+
+            return;
+        }
+
+        if ($scenario === 'full_sync') {
+            $this->data['mode'] = 'full_sync_authoritative';
+            $this->data['finalize_missing'] = true;
+            $this->data['create_missing'] = true;
+            $this->data['update_existing'] = true;
+            $this->data['skip_existing'] = false;
+            $this->data['sync_scenario'] = 'full_sync';
+            $this->isSyncScenarioInternalUpdate = false;
+
+            return;
+        }
+
+        $this->data['mode'] = 'partial_import';
+        $this->data['finalize_missing'] = false;
+        $this->data['create_missing'] = true;
+        $this->data['update_existing'] = true;
+        $this->data['skip_existing'] = false;
+        $this->data['sync_scenario'] = 'standard';
+
+        $this->isSyncScenarioInternalUpdate = false;
+    }
+
+    private function syncScenarioFromFlags(): void
+    {
+        if (! is_array($this->data)) {
+            return;
+        }
+
+        $scenario = $this->resolveSyncScenarioFromFlags();
+
+        if ((string) ($this->data['sync_scenario'] ?? '') === $scenario) {
+            return;
+        }
+
+        $this->isSyncScenarioInternalUpdate = true;
+        $this->data['sync_scenario'] = $scenario;
+        $this->isSyncScenarioInternalUpdate = false;
+    }
+
+    private function resolveSyncScenarioFromFlags(): string
+    {
+        $mode = (string) ($this->data['mode'] ?? 'partial_import');
+        $finalizeMissing = (bool) ($this->data['finalize_missing'] ?? false);
+        $createMissing = (bool) ($this->data['create_missing'] ?? true);
+        $updateExisting = (bool) ($this->data['update_existing'] ?? true);
+        $skipExisting = (bool) ($this->data['skip_existing'] ?? false);
+
+        if (
+            $mode === 'partial_import'
+            && ! $finalizeMissing
+            && $createMissing
+            && $updateExisting
+            && ! $skipExisting
+        ) {
+            return 'standard';
+        }
+
+        if (
+            $mode === 'partial_import'
+            && ! $finalizeMissing
+            && $createMissing
+            && ! $updateExisting
+            && $skipExisting
+        ) {
+            return 'new_only';
+        }
+
+        if (
+            $mode === 'full_sync_authoritative'
+            && $finalizeMissing
+            && $createMissing
+            && $updateExisting
+            && ! $skipExisting
+        ) {
+            return 'full_sync';
+        }
+
+        return 'custom';
+    }
+
+    private function syncScenarioSummary(string $scenario): string
+    {
+        if ($scenario === 'new_only') {
+            return 'Создаются только новые товары. Существующие позиции пропускаются и не обновляются.';
+        }
+
+        if ($scenario === 'full_sync') {
+            return 'Создание + обновление + деактивация отсутствующих в источнике (в пределах выбранного scope).';
+        }
+
+        if ($scenario === 'custom') {
+            return 'Пользовательская комбинация параметров из раздела "Расширенные настройки".';
+        }
+
+        return 'Создаются новые и обновляются существующие товары. Отсутствующие в источнике не деактивируются.';
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -352,6 +703,7 @@ class CatalogSupplierImport extends Page implements HasForms
 
         $commonOptions = [
             'write' => $write,
+            'scope' => trim((string) ($this->data['scope'] ?? '')),
             'limit' => max(0, (int) ($this->data['limit'] ?? 0)),
             'delay_ms' => max(0, (int) ($this->data['delay_ms'] ?? 250)),
             'publish' => (bool) ($this->data['publish'] ?? false),
@@ -364,33 +716,27 @@ class CatalogSupplierImport extends Page implements HasForms
             'update_existing' => (bool) ($this->data['update_existing'] ?? true),
             'error_threshold_count' => $this->normalizeNullableInt($this->data['error_threshold_count'] ?? null),
             'error_threshold_percent' => $this->normalizeNullableFloat($this->data['error_threshold_percent'] ?? null),
-            'profile' => (string) ($this->data['profile'] ?? $this->defaultProfileForSupplier($supplier)),
+            'profile' => $this->defaultProfileForSupplier($supplier),
         ];
 
         if ($supplier === 'vactool') {
-            $sitemap = trim((string) ($this->data['source'] ?? ''));
-
             return array_merge($commonOptions, [
-                'sitemap' => $sitemap !== '' ? $sitemap : self::DEFAULT_VACTOOL_SOURCE,
-                'match' => (string) ($this->data['match'] ?? '/catalog/product-'),
+                'sitemap' => app(VactoolSupplierProfile::class)->defaultSitemap(),
+                'match' => app(VactoolSupplierProfile::class)->defaultUrlMatch(),
             ]);
         }
 
         if ($supplier === 'metalmaster') {
-            $bucketsFile = trim((string) ($this->data['source'] ?? ''));
-
             return array_merge($commonOptions, [
-                'buckets_file' => $bucketsFile !== '' ? $bucketsFile : storage_path('app/parser/metalmaster-buckets.json'),
-                'bucket' => trim((string) ($this->data['bucket'] ?? '')),
+                'buckets_file' => app(MetalmasterSupplierProfile::class)->defaultBucketsFile(),
+                'bucket' => trim((string) ($this->data['scope'] ?? '')),
                 'timeout' => max(1, (int) ($this->data['timeout'] ?? 25)),
             ]);
         }
 
-        $sitemap = trim((string) ($this->data['source'] ?? ''));
-
         return array_merge($commonOptions, [
-            'sitemap' => $sitemap !== '' ? $sitemap : self::DEFAULT_VACTOOL_SOURCE,
-            'match' => (string) ($this->data['match'] ?? '/catalog/product-'),
+            'sitemap' => app(VactoolSupplierProfile::class)->defaultSitemap(),
+            'match' => app(VactoolSupplierProfile::class)->defaultUrlMatch(),
         ]);
     }
 
@@ -427,6 +773,7 @@ class CatalogSupplierImport extends Page implements HasForms
             $meta = [];
         }
 
+        $columns = is_array($run->columns) ? $run->columns : [];
         $processed = (int) ($totals['scanned'] ?? 0);
         $foundUrls = (int) ($meta['found_urls'] ?? 0);
         $progressPercent = $foundUrls > 0
@@ -435,9 +782,12 @@ class CatalogSupplierImport extends Page implements HasForms
 
         $this->lastSavedRun = [
             'id' => $run->id,
+            'supplier' => $supplier,
+            'supplier_label' => $this->supplierLabel($supplier),
             'status' => $run->status,
             'mode' => (string) ($meta['mode'] ?? 'unknown'),
             'is_running' => (bool) ($meta['is_running'] ?? in_array($run->status, ['pending', 'running'], true)),
+            'no_urls' => (bool) ($meta['no_urls'] ?? false),
             'found_urls' => $foundUrls,
             'processed' => $processed,
             'progress_percent' => $progressPercent,
@@ -449,6 +799,8 @@ class CatalogSupplierImport extends Page implements HasForms
             'image_download_failed' => (int) ($meta['image_download_failed'] ?? 0),
             'derivatives_queued' => (int) ($meta['derivatives_queued'] ?? 0),
             'samples_count' => count(is_array($totals['_samples'] ?? null) ? $totals['_samples'] : []),
+            'scope' => (string) ($columns['bucket'] ?? $columns['scope'] ?? ''),
+            'buckets_file' => (string) ($columns['buckets_file'] ?? ''),
             'finished_at' => $run->finished_at?->copy()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i'),
         ];
 
@@ -459,6 +811,201 @@ class CatalogSupplierImport extends Page implements HasForms
             ->filter(fn ($value): bool => is_string($value) && $value !== '')
             ->values()
             ->all();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function scopeOptions(?string $search = null, int $limit = 100): array
+    {
+        $supplier = (string) ($this->data['supplier'] ?? 'vactool');
+
+        if (! $this->supportsSupplierScopes($supplier)) {
+            return [];
+        }
+
+        $rows = $this->scopeRowsForOptions($supplier);
+        $needle = $search !== null ? mb_strtolower(trim($search)) : null;
+        $options = [];
+
+        foreach ($rows as $row) {
+            $key = trim((string) ($row['key'] ?? ''));
+
+            if ($key === '') {
+                continue;
+            }
+
+            $label = $this->scopeLabel($row);
+
+            if ($needle !== null && $needle !== '') {
+                $inKey = str_contains(mb_strtolower($key), $needle);
+                $inLabel = str_contains(mb_strtolower($label), $needle);
+                $inUrl = str_contains(mb_strtolower((string) ($row['source_url'] ?? '')), $needle);
+
+                if (! $inKey && ! $inLabel && ! $inUrl) {
+                    continue;
+                }
+            }
+
+            $options[$key] = $label;
+
+            if (count($options) >= $limit) {
+                break;
+            }
+        }
+
+        return $options;
+    }
+
+    private function scopeOptionLabel(mixed $value): ?string
+    {
+        $scopeKey = trim((string) $value);
+
+        if ($scopeKey === '') {
+            return null;
+        }
+
+        $supplier = (string) ($this->data['supplier'] ?? 'vactool');
+
+        foreach ($this->scopeRowsForOptions($supplier) as $row) {
+            if ((string) ($row['key'] ?? '') === $scopeKey) {
+                return $this->scopeLabel($row);
+            }
+        }
+
+        return $scopeKey;
+    }
+
+    /**
+     * @return array<int, array{key: string, name: string, depth: int, is_leaf: bool, items_count: int, source_url: string}>
+     */
+    private function scopeRowsForOptions(string $supplier): array
+    {
+        if ($this->scopesLoadedSupplier === $supplier && $this->parsedScopeTree !== []) {
+            return array_values($this->parsedScopeTree);
+        }
+
+        return array_values($this->supplierScopeRows($supplier));
+    }
+
+    private function scopeLabel(array $row): string
+    {
+        $depth = max(0, (int) ($row['depth'] ?? 0));
+        $name = trim((string) ($row['name'] ?? ''));
+        $key = trim((string) ($row['key'] ?? ''));
+        $itemsCount = max(0, (int) ($row['items_count'] ?? 0));
+
+        $prefix = $depth > 0 ? str_repeat('— ', $depth) : '';
+        $label = $prefix.($name !== '' ? $name : $key);
+
+        if ($itemsCount > 0) {
+            $label .= ' ('.$itemsCount.')';
+        }
+
+        return $label;
+    }
+
+    private function supportsSupplierScopes(string $supplier): bool
+    {
+        return $supplier === 'metalmaster';
+    }
+
+    private function canRegenerateSupplierScopes(string $supplier): bool
+    {
+        return $supplier === 'metalmaster';
+    }
+
+    private function scopeFieldLabel(string $supplier): string
+    {
+        return match ($supplier) {
+            'metalmaster' => 'Категория поставщика (пусто = все категории)',
+            default => 'Раздел поставщика (пусто = все разделы)',
+        };
+    }
+
+    private function scopeSourceLabel(string $supplier): ?string
+    {
+        return match ($supplier) {
+            'metalmaster' => app(MetalmasterSupplierProfile::class)->defaultBucketsFile(),
+            default => null,
+        };
+    }
+
+    private function resetLoadedScopes(string $supplier): void
+    {
+        $this->parsedScopeTree = [];
+        $this->scopesLoadedAt = null;
+        $this->scopesLoadedSource = $this->scopeSourceLabel($supplier);
+        $this->scopesLoadedSupplier = $supplier;
+    }
+
+    /**
+     * @return array<string, array{key: string, name: string, depth: int, is_leaf: bool, items_count: int, source_url: string}>
+     */
+    private function supplierScopeRows(string $supplier): array
+    {
+        if ($supplier === 'metalmaster') {
+            return $this->metalmasterScopeRows();
+        }
+
+        return [];
+    }
+
+    /**
+     * @return array<string, array{key: string, name: string, depth: int, is_leaf: bool, items_count: int, source_url: string}>
+     */
+    private function metalmasterScopeRows(): array
+    {
+        $sourceFile = app(MetalmasterSupplierProfile::class)->defaultBucketsFile();
+        $raw = @file_get_contents($sourceFile);
+
+        if (! is_string($raw)) {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        if (array_is_list($decoded)) {
+            $rows = array_values(array_filter($decoded, 'is_array'));
+        } else {
+            $rows = $decoded['buckets'] ?? [];
+            $rows = is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
+        }
+
+        $scopeRows = [];
+
+        foreach ($rows as $row) {
+            $key = trim((string) ($row['bucket'] ?? ''));
+
+            if ($key === '') {
+                continue;
+            }
+
+            $scopeRows[$key] = [
+                'key' => $key,
+                'name' => $key,
+                'depth' => 0,
+                'is_leaf' => true,
+                'items_count' => max(0, (int) ($row['products_count'] ?? 0)),
+                'source_url' => trim((string) ($row['category_url'] ?? '')),
+            ];
+        }
+
+        uasort($scopeRows, function (array $left, array $right): int {
+            $countDiff = (int) ($right['items_count'] ?? 0) <=> (int) ($left['items_count'] ?? 0);
+
+            if ($countDiff !== 0) {
+                return $countDiff;
+            }
+
+            return strcmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
+        });
+
+        return $scopeRows;
     }
 
     private function hasActiveRun(): bool
@@ -488,22 +1035,6 @@ class CatalogSupplierImport extends Page implements HasForms
         return $runQuery->latest('id')->first();
     }
 
-    /**
-     * @return array<string, string>
-     */
-    private function profileOptions(string $supplier): array
-    {
-        if ($supplier === 'metalmaster') {
-            $profile = app(MetalmasterSupplierProfile::class)->profileKey();
-
-            return [$profile => $profile];
-        }
-
-        $profile = app(VactoolSupplierProfile::class)->profileKey();
-
-        return [$profile => $profile];
-    }
-
     private function defaultProfileForSupplier(string $supplier): string
     {
         if ($supplier === 'metalmaster') {
@@ -513,18 +1044,27 @@ class CatalogSupplierImport extends Page implements HasForms
         return app(VactoolSupplierProfile::class)->profileKey();
     }
 
-    private function defaultSourceForSupplier(string $supplier): string
-    {
-        return $supplier === 'metalmaster'
-            ? storage_path('app/parser/metalmaster-buckets.json')
-            : self::DEFAULT_VACTOOL_SOURCE;
-    }
-
     private function runType(string $supplier): string
     {
         return match ($supplier) {
             'metalmaster' => 'metalmaster_products',
             default => 'vactool_products',
+        };
+    }
+
+    private function instructionsUrlForSupplier(string $supplier): string
+    {
+        return match ($supplier) {
+            'metalmaster' => 'https://help.stankoman.ru/import/metalmaster-import/',
+            default => 'https://help.stankoman.ru/import/vactool-import/',
+        };
+    }
+
+    private function supplierLabel(string $supplier): string
+    {
+        return match ($supplier) {
+            'metalmaster' => 'Metalmaster',
+            default => 'Vactool',
         };
     }
 

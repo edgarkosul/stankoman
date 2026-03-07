@@ -6,6 +6,7 @@ use App\Models\ImportMediaIssue;
 use App\Models\ImportRun;
 use App\Models\Product;
 use App\Models\ProductImportMedia;
+use App\Models\ProductSupplierReference;
 use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\Media\ProductImportMediaService;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
@@ -99,6 +100,148 @@ it('deduplicates media queue by url for same product across repeated imports', f
         ->and(ProductImportMedia::query()->where('status', ProductImportMedia::STATUS_PENDING)->count())->toBe(3);
 
     Queue::assertPushed(DownloadProductImportMediaJob::class, 3);
+});
+
+it('restores local product image when media already completed for same source url', function (): void {
+    Queue::fake();
+
+    $runOne = createProductImportMediaRun('catalog_import_yml');
+    $runTwo = createProductImportMediaRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Товар с ранее скачанным изображением',
+        'slug' => 'product-with-completed-media',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+        'image' => 'pics/import/existing-local.jpg',
+        'thumb' => 'pics/import/existing-local.jpg',
+        'gallery' => ['pics/import/existing-local.jpg'],
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'media_restore_feed',
+        'external_id' => 'M-RESTORE-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $runOne->id,
+        'last_seen_run_id' => $runOne->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $sourceUrl = 'https://cdn.example.test/media/existing.jpg';
+
+    ProductImportMedia::query()->create([
+        'run_id' => $runOne->id,
+        'product_id' => $product->id,
+        'source_url' => $sourceUrl,
+        'source_url_hash' => hash('sha256', $sourceUrl),
+        'source_kind' => 'image',
+        'status' => ProductImportMedia::STATUS_COMPLETED,
+        'local_path' => 'pics/import/existing-local.jpg',
+        'mime_type' => 'image/jpeg',
+        'bytes' => 1024,
+        'content_hash' => hash('sha256', 'existing-local-bytes'),
+        'processed_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer, new ProductImportMediaService);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'M-RESTORE-1',
+            name: 'Товар с ранее скачанным изображением',
+            images: [$sourceUrl],
+        ),
+    ], [
+        'supplier' => 'media_restore_feed',
+        'run_id' => $runTwo->id,
+        'download_media' => true,
+        'update_existing' => true,
+    ]);
+
+    $product->refresh();
+
+    expect($summary['updated'])->toBe(1)
+        ->and($summary['results'])->toHaveCount(1)
+        ->and($summary['results'][0]->meta['media_reused'] ?? null)->toBe(1)
+        ->and($summary['results'][0]->meta['media_queued'] ?? null)->toBe(0)
+        ->and($product->image)->toBe('pics/import/existing-local.jpg')
+        ->and($product->thumb)->toBe('pics/import/existing-local.jpg')
+        ->and($product->gallery)->toBe(['pics/import/existing-local.jpg'])
+        ->and(ProductImportMedia::query()->count())->toBe(1);
+
+    Queue::assertNotPushed(DownloadProductImportMediaJob::class);
+});
+
+it('requeues failed media for same product and source url on next import', function (): void {
+    Queue::fake();
+
+    $runOne = createProductImportMediaRun('catalog_import_yml');
+    $runTwo = createProductImportMediaRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Товар с failed-медиа',
+        'slug' => 'product-with-failed-media',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'media_retry_feed',
+        'external_id' => 'M-RETRY-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $runOne->id,
+        'last_seen_run_id' => $runOne->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $sourceUrl = 'https://cdn.example.test/media/retry.jpg';
+
+    ProductImportMedia::query()->create([
+        'run_id' => $runOne->id,
+        'product_id' => $product->id,
+        'source_url' => $sourceUrl,
+        'source_url_hash' => hash('sha256', $sourceUrl),
+        'source_kind' => 'image',
+        'status' => ProductImportMedia::STATUS_FAILED,
+        'last_error' => 'temporary network issue',
+        'processed_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer, new ProductImportMediaService);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'M-RETRY-1',
+            name: 'Товар с failed-медиа',
+            images: [$sourceUrl],
+        ),
+    ], [
+        'supplier' => 'media_retry_feed',
+        'run_id' => $runTwo->id,
+        'download_media' => true,
+        'update_existing' => true,
+    ]);
+
+    expect($summary['updated'])->toBe(1)
+        ->and($summary['results'])->toHaveCount(1)
+        ->and($summary['results'][0]->meta['media_queued'] ?? null)->toBe(1)
+        ->and(ProductImportMedia::query()->count())->toBe(1)
+        ->and(
+            ProductImportMedia::query()
+                ->where('run_id', $runTwo->id)
+                ->where('status', ProductImportMedia::STATUS_PENDING)
+                ->count()
+        )->toBe(1);
+
+    Queue::assertPushed(DownloadProductImportMediaJob::class, 1);
 });
 
 it('downloads media in queued job and deduplicates by content hash', function (): void {
@@ -217,6 +360,45 @@ it('logs media failures separately from main import issues', function (): void {
         ->and(ImportMediaIssue::query()->count())->toBe(1)
         ->and(ImportMediaIssue::query()->value('code'))->toBe('unsupported_mime_type');
 
+    Queue::assertNotPushed(GenerateImageDerivativesJob::class);
+});
+
+it('fails fast for non-absolute media source urls', function (): void {
+    Storage::fake('public');
+    Queue::fake();
+    Http::fake();
+
+    $product = Product::query()->create([
+        'name' => 'Товар с относительным URL медиа',
+        'slug' => 'relative-media-url-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+    ]);
+
+    $media = ProductImportMedia::query()->create([
+        'product_id' => $product->id,
+        'source_url' => '/storage/100/main.jpg',
+        'source_url_hash' => hash('sha256', '/storage/100/main.jpg'),
+        'source_kind' => 'image',
+        'status' => ProductImportMedia::STATUS_PENDING,
+    ]);
+
+    $service = new ProductImportMediaService;
+
+    (new DownloadProductImportMediaJob($media->id))->handle($service);
+
+    $media->refresh();
+
+    expect($media->status)->toBe(ProductImportMedia::STATUS_FAILED)
+        ->and($media->last_error)->toContain('absolute HTTP(S) URL')
+        ->and(ImportMediaIssue::query()->count())->toBe(1)
+        ->and(ImportMediaIssue::query()->value('code'))->toBe('invalid_source_url');
+
+    Http::assertNothingSent();
     Queue::assertNotPushed(GenerateImageDerivativesJob::class);
 });
 
