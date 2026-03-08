@@ -57,6 +57,7 @@ class CatalogSupplierImport extends Page implements HasForms
      *     sync_scenario: string,
      *     publish: bool,
      *     download_images: bool,
+     *     force_media_recheck: bool,
      *     skip_existing: bool,
      *     mode: string,
      *     finalize_missing: bool,
@@ -76,6 +77,7 @@ class CatalogSupplierImport extends Page implements HasForms
         'sync_scenario' => 'standard',
         'publish' => false,
         'download_images' => true,
+        'force_media_recheck' => false,
         'skip_existing' => false,
         'mode' => 'partial_import',
         'finalize_missing' => false,
@@ -214,6 +216,9 @@ class CatalogSupplierImport extends Page implements HasForms
                         Toggle::make('download_images')
                             ->label('Скачивать изображения')
                             ->default(true),
+                        Toggle::make('force_media_recheck')
+                            ->label('Принудительно перепроверять медиа у донора')
+                            ->helperText('Игнорирует TTL переиспользования: для каждого URL будет выполнена проверка изменения файла.'),
                     ]),
                 Section::make('Расширенные настройки (технические)')
                     ->description('Изменяйте только при точном понимании последствий. Обычно достаточно выбрать сценарий импорта выше.')
@@ -708,6 +713,7 @@ class CatalogSupplierImport extends Page implements HasForms
             'delay_ms' => max(0, (int) ($this->data['delay_ms'] ?? 250)),
             'publish' => (bool) ($this->data['publish'] ?? false),
             'download_images' => (bool) ($this->data['download_images'] ?? true),
+            'force_media_recheck' => (bool) ($this->data['force_media_recheck'] ?? false),
             'skip_existing' => (bool) ($this->data['skip_existing'] ?? false),
             'show_samples' => max(0, (int) ($this->data['show_samples'] ?? 3)),
             'mode' => $mode,

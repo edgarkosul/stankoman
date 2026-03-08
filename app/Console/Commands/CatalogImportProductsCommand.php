@@ -33,6 +33,7 @@ class CatalogImportProductsCommand extends Command
         {--queue : Dispatch queued job instead of foreground execution}
         {--publish : Set imported products as active}
         {--download-images : Queue media download for images}
+        {--force-media-recheck : Force media recheck at donor even when URL is already known}
         {--skip-existing : Skip products already known by supplier + external_id}
         {--mode=partial_import : partial_import or full_sync_authoritative}
         {--full-sync : Shortcut for mode=full_sync_authoritative}
@@ -154,6 +155,7 @@ class CatalogImportProductsCommand extends Command
             'delay_ms' => max(0, (int) $this->option('delay-ms')),
             'publish' => (bool) $this->option('publish'),
             'download_images' => (bool) $this->option('download-images'),
+            'force_media_recheck' => (bool) $this->option('force-media-recheck'),
             'skip_existing' => (bool) $this->option('skip-existing'),
             'show_samples' => max(0, (int) $this->option('show-samples')),
             'mode' => $mode,

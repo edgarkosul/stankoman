@@ -407,6 +407,7 @@ class MetalmasterProductImportService
      *     write: bool,
      *     publish: bool,
      *     download_images: bool,
+     *     force_media_recheck: bool,
      *     skip_existing: bool,
      *     show_samples: int,
      *     run_id: int|null,
@@ -444,6 +445,10 @@ class MetalmasterProductImportService
             'publish' => $this->normalizeBoolOption($options['publish'] ?? false, false),
             'download_images' => $this->normalizeBoolOption(
                 $options['download_images'] ?? $options['download-images'] ?? false,
+                false,
+            ),
+            'force_media_recheck' => $this->normalizeBoolOption(
+                $options['force_media_recheck'] ?? $options['force-media-recheck'] ?? false,
                 false,
             ),
             'skip_existing' => $skipExisting,
@@ -614,6 +619,7 @@ class MetalmasterProductImportService
             'publish_created' => $normalized['publish'],
             'publish_updated' => $normalized['publish'],
             'download_media' => $normalized['download_images'],
+            'force_media_recheck' => $normalized['force_media_recheck'],
             'legacy_match' => $this->profile->defaults()['legacy_match'] ?? null,
             'use_source_slug' => true,
             'mode' => $normalized['mode'],

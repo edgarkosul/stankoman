@@ -8,6 +8,8 @@ return [
         'timeout_seconds' => (int) env('CATALOG_IMPORT_MEDIA_TIMEOUT_SECONDS', 25),
         'retry_delays_ms' => [250, 750, 1500],
         'max_bytes' => (int) env('CATALOG_IMPORT_MEDIA_MAX_BYTES', 10 * 1024 * 1024),
+        'recheck_ttl_seconds' => (int) env('CATALOG_IMPORT_MEDIA_RECHECK_TTL_SECONDS', 7 * 24 * 60 * 60),
+        'use_conditional_headers_for_recheck' => (bool) env('CATALOG_IMPORT_MEDIA_USE_CONDITIONAL_HEADERS_FOR_RECHECK', true),
         'allowed_mimes' => [
             'image/jpeg',
             'image/png',

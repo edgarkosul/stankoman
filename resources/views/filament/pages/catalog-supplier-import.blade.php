@@ -19,7 +19,17 @@
             <div class="space-y-4 rounded-xl border border-zinc-200 bg-white/60 p-4">
                 <div class="flex items-center justify-between gap-2">
                     <h2 class="text-sm font-semibold">Последний запуск {{ $lastSavedRun['supplier_label'] ?? 'поставщика' }}</h2>
-                    <div class="text-xs text-zinc-500">#{{ $lastSavedRun['id'] ?? '—' }}</div>
+                    <div class="flex items-center gap-2 text-xs">
+                        <span class="text-zinc-500">#{{ $lastSavedRun['id'] ?? '—' }}</span>
+                        @if (!empty($lastSavedRun['id']))
+                            <a
+                                href="{{ url('/admin/import-runs/' . $lastSavedRun['id']) }}"
+                                class="font-medium text-primary-600 hover:text-primary-500 hover:underline"
+                            >
+                                Детальный лог
+                            </a>
+                        @endif
+                    </div>
                 </div>
 
                 @if (($lastSavedRun['is_running'] ?? false) === true)

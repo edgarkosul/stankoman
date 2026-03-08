@@ -103,6 +103,8 @@ it('deduplicates media queue by url for same product across repeated imports', f
 });
 
 it('restores local product image when media already completed for same source url', function (): void {
+    Storage::fake('public');
+    config()->set('catalog-import.media.disk', 'public');
     Queue::fake();
 
     $runOne = createProductImportMediaRun('catalog_import_yml');
@@ -146,6 +148,9 @@ it('restores local product image when media already completed for same source ur
         'content_hash' => hash('sha256', 'existing-local-bytes'),
         'processed_at' => now(),
     ]);
+
+    Storage::disk('public')->put('pics/import/existing-local.jpg', 'existing-image-bytes');
+    expect((new ProductImportMediaService)->pathExistsOnDisk('pics/import/existing-local.jpg'))->toBeTrue();
 
     $processor = new ProductImportProcessor(new ProductPayloadNormalizer, new ProductImportMediaService);
 
@@ -242,6 +247,188 @@ it('requeues failed media for same product and source url on next import', funct
         )->toBe(1);
 
     Queue::assertPushed(DownloadProductImportMediaJob::class, 1);
+});
+
+it('forces media recheck for fresh completed media when option is enabled', function (): void {
+    Storage::fake('public');
+    config()->set('catalog-import.media.disk', 'public');
+    Queue::fake();
+
+    $firstRun = createProductImportMediaRun('catalog_import_yml');
+    $secondRun = createProductImportMediaRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Товар с принудительной перепроверкой медиа',
+        'title' => 'Товар с принудительной перепроверкой медиа',
+        'slug' => 'force-recheck-media-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+        'meta_title' => 'Товар с принудительной перепроверкой медиа',
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'force_media_feed',
+        'external_id' => 'FORCE-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $sourceUrl = 'https://cdn.example.test/media/force.jpg';
+
+    ProductImportMedia::query()->create([
+        'run_id' => $firstRun->id,
+        'product_id' => $product->id,
+        'source_url' => $sourceUrl,
+        'source_url_hash' => hash('sha256', $sourceUrl),
+        'source_kind' => 'image',
+        'status' => ProductImportMedia::STATUS_COMPLETED,
+        'local_path' => 'pics/import/force.jpg',
+        'mime_type' => 'image/jpeg',
+        'bytes' => 128,
+        'content_hash' => hash('sha256', 'force-seed'),
+        'processed_at' => now(),
+        'meta' => [
+            'etag' => '"force-v1"',
+            'last_checked_at' => now()->toAtomString(),
+        ],
+    ]);
+
+    Storage::disk('public')->put('pics/import/force.jpg', 'force-seed-bytes');
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer, new ProductImportMediaService);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'FORCE-1',
+            name: 'Товар с принудительной перепроверкой медиа',
+            priceAmount: 100,
+            inStock: true,
+            images: [$sourceUrl],
+        ),
+    ], [
+        'supplier' => 'force_media_feed',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'download_media' => true,
+        'force_media_recheck' => true,
+    ]);
+
+    $media = ProductImportMedia::query()->where('product_id', $product->id)->firstOrFail();
+
+    expect($summary['results'])->toHaveCount(1)
+        ->and($summary['results'][0]->meta['media_queued'] ?? null)->toBe(1)
+        ->and($summary['results'][0]->meta['media_reused'] ?? null)->toBe(0)
+        ->and($media->status)->toBe(ProductImportMedia::STATUS_PENDING)
+        ->and(data_get($media->meta, 'recheck.required'))->toBeTrue()
+        ->and(data_get($media->meta, 'recheck.force'))->toBeTrue();
+
+    Queue::assertPushed(DownloadProductImportMediaJob::class, 1);
+});
+
+it('uses conditional headers for stale media recheck and keeps local file on 304', function (): void {
+    Storage::fake('public');
+    config()->set('catalog-import.media.disk', 'public');
+    config()->set('catalog-import.media.recheck_ttl_seconds', 60 * 60);
+    config()->set('catalog-import.media.use_conditional_headers_for_recheck', true);
+    Queue::fake();
+
+    $firstRun = createProductImportMediaRun('catalog_import_yml');
+    $secondRun = createProductImportMediaRun('catalog_import_yml');
+
+    Http::fake([
+        'https://cdn.example.test/media/stale.jpg' => Http::response('', 304, [
+            'ETag' => '"stale-v2"',
+            'Last-Modified' => 'Mon, 01 Jan 2024 00:00:00 GMT',
+        ]),
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Товар со stale-медиа',
+        'slug' => 'stale-media-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'stale_media_feed',
+        'external_id' => 'STALE-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now()->subDays(8),
+    ]);
+
+    $sourceUrl = 'https://cdn.example.test/media/stale.jpg';
+
+    $media = ProductImportMedia::query()->create([
+        'run_id' => $firstRun->id,
+        'product_id' => $product->id,
+        'source_url' => $sourceUrl,
+        'source_url_hash' => hash('sha256', $sourceUrl),
+        'source_kind' => 'image',
+        'status' => ProductImportMedia::STATUS_COMPLETED,
+        'local_path' => 'pics/import/stale.jpg',
+        'mime_type' => 'image/jpeg',
+        'bytes' => 128,
+        'content_hash' => hash('sha256', 'stale-seed'),
+        'processed_at' => now()->subDays(8),
+        'meta' => [
+            'etag' => '"stale-v1"',
+            'last_modified' => 'Sun, 31 Dec 2023 00:00:00 GMT',
+            'last_checked_at' => now()->subDays(8)->toAtomString(),
+        ],
+    ]);
+
+    Storage::disk('public')->put('pics/import/stale.jpg', 'stale-seed-bytes');
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer, new ProductImportMediaService);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'STALE-1',
+            name: 'Товар со stale-медиа',
+            images: [$sourceUrl],
+        ),
+    ], [
+        'supplier' => 'stale_media_feed',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'download_media' => true,
+    ]);
+
+    expect($summary['results'])->toHaveCount(1)
+        ->and($summary['results'][0]->meta['media_queued'] ?? null)->toBe(1)
+        ->and($summary['results'][0]->meta['media_reused'] ?? null)->toBe(0);
+
+    Queue::assertPushed(DownloadProductImportMediaJob::class, 1);
+
+    (new DownloadProductImportMediaJob($media->id))->handle(new ProductImportMediaService);
+
+    $media->refresh();
+
+    expect($media->status)->toBe(ProductImportMedia::STATUS_COMPLETED)
+        ->and($media->local_path)->toBe('pics/import/stale.jpg')
+        ->and(data_get($media->meta, 'etag'))->toBe('"stale-v2"')
+        ->and(data_get($media->meta, 'last_modified'))->toBe('Mon, 01 Jan 2024 00:00:00 GMT')
+        ->and(data_get($media->meta, 'last_checked_at'))->not->toBeNull();
+
+    Http::assertSent(static function ($request) use ($sourceUrl): bool {
+        return $request->url() === $sourceUrl
+            && $request->hasHeader('If-None-Match', '"stale-v1"')
+            && $request->hasHeader('If-Modified-Since', 'Sun, 31 Dec 2023 00:00:00 GMT');
+    });
+
+    Queue::assertNotPushed(GenerateImageDerivativesJob::class);
 });
 
 it('downloads media in queued job and deduplicates by content hash', function (): void {

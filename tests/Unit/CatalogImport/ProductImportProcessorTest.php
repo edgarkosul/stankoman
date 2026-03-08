@@ -13,6 +13,7 @@ use App\Support\CatalogImport\Runs\DatabaseImportRunEventLogger;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 uses(TestCase::class);
@@ -552,6 +553,8 @@ it('does not mark product as updated when only media fields differ and media dow
 });
 
 it('marks product as unchanged when media is fully reused on repeated import', function (): void {
+    Storage::fake('public');
+    config()->set('catalog-import.media.disk', 'public');
     Queue::fake();
 
     $firstRun = createImportRun('catalog_import_yml');
@@ -601,6 +604,8 @@ it('marks product as unchanged when media is fully reused on repeated import', f
         'attempts' => 1,
         'processed_at' => now(),
     ]);
+
+    Storage::disk('public')->put('pics/import/reused/source.jpg', 'existing-image-bytes');
 
     $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
     $logger = new DatabaseImportRunEventLogger(batchSize: 1);

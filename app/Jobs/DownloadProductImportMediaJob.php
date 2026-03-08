@@ -8,6 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
@@ -54,19 +55,28 @@ class DownloadProductImportMediaJob implements ShouldQueue
         $mediaService->incrementAttempts($media);
         $mediaService->markAsProcessing($media);
 
-        $reusableBySource = $mediaService->findReusableCompletedBySourceHash($media->source_url_hash, $media->id);
+        $recheckContext = $mediaService->resolveRecheckContext($media);
 
-        if ($reusableBySource instanceof ProductImportMedia && is_string($reusableBySource->local_path)) {
-            $mediaService->completeMedia(
-                media: $media,
-                localPath: $reusableBySource->local_path,
-                mimeType: $reusableBySource->mime_type,
-                bytes: $reusableBySource->bytes,
-                contentHash: $reusableBySource->content_hash,
-                sourceKind: $reusableBySource->source_kind,
-            );
+        if (($recheckContext['required'] ?? false) !== true) {
+            $reusableBySource = $mediaService->findReusableCompletedBySourceHash($media->source_url_hash, $media->id);
 
-            return;
+            if (
+                $reusableBySource instanceof ProductImportMedia
+                && is_string($reusableBySource->local_path)
+                && $mediaService->canReuseCompletedMedia($reusableBySource)
+            ) {
+                $mediaService->completeMedia(
+                    media: $media,
+                    localPath: $reusableBySource->local_path,
+                    mimeType: $reusableBySource->mime_type,
+                    bytes: $reusableBySource->bytes,
+                    contentHash: $reusableBySource->content_hash,
+                    sourceKind: $reusableBySource->source_kind,
+                    meta: $mediaService->completionMetaFromExistingMedia($reusableBySource),
+                );
+
+                return;
+            }
         }
 
         $sourceUrl = $this->normalizeSourceUrl($media->source_url);
@@ -83,16 +93,22 @@ class DownloadProductImportMediaJob implements ShouldQueue
         }
 
         try {
-            $response = Http::timeout($mediaService->timeoutSeconds())
+            $request = Http::timeout($mediaService->timeoutSeconds())
                 ->retry($mediaService->retryDelaysMs(), throw: false)
-                ->accept('*/*')
-                ->get($sourceUrl);
+                ->accept('*/*');
+
+            $request = $this->withConditionalRecheckHeaders($request, $recheckContext);
+            $response = $request->get($sourceUrl);
         } catch (ConnectionException $exception) {
             $mediaService->failMedia(
                 media: $media,
                 code: 'connection_failed',
                 message: $exception->getMessage(),
-                context: ['url' => $sourceUrl],
+                context: [
+                    'url' => $sourceUrl,
+                    'recheck_required' => ($recheckContext['required'] ?? false) === true,
+                    'conditional_recheck' => ($recheckContext['conditional'] ?? false) === true,
+                ],
             );
 
             return;
@@ -101,7 +117,50 @@ class DownloadProductImportMediaJob implements ShouldQueue
                 media: $media,
                 code: 'download_failed',
                 message: $exception->getMessage(),
-                context: ['url' => $sourceUrl],
+                context: [
+                    'url' => $sourceUrl,
+                    'recheck_required' => ($recheckContext['required'] ?? false) === true,
+                    'conditional_recheck' => ($recheckContext['conditional'] ?? false) === true,
+                ],
+            );
+
+            return;
+        }
+
+        if ($response->status() === 304) {
+            $previousLocalPath = $this->normalizeString($recheckContext['previous_local_path'] ?? null);
+
+            if (
+                ($recheckContext['required'] ?? false) !== true
+                || $previousLocalPath === null
+                || ! $mediaService->pathExistsOnDisk($previousLocalPath)
+            ) {
+                $mediaService->failMedia(
+                    media: $media,
+                    code: 'not_modified_without_local_copy',
+                    message: 'Media source returned 304 but no local media copy is available.',
+                    context: [
+                        'url' => $sourceUrl,
+                        'status' => 304,
+                        'recheck_required' => ($recheckContext['required'] ?? false) === true,
+                        'previous_local_path' => $previousLocalPath,
+                    ],
+                );
+
+                return;
+            }
+
+            $mediaService->completeMedia(
+                media: $media,
+                localPath: $previousLocalPath,
+                mimeType: $this->normalizeString($recheckContext['previous_mime_type'] ?? null),
+                bytes: $this->normalizeInt($recheckContext['previous_bytes'] ?? null),
+                contentHash: $this->normalizeString($recheckContext['previous_content_hash'] ?? null),
+                sourceKind: $media->source_kind,
+                meta: $this->completionMeta(
+                    etag: $response->header('ETag'),
+                    lastModified: $response->header('Last-Modified'),
+                ),
             );
 
             return;
@@ -115,6 +174,7 @@ class DownloadProductImportMediaJob implements ShouldQueue
                 context: [
                     'url' => $sourceUrl,
                     'status' => $response->status(),
+                    'recheck_required' => ($recheckContext['required'] ?? false) === true,
                 ],
             );
 
@@ -169,10 +229,39 @@ class DownloadProductImportMediaJob implements ShouldQueue
 
         $contentHash = hash('sha256', $body);
         $sourceKind = $this->resolveSourceKind($mimeType);
+        $previousLocalPath = $this->normalizeString($recheckContext['previous_local_path'] ?? null);
+        $previousContentHash = $this->normalizeString($recheckContext['previous_content_hash'] ?? null);
+
+        if (
+            ($recheckContext['required'] ?? false) === true
+            && $previousLocalPath !== null
+            && $mediaService->pathExistsOnDisk($previousLocalPath)
+            && $previousContentHash !== null
+            && hash_equals($previousContentHash, $contentHash)
+        ) {
+            $mediaService->completeMedia(
+                media: $media,
+                localPath: $previousLocalPath,
+                mimeType: $mimeType,
+                bytes: $bytes,
+                contentHash: $contentHash,
+                sourceKind: $sourceKind,
+                meta: $this->completionMeta(
+                    etag: $response->header('ETag'),
+                    lastModified: $response->header('Last-Modified'),
+                ),
+            );
+
+            return;
+        }
 
         $reusableByContentHash = $mediaService->findReusableCompletedByContentHash($contentHash, $media->id);
 
-        if ($reusableByContentHash instanceof ProductImportMedia && is_string($reusableByContentHash->local_path)) {
+        if (
+            $reusableByContentHash instanceof ProductImportMedia
+            && is_string($reusableByContentHash->local_path)
+            && $mediaService->pathExistsOnDisk($reusableByContentHash->local_path)
+        ) {
             $mediaService->completeMedia(
                 media: $media,
                 localPath: $reusableByContentHash->local_path,
@@ -180,6 +269,10 @@ class DownloadProductImportMediaJob implements ShouldQueue
                 bytes: $bytes,
                 contentHash: $contentHash,
                 sourceKind: $sourceKind,
+                meta: $this->completionMeta(
+                    etag: $response->header('ETag'),
+                    lastModified: $response->header('Last-Modified'),
+                ),
             );
 
             return;
@@ -227,6 +320,10 @@ class DownloadProductImportMediaJob implements ShouldQueue
             bytes: $bytes,
             contentHash: $contentHash,
             sourceKind: $sourceKind,
+            meta: $this->completionMeta(
+                etag: $response->header('ETag'),
+                lastModified: $response->header('Last-Modified'),
+            ),
         );
 
         if ($sourceKind === 'image') {
@@ -254,6 +351,63 @@ class DownloadProductImportMediaJob implements ShouldQueue
             message: $exception?->getMessage() ?? 'Media job failed without exception message.',
             context: ['url' => $media->source_url],
         );
+    }
+
+    /**
+     * @param  array{
+     *     required: bool,
+     *     conditional: bool,
+     *     etag: string|null,
+     *     last_modified: string|null,
+     *     previous_local_path: string|null,
+     *     previous_content_hash: string|null,
+     *     previous_mime_type: string|null,
+     *     previous_bytes: int|null
+     * }  $recheck
+     */
+    private function withConditionalRecheckHeaders(PendingRequest $request, array $recheck): PendingRequest
+    {
+        if (($recheck['required'] ?? false) !== true || ($recheck['conditional'] ?? false) !== true) {
+            return $request;
+        }
+
+        $headers = [];
+        $etag = $this->normalizeString($recheck['etag'] ?? null);
+        $lastModified = $this->normalizeString($recheck['last_modified'] ?? null);
+
+        if ($etag !== null) {
+            $headers['If-None-Match'] = $etag;
+        }
+
+        if ($lastModified !== null) {
+            $headers['If-Modified-Since'] = $lastModified;
+        }
+
+        if ($headers === []) {
+            return $request;
+        }
+
+        return $request->withHeaders($headers);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function completionMeta(mixed $etag, mixed $lastModified): array
+    {
+        $meta = [
+            'etag' => $this->normalizeStringFromHeader($etag),
+            'last_modified' => $this->normalizeStringFromHeader($lastModified),
+            'last_checked_at' => now()->toAtomString(),
+        ];
+
+        foreach ($meta as $key => $value) {
+            if ($value === null || $value === '') {
+                unset($meta[$key]);
+            }
+        }
+
+        return $meta;
     }
 
     private function lockKey(): string
@@ -347,5 +501,38 @@ class DownloadProductImportMediaJob implements ShouldQueue
         }
 
         return $sourceUrl;
+    }
+
+    private function normalizeStringFromHeader(mixed $value): ?string
+    {
+        if (is_array($value)) {
+            $value = $value[0] ?? null;
+        }
+
+        return $this->normalizeString($value);
+    }
+
+    private function normalizeString(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    private function normalizeInt(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_string($value) && preg_match('/^-?[0-9]+$/', trim($value)) === 1) {
+            return (int) trim($value);
+        }
+
+        return null;
     }
 }

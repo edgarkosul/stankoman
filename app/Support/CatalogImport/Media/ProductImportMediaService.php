@@ -6,7 +6,9 @@ use App\Jobs\DownloadProductImportMediaJob;
 use App\Models\ImportMediaIssue;
 use App\Models\Product;
 use App\Models\ProductImportMedia;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 final class ProductImportMediaService
 {
@@ -14,8 +16,12 @@ final class ProductImportMediaService
      * @param  array<int, string>  $sourceUrls
      * @return array{queued:int,reused:int,deduplicated:int,pending_media_ids:array<int, int>}
      */
-    public function enqueueProductMedia(Product $product, array $sourceUrls, ?int $runId = null): array
-    {
+    public function enqueueProductMedia(
+        Product $product,
+        array $sourceUrls,
+        ?int $runId = null,
+        bool $forceRecheck = false,
+    ): array {
         $queued = 0;
         $reused = 0;
         $deduplicated = 0;
@@ -31,13 +37,24 @@ final class ProductImportMediaService
                 ->first();
 
             if ($existingForProduct instanceof ProductImportMedia) {
-                if (
-                    $existingForProduct->status === ProductImportMedia::STATUS_COMPLETED
-                    && is_string($existingForProduct->local_path)
-                    && trim($existingForProduct->local_path) !== ''
-                ) {
-                    $reused++;
-                    $this->syncProductImageFields($product->id);
+                if ($this->hasUsableCompletedLocalPath($existingForProduct)) {
+                    if ($this->canReuseCompletedMedia($existingForProduct, $forceRecheck)) {
+                        $reused++;
+                        $this->syncProductImageFields($product->id);
+
+                        continue;
+                    }
+
+                    $this->prepareMediaForRecheck(
+                        media: $existingForProduct,
+                        sourceUrl: $sourceUrl,
+                        runId: $runId,
+                        forceRecheck: $forceRecheck,
+                        seedMedia: $existingForProduct,
+                    );
+
+                    $queued++;
+                    $pendingMediaIds[] = $existingForProduct->id;
 
                     continue;
                 }
@@ -51,19 +68,11 @@ final class ProductImportMediaService
                     continue;
                 }
 
-                $existingForProduct->fill([
-                    'run_id' => $runId,
-                    'status' => ProductImportMedia::STATUS_PENDING,
-                    'source_kind' => $this->guessSourceKindFromUrl($sourceUrl),
-                    'mime_type' => null,
-                    'bytes' => null,
-                    'content_hash' => null,
-                    'local_path' => null,
-                    'attempts' => 0,
-                    'last_error' => null,
-                    'processed_at' => null,
-                ]);
-                $existingForProduct->save();
+                $this->resetMediaAsPending(
+                    media: $existingForProduct,
+                    sourceUrl: $sourceUrl,
+                    runId: $runId,
+                );
 
                 $queued++;
                 $pendingMediaIds[] = $existingForProduct->id;
@@ -83,17 +92,33 @@ final class ProductImportMediaService
 
             $reusable = $this->findReusableCompletedBySourceHash($sourceUrlHash, $media->id);
 
-            if ($reusable instanceof ProductImportMedia && is_string($reusable->local_path)) {
-                $this->completeMedia(
+            if ($reusable instanceof ProductImportMedia && $this->hasUsableCompletedLocalPath($reusable)) {
+                if ($this->canReuseCompletedMedia($reusable, $forceRecheck)) {
+                    $this->completeMedia(
+                        media: $media,
+                        localPath: (string) $reusable->local_path,
+                        mimeType: $reusable->mime_type,
+                        bytes: $reusable->bytes,
+                        contentHash: $reusable->content_hash,
+                        sourceKind: $reusable->source_kind,
+                        meta: $this->completionMetaFromExistingMedia($reusable),
+                    );
+
+                    $reused++;
+
+                    continue;
+                }
+
+                $this->prepareMediaForRecheck(
                     media: $media,
-                    localPath: $reusable->local_path,
-                    mimeType: $reusable->mime_type,
-                    bytes: $reusable->bytes,
-                    contentHash: $reusable->content_hash,
-                    sourceKind: $reusable->source_kind,
+                    sourceUrl: $sourceUrl,
+                    runId: $runId,
+                    forceRecheck: $forceRecheck,
+                    seedMedia: $reusable,
                 );
 
-                $reused++;
+                $queued++;
+                $pendingMediaIds[] = $media->id;
 
                 continue;
             }
@@ -150,6 +175,18 @@ final class ProductImportMediaService
         $maxBytes = (int) config('catalog-import.media.max_bytes', 10 * 1024 * 1024);
 
         return $maxBytes > 0 ? $maxBytes : 10 * 1024 * 1024;
+    }
+
+    public function recheckTtlSeconds(): int
+    {
+        $ttl = (int) config('catalog-import.media.recheck_ttl_seconds', 7 * 24 * 60 * 60);
+
+        return max(0, $ttl);
+    }
+
+    public function useConditionalHeadersForRecheck(): bool
+    {
+        return (bool) config('catalog-import.media.use_conditional_headers_for_recheck', true);
     }
 
     /**
@@ -247,6 +284,64 @@ final class ProductImportMediaService
         return $media;
     }
 
+    /**
+     * @return array{
+     *     required: bool,
+     *     conditional: bool,
+     *     etag: string|null,
+     *     last_modified: string|null,
+     *     previous_local_path: string|null,
+     *     previous_content_hash: string|null,
+     *     previous_mime_type: string|null,
+     *     previous_bytes: int|null
+     * }
+     */
+    public function resolveRecheckContext(ProductImportMedia $media): array
+    {
+        $meta = $this->normalizeMeta($media->meta);
+        $recheck = is_array($meta['recheck'] ?? null) ? $meta['recheck'] : [];
+
+        return [
+            'required' => ($recheck['required'] ?? false) === true,
+            'conditional' => ($recheck['conditional'] ?? false) === true && $this->useConditionalHeadersForRecheck(),
+            'etag' => $this->normalizeString($recheck['etag'] ?? $meta['etag'] ?? null),
+            'last_modified' => $this->normalizeString($recheck['last_modified'] ?? $meta['last_modified'] ?? null),
+            'previous_local_path' => $this->normalizeString($recheck['previous_local_path'] ?? null),
+            'previous_content_hash' => $this->normalizeString($recheck['previous_content_hash'] ?? null),
+            'previous_mime_type' => $this->normalizeString($recheck['previous_mime_type'] ?? null),
+            'previous_bytes' => $this->normalizeInt($recheck['previous_bytes'] ?? null),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function completionMetaFromExistingMedia(ProductImportMedia $media): array
+    {
+        $meta = $this->normalizeMeta($media->meta);
+
+        $completedMeta = [
+            'etag' => $this->normalizeString($meta['etag'] ?? null),
+            'last_modified' => $this->normalizeString($meta['last_modified'] ?? null),
+            'last_checked_at' => $this->normalizeString($meta['last_checked_at'] ?? null),
+        ];
+
+        if (($completedMeta['last_checked_at'] ?? null) === null && $media->processed_at !== null) {
+            $completedMeta['last_checked_at'] = $media->processed_at->toAtomString();
+        }
+
+        return $this->pruneMeta($completedMeta);
+    }
+
+    public function canReuseCompletedMedia(ProductImportMedia $media, bool $forceRecheck = false): bool
+    {
+        if (! $this->hasUsableCompletedLocalPath($media)) {
+            return false;
+        }
+
+        return ! $this->requiresRecheck($media, $forceRecheck);
+    }
+
     public function completeMedia(
         ProductImportMedia $media,
         string $localPath,
@@ -254,6 +349,7 @@ final class ProductImportMediaService
         ?int $bytes,
         ?string $contentHash = null,
         ?string $sourceKind = null,
+        array $meta = [],
     ): ProductImportMedia {
         $media->status = ProductImportMedia::STATUS_COMPLETED;
         $media->local_path = $localPath;
@@ -263,6 +359,7 @@ final class ProductImportMediaService
         $media->source_kind = $sourceKind ?? $media->source_kind;
         $media->processed_at = now();
         $media->last_error = null;
+        $media->meta = $this->mergeCompletionMeta($media, $meta);
         $media->save();
 
         if ($media->source_kind === 'image') {
@@ -385,6 +482,149 @@ final class ProductImportMediaService
             ->orderByDesc('id');
     }
 
+    private function hasUsableCompletedLocalPath(ProductImportMedia $media): bool
+    {
+        if ($media->status !== ProductImportMedia::STATUS_COMPLETED) {
+            return false;
+        }
+
+        $localPath = $this->normalizeString($media->local_path);
+
+        if ($localPath === null) {
+            return false;
+        }
+
+        return $this->pathExistsOnDisk($localPath);
+    }
+
+    private function requiresRecheck(ProductImportMedia $media, bool $forceRecheck): bool
+    {
+        if ($forceRecheck) {
+            return true;
+        }
+
+        $ttl = $this->recheckTtlSeconds();
+
+        if ($ttl <= 0) {
+            return false;
+        }
+
+        $lastCheckedAt = $this->resolveLastCheckedAt($media);
+
+        if (! $lastCheckedAt instanceof CarbonImmutable) {
+            return true;
+        }
+
+        return $lastCheckedAt->addSeconds($ttl)->lessThanOrEqualTo(CarbonImmutable::now());
+    }
+
+    private function resolveLastCheckedAt(ProductImportMedia $media): ?CarbonImmutable
+    {
+        $meta = $this->normalizeMeta($media->meta);
+        $fromMeta = $this->normalizeString($meta['last_checked_at'] ?? null);
+
+        if ($fromMeta !== null) {
+            try {
+                return CarbonImmutable::parse($fromMeta);
+            } catch (Throwable) {
+                // ignore invalid metadata and fallback to processed_at
+            }
+        }
+
+        return $media->processed_at?->toImmutable();
+    }
+
+    private function prepareMediaForRecheck(
+        ProductImportMedia $media,
+        string $sourceUrl,
+        ?int $runId,
+        bool $forceRecheck,
+        ?ProductImportMedia $seedMedia = null,
+    ): ProductImportMedia {
+        $seed = $seedMedia instanceof ProductImportMedia ? $seedMedia : $media;
+        $seedMeta = $this->normalizeMeta($seed->meta);
+
+        $etag = $this->normalizeString($seedMeta['etag'] ?? null);
+        $lastModified = $this->normalizeString($seedMeta['last_modified'] ?? null);
+        $previousLocalPath = $this->normalizeString($seed->local_path);
+
+        if ($previousLocalPath !== null && ! $this->pathExistsOnDisk($previousLocalPath)) {
+            $previousLocalPath = null;
+        }
+
+        $conditional = $this->useConditionalHeadersForRecheck()
+            && $previousLocalPath !== null
+            && ($etag !== null || $lastModified !== null);
+
+        $meta = [
+            'etag' => $etag,
+            'last_modified' => $lastModified,
+            'recheck' => [
+                'required' => true,
+                'force' => $forceRecheck,
+                'conditional' => $conditional,
+                'requested_at' => now()->toAtomString(),
+                'etag' => $etag,
+                'last_modified' => $lastModified,
+                'previous_local_path' => $previousLocalPath,
+                'previous_content_hash' => $this->normalizeString($seed->content_hash),
+                'previous_mime_type' => $this->normalizeString($seed->mime_type),
+                'previous_bytes' => $this->normalizeInt($seed->bytes),
+            ],
+        ];
+
+        return $this->resetMediaAsPending(
+            media: $media,
+            sourceUrl: $sourceUrl,
+            runId: $runId,
+            meta: $this->pruneMeta($meta),
+        );
+    }
+
+    private function resetMediaAsPending(
+        ProductImportMedia $media,
+        string $sourceUrl,
+        ?int $runId,
+        ?array $meta = null,
+    ): ProductImportMedia {
+        $media->fill([
+            'run_id' => $runId,
+            'source_url' => $sourceUrl,
+            'source_url_hash' => hash('sha256', $sourceUrl),
+            'status' => ProductImportMedia::STATUS_PENDING,
+            'source_kind' => $this->guessSourceKindFromUrl($sourceUrl),
+            'mime_type' => null,
+            'bytes' => null,
+            'content_hash' => null,
+            'local_path' => null,
+            'attempts' => 0,
+            'last_error' => null,
+            'processed_at' => null,
+            'meta' => $meta,
+        ]);
+        $media->save();
+
+        return $media;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @return array<string, mixed>|null
+     */
+    private function mergeCompletionMeta(ProductImportMedia $media, array $meta): ?array
+    {
+        $merged = $this->normalizeMeta($media->meta);
+        unset($merged['recheck']);
+
+        foreach ($meta as $key => $value) {
+            $merged[$key] = $value;
+        }
+
+        $merged = $this->pruneMeta($merged);
+
+        return $merged !== [] ? $merged : null;
+    }
+
     /**
      * @param  array<int, string>  $sourceUrls
      * @return array<int, string>
@@ -420,5 +660,66 @@ final class ProductImportMediaService
         }
 
         return 'image';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeMeta(mixed $meta): array
+    {
+        return is_array($meta) ? $meta : [];
+    }
+
+    private function normalizeString(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    private function normalizeInt(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_string($value) && preg_match('/^-?[0-9]+$/', trim($value)) === 1) {
+            return (int) trim($value);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @return array<string, mixed>
+     */
+    private function pruneMeta(array $meta): array
+    {
+        foreach ($meta as $key => $value) {
+            if (is_array($value)) {
+                $value = $this->pruneMeta($value);
+
+                if ($value === []) {
+                    unset($meta[$key]);
+
+                    continue;
+                }
+
+                $meta[$key] = $value;
+
+                continue;
+            }
+
+            if ($value === null || $value === '') {
+                unset($meta[$key]);
+            }
+        }
+
+        return $meta;
     }
 }

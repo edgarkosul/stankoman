@@ -285,6 +285,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
         $eventLogger = $this->resolveEventLogger($options);
         $defaultSourceRef = $this->normalizeSourceRef($options['source_ref'] ?? null);
         $queueMedia = ($options['download_media'] ?? false) === true;
+        $forceMediaRecheck = ($options['force_media_recheck'] ?? false) === true;
         $pendingMediaIds = [];
 
         foreach ($payloads as $payload) {
@@ -356,6 +357,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
             $canCreate,
             $canUpdate,
             $queueMedia,
+            $forceMediaRecheck,
             $options,
             $supportsSourceCategoryReference,
             $eventLogger,
@@ -456,6 +458,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
                             product: $product,
                             sourceUrls: $payload->images,
                             runId: $runId,
+                            forceRecheck: $forceMediaRecheck,
                         );
 
                         $pendingMediaIds = array_merge($pendingMediaIds, $mediaQueueResult['pending_media_ids']);
