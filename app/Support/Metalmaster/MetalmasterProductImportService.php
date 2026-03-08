@@ -285,7 +285,7 @@ class MetalmasterProductImportService
                         $processed++;
                         $errors += count($processResult->errors);
 
-                        $imagesDownloaded += (int) ($processResult->meta['media_reused'] ?? 0);
+                        $imagesDownloaded += (int) ($processResult->meta['media_queued'] ?? 0);
                         $derivativesQueued += (int) ($processResult->meta['media_queued'] ?? 0);
                         $imageDownloadFailed += $this->countMediaErrors($processResult->errors);
                     } elseif (count($samples) < $normalized['show_samples']) {

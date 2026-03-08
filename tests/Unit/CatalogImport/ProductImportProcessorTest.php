@@ -4,6 +4,7 @@ use App\Models\Category;
 use App\Models\ImportRun;
 use App\Models\ImportRunEvent;
 use App\Models\Product;
+use App\Models\ProductImportMedia;
 use App\Models\ProductSupplierReference;
 use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
@@ -173,6 +174,55 @@ it('updates existing product by supplier and external id without changing catego
     expect($reference)->toBeInstanceOf(ProductSupplierReference::class)
         ->and($reference?->product_id)->toBe($product->id)
         ->and($reference?->last_seen_run_id)->toBe($secondRun->id);
+});
+
+it('does not change is_active for existing product during update', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Товар до обновления',
+        'slug' => 'product-with-fixed-active-state',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_fixed_active',
+        'external_id' => 'FIX-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'FIX-1',
+            name: 'Товар после обновления',
+            priceAmount: 150,
+        ),
+    ], [
+        'supplier' => 'supplier_fixed_active',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'publish_updated' => false,
+    ]);
+
+    expect($summary['processed'])->toBe(1)
+        ->and($summary['updated'])->toBe(1);
+
+    $product->refresh();
+
+    expect($product->name)->toBe('Товар после обновления')
+        ->and($product->price_amount)->toBe(150)
+        ->and($product->is_active)->toBeTrue();
 });
 
 it('marks existing product as unchanged when payload has no effective changes', function (): void {
@@ -431,7 +481,7 @@ it('writes gallery changes to event context as arrays, not json strings', functi
         ]);
 });
 
-it('defers image field changes in processing event context when media download is enabled', function (): void {
+it('does not mark product as updated when only media fields differ and media download is enabled', function (): void {
     Queue::fake();
 
     $firstRun = createImportRun('catalog_import_yml');
@@ -439,6 +489,7 @@ it('defers image field changes in processing event context when media download i
 
     $product = Product::query()->create([
         'name' => 'Товар с изображением',
+        'title' => 'Товар с изображением',
         'slug' => 'deferred-image-context-product',
         'price_amount' => 100,
         'currency' => 'RUB',
@@ -446,6 +497,9 @@ it('defers image field changes in processing event context when media download i
         'is_active' => true,
         'is_in_yml_feed' => true,
         'with_dns' => true,
+        'description' => '<p></p>',
+        'extra_description' => '<p></p>',
+        'meta_title' => 'Товар с изображением',
         'image' => '/storage/281/SP502.jpg',
         'thumb' => '/storage/281/SP502.jpg',
         'gallery' => ['/storage/281/SP502.jpg'],
@@ -467,6 +521,8 @@ it('defers image field changes in processing event context when media download i
         new ProductPayload(
             externalId: 'DEFERRED-1',
             name: 'Товар с изображением',
+            priceAmount: 100,
+            inStock: true,
             images: ['https://vactool.ru/storage/281/SP502.jpg'],
         ),
     ], [
@@ -481,16 +537,109 @@ it('defers image field changes in processing event context when media download i
 
     $event = ImportRunEvent::query()
         ->where('run_id', $secondRun->id)
-        ->where('result', 'updated')
+        ->where('result', 'unchanged')
         ->latest('id')
         ->first();
 
     expect($event)->not->toBeNull()
         ->and($event?->context)->toBeArray()
+        ->and($event?->context['media']['queued'] ?? null)->toBe(1)
+        ->and($event?->context['media']['reused'] ?? null)->toBe(0)
         ->and($event?->context['changes']['image'] ?? null)->toBeNull()
         ->and($event?->context['changes']['thumb'] ?? null)->toBeNull()
         ->and($event?->context['changes']['gallery'] ?? null)->toBeNull()
-        ->and($event?->context['deferred_changes'] ?? null)->toBe(['image', 'thumb', 'gallery']);
+        ->and($event?->context['deferred_changes'] ?? null)->toBeNull();
+});
+
+it('marks product as unchanged when media is fully reused on repeated import', function (): void {
+    Queue::fake();
+
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $sourceUrl = 'https://vactool.ru/storage/281/SP502.jpg';
+    $sourceUrlHash = hash('sha256', $sourceUrl);
+
+    $product = Product::query()->create([
+        'name' => 'Товар с переиспользуемой картинкой',
+        'title' => 'Товар с переиспользуемой картинкой',
+        'slug' => 'reused-image-context-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+        'description' => '<p></p>',
+        'extra_description' => '<p></p>',
+        'meta_title' => 'Товар с переиспользуемой картинкой',
+        'image' => 'pics/import/reused/source.jpg',
+        'thumb' => 'pics/import/reused/source.jpg',
+        'gallery' => ['pics/import/reused/source.jpg'],
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'reused_media_feed',
+        'external_id' => 'REUSED-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    ProductImportMedia::query()->create([
+        'run_id' => $firstRun->id,
+        'product_id' => $product->id,
+        'source_url' => $sourceUrl,
+        'source_url_hash' => $sourceUrlHash,
+        'source_kind' => 'image',
+        'status' => 'completed',
+        'mime_type' => 'image/jpeg',
+        'bytes' => 1024,
+        'content_hash' => hash('sha256', 'fake-content'),
+        'local_path' => 'pics/import/reused/source.jpg',
+        'attempts' => 1,
+        'processed_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+    $logger = new DatabaseImportRunEventLogger(batchSize: 1);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'REUSED-1',
+            name: 'Товар с переиспользуемой картинкой',
+            priceAmount: 100,
+            inStock: true,
+            images: [$sourceUrl],
+        ),
+    ], [
+        'supplier' => 'reused_media_feed',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'download_media' => true,
+        'event_logger' => $logger,
+    ]);
+
+    $logger->flush();
+
+    expect($summary['updated'])->toBe(0)
+        ->and($summary['skipped'])->toBe(1)
+        ->and($summary['results'][0]->operation ?? null)->toBe('unchanged')
+        ->and($summary['results'][0]->meta['media_queued'] ?? null)->toBe(0)
+        ->and($summary['results'][0]->meta['media_reused'] ?? null)->toBe(1);
+
+    $event = ImportRunEvent::query()
+        ->where('run_id', $secondRun->id)
+        ->where('result', 'unchanged')
+        ->latest('id')
+        ->first();
+
+    expect($event)->not->toBeNull()
+        ->and($event?->context)->toBeArray()
+        ->and($event?->context['media']['queued'] ?? null)->toBe(0)
+        ->and($event?->context['media']['reused'] ?? null)->toBe(1)
+        ->and($event?->context['deferred_changes'] ?? null)->toBeNull();
 });
 
 it('finalizes missing only in full sync authoritative mode', function (): void {

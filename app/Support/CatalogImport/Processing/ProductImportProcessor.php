@@ -390,7 +390,14 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
                 if ($product instanceof Product) {
                     if ($canUpdate) {
-                        $product->fill($this->buildProductAttributes($payload, $options, isNew: false));
+                        $attributes = $this->buildProductAttributes($payload, $options, isNew: false);
+                        $attributes = $this->sanitizeExistingProductUpdateAttributes(
+                            attributes: $attributes,
+                            queueMedia: $queueMedia,
+                            hasPayloadImages: $payload->images !== [],
+                        );
+
+                        $product->fill($attributes);
 
                         if ($product->isDirty()) {
                             $dirtyAttributes = $product->getDirty();
@@ -604,8 +611,6 @@ final class ProductImportProcessor implements ImportProcessorInterface
             $attributes['is_active'] = ($options['publish_created'] ?? true) === true;
             $attributes['is_in_yml_feed'] = ($options['is_in_yml_feed'] ?? true) === true;
             $attributes['with_dns'] = ($options['with_dns'] ?? true) === true;
-        } elseif (is_bool($options['publish_updated'] ?? null)) {
-            $attributes['is_active'] = (bool) $options['publish_updated'];
         }
 
         return $attributes;
@@ -1175,6 +1180,22 @@ final class ProductImportProcessor implements ImportProcessorInterface
         }
 
         return $value;
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function sanitizeExistingProductUpdateAttributes(
+        array $attributes,
+        bool $queueMedia,
+        bool $hasPayloadImages,
+    ): array {
+        if (! $queueMedia || ! $hasPayloadImages) {
+            return $attributes;
+        }
+
+        return array_diff_key($attributes, array_flip(self::DEFERRED_MEDIA_EVENT_FIELDS));
     }
 
     /**

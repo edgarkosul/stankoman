@@ -104,7 +104,7 @@ class ImportRunsTable
                     )),
 
                 TextColumn::make('totals.create')
-                    ->label('Создастся')
+                    ->label('Создано')
                     ->alignCenter()
                     ->sortable()
                     ->default(fn (ImportRun $record): int => (int) (
@@ -133,7 +133,7 @@ class ImportRunsTable
                     ),
 
                 TextColumn::make('totals.update')
-                    ->label('Обновится')
+                    ->label('Обновлено')
                     ->alignCenter()
                     ->sortable()
                     ->default(fn (ImportRun $record): int => (int) (
