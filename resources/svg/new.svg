@@ -10,9 +10,9 @@
     <path d="M258.86,198.31c-2.94,0-5.76-.24-8.49-.69-14.06,27.9-38.74,50.47-70.73,61.09-31.97,10.62-65.21,7.32-93.16-6.59l-13.13,14.09c33.15,18.13,73.46,22.98,112.15,10.13,40.18-13.35,70.33-43.03,85.55-79.22-4.22.78-8.29,1.18-12.18,1.18Z" class="brand-gray icon-base" fill="currentColor"/>
     <path d="M123.03,2.65l-29.95-2.65-21.3,19.68,15.38,46.29c.35-.34.7-.67,1.07-.97,8.06-6.46,20.58-6.64,28.51-.43,2.5,1.96,4.39,4.49,5.63,7.34,7.65-1.99,15.38-2.7,22.92-2.23L123.03,2.65Z" class="brand-dark icon-base" fill="currentColor"/>
     <path d="M89.22,196.59c-1.59,0-3.12-.63-4.24-1.76s-1.76-2.65-1.76-4.24v-2.92c-3.09-3.95-5.81-8.24-8.08-12.87l-47.76,51.26,11.03,26.74,28.72,9.83,48.03-51.55c-8.71-3.26-16.76-8.18-23.68-14.48h-2.27Z" class="brand-dark icon-base" fill="currentColor"/>
-    <circle cx="49.34" cy="127.12" r="11.13" class="brand-dark icon-base logo-dot" fill="currentColor" style="color: var(--logo-dot-color, currentColor)"/>
-    <circle cx="171.57" cy="234.4" r="11.13" class="brand-dark icon-base logo-dot" fill="currentColor" style="color: var(--logo-dot-color, currentColor)"/>
-    <circle cx="206.95" cy="74.76" r="11.13" class="brand-dark icon-base logo-dot" fill="currentColor" style="color: var(--logo-dot-color, currentColor)"/>
+    <circle cx="49.34" cy="127.12" r="11.13" class="brand-dark icon-base" fill="currentColor"/>
+    <circle cx="171.57" cy="234.4" r="11.13" class="brand-dark icon-base" fill="currentColor"/>
+    <circle cx="206.95" cy="74.76" r="11.13" class="brand-dark icon-base" fill="currentColor"/>
   </g>
   <g>
     <path d="M1086.16,103.79l.16,86.68-25.95.05-.55-11.29c-9.74,15.34-32.3,15.78-46.19,8.82-10.37-5.19-13.37-14.91-15.39-25.63l.03-58.58,26.85-.06.1,52.98c.01,7.66,5.47,13.12,12.7,13.53,11.56.66,19.98-5.2,21.48-17.13l-.1-49.36h26.86Z" class="brand-red icon-accent" fill="currentColor"/>

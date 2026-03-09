@@ -4,7 +4,8 @@
         <div class="flex flex-col items-start space-y-6 md:col-span-2 lg:col-span-1">
             <a href="{{ route('home') }}" aria-label="На главную" class="block w-full max-w-72">
                 <x-icon name="logo"
-                    class="h-auto w-full [&_.brand-gray]:text-white [&_.white]:text-zinc-700 [&_.brand-red]:text-white [&_.brand-dark]:text-white" />
+                    class="h-auto w-full [&_.brand-gray]:text-white [&_.white]:text-zinc-700 [&_.brand-red]:text-white [&_.brand-dark]:text-white"
+                    style="--logo-dot-color: #404040;" />
             </a>
             <span>Профессиональный инструмент и оборудование</span>
             <span>ПН - Пт: 9:00 - 18:00

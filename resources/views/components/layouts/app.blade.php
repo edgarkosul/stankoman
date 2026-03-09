@@ -4,14 +4,14 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scrollbar-w-0.5 scrollbar scrollbar-thumb-brand-green scrollbar-track-zinc-50">
 
 <head>
-<link rel="icon" href="/favicon.ico?v=2" sizes="any">
-<link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
-<link rel="icon" href="/favicon-32x32.png?v=2" type="image/png" sizes="32x32">
-<link rel="icon" href="/favicon-16x16.png?v=2" type="image/png" sizes="16x16">
 
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=2">
-
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=4">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=4">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=4">
+<link rel="shortcut icon" href="/favicon.ico?v=4">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=4">
 <link rel="manifest" href="/site.webmanifest">
+
 <meta name="theme-color" content="#ffffff">
     @include('partials.head', ['title' => $title])
     @stack('head')
