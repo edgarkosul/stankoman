@@ -71,7 +71,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $name = $this->textOrNull($xml->name ?? null);
         $categoryId = $this->textOrNull($xml->categoryId ?? null);
         $priceRaw = $this->textOrNull($xml->price ?? null);
-        $currency = $this->textOrNull($xml->currencyId ?? null);
+        $currency = $this->resolveCurrency($xml->currencyId ?? null);
 
         $this->appendRequiredFieldErrors(
             errors: $errors,
@@ -130,7 +130,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $model = $this->textOrNull($xml->model ?? null);
         $categoryId = $this->textOrNull($xml->categoryId ?? null);
         $priceRaw = $this->textOrNull($xml->price ?? null);
-        $currency = $this->textOrNull($xml->currencyId ?? null);
+        $currency = $this->resolveCurrency($xml->currencyId ?? null);
 
         $this->appendRequiredFieldErrors(
             errors: $errors,
@@ -257,6 +257,17 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         }
 
         return (int) round((float) $normalized);
+    }
+
+    private function resolveCurrency(mixed $value): ?string
+    {
+        $currency = $this->textOrNull($value);
+
+        if ($currency !== null) {
+            return $currency;
+        }
+
+        return $this->textOrNull($this->profile->defaults()['currency'] ?? null);
     }
 
     /**

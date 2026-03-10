@@ -56,6 +56,54 @@ XML;
     }
 });
 
+it('defaults currency to rub when currencyId is missing in yandex market feed offers', function () {
+    $xml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<yml_catalog date="2026-03-05 00:00">
+  <shop>
+    <offers>
+      <offer id="A1" available="true">
+        <name>Simple Product</name>
+        <price>123</price>
+        <categoryId>1</categoryId>
+      </offer>
+      <offer id="A2" type="vendor.model" available="false">
+        <vendor>Vactool</vendor>
+        <model>VT-9000</model>
+        <price>999</price>
+        <categoryId>1</categoryId>
+      </offer>
+    </offers>
+  </shop>
+</yml_catalog>
+XML;
+
+    $path = tempnam(sys_get_temp_dir(), 'yandex_feed_');
+    file_put_contents($path, $xml);
+
+    try {
+        $result = app(YandexMarketFeedImportService::class)->run([
+            'source' => $path,
+            'write' => false,
+            'limit' => 0,
+            'delay_ms' => 0,
+            'show_samples' => 2,
+        ]);
+
+        expect($result['fatal_error'])->toBeNull();
+        expect($result['no_urls'])->toBeFalse();
+        expect($result['found_urls'])->toBe(2);
+        expect($result['processed'])->toBe(2);
+        expect($result['errors'])->toBe(0);
+        expect($result['success'])->toBeTrue();
+        expect($result['samples'])->toHaveCount(2);
+        expect($result['samples'][0]['currency'])->toBe('RUB');
+        expect($result['samples'][1]['currency'])->toBe('RUB');
+    } finally {
+        @unlink($path);
+    }
+});
+
 it('returns record-level error for invalid yandex market feed offer', function () {
     $xml = <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
