@@ -35,7 +35,8 @@ it('dispatches queued vactool run from unified catalog import command', function
     Queue::assertPushed(RunVactoolProductImportJob::class, function (RunVactoolProductImportJob $job) use ($run): bool {
         return $job->runId === $run?->id
             && $job->write === true
-            && (string) ($job->options['mode'] ?? '') === 'full_sync_authoritative';
+            && (string) ($job->options['mode'] ?? '') === 'full_sync_authoritative'
+            && $job->afterCommit === true;
     });
 });
 
@@ -64,7 +65,8 @@ it('dispatches queued metalmaster run from unified catalog import command', func
 
     Queue::assertPushed(RunMetalmasterProductImportJob::class, function (RunMetalmasterProductImportJob $job) use ($run): bool {
         return $job->runId === $run?->id
-            && $job->write === false;
+            && $job->write === false
+            && $job->afterCommit === true;
     });
 });
 
@@ -93,7 +95,8 @@ it('dispatches queued yandex market feed run from unified catalog import command
     Queue::assertPushed(RunYandexMarketFeedImportJob::class, function (RunYandexMarketFeedImportJob $job) use ($run): bool {
         return $job->runId === $run?->id
             && $job->write === false
-            && (string) ($job->options['source'] ?? '') === 'https://example.test/yandex-market-feed.xml';
+            && (string) ($job->options['source'] ?? '') === 'https://example.test/yandex-market-feed.xml'
+            && $job->afterCommit === true;
     });
 });
 

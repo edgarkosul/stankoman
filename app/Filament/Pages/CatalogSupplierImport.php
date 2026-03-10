@@ -558,9 +558,9 @@ class CatalogSupplierImport extends Page implements HasForms
         );
 
         if ($supplier === 'vactool') {
-            RunVactoolProductImportJob::dispatch($run->id, $options, $write);
+            RunVactoolProductImportJob::dispatch($run->id, $options, $write)->afterCommit();
         } else {
-            RunMetalmasterProductImportJob::dispatch($run->id, $options, $write);
+            RunMetalmasterProductImportJob::dispatch($run->id, $options, $write)->afterCommit();
         }
 
         $this->lastRunId = $run->id;

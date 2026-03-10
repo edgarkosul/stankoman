@@ -271,7 +271,9 @@ test('yandex market feed import page dispatches job with selected category filte
     expect(data_get($run?->columns, 'category_id'))->toBe(22);
 
     Queue::assertPushed(RunYandexMarketFeedImportJob::class, function (RunYandexMarketFeedImportJob $job) use ($page): bool {
-        return $job->runId === $page->lastRunId && $job->write === false;
+        return $job->runId === $page->lastRunId
+            && $job->write === false
+            && $job->afterCommit === true;
     });
 });
 

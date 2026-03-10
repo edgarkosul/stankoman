@@ -703,7 +703,7 @@ class YandexMarketFeedImport extends Page implements HasForms
             app(YandexMarketFeedSourceHistoryService::class)->markUsedById($sourceId, $run->id);
         }
 
-        RunYandexMarketFeedImportJob::dispatch($run->id, $options, $write);
+        RunYandexMarketFeedImportJob::dispatch($run->id, $options, $write)->afterCommit();
 
         $this->lastRunId = $run->id;
         $this->refreshLastSavedRun();

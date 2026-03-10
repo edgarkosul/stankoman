@@ -211,18 +211,18 @@ class CatalogImportProductsCommand extends Command
     private function dispatchQueuedJob(string $supplier, ImportRun $run, array $options, bool $write): void
     {
         if ($supplier === 'vactool') {
-            RunVactoolProductImportJob::dispatch($run->id, $options, $write);
+            RunVactoolProductImportJob::dispatch($run->id, $options, $write)->afterCommit();
 
             return;
         }
 
         if ($supplier === 'metalmaster') {
-            RunMetalmasterProductImportJob::dispatch($run->id, $options, $write);
+            RunMetalmasterProductImportJob::dispatch($run->id, $options, $write)->afterCommit();
 
             return;
         }
 
-        RunYandexMarketFeedImportJob::dispatch($run->id, $options, $write);
+        RunYandexMarketFeedImportJob::dispatch($run->id, $options, $write)->afterCommit();
     }
 
     private function runSynchronously(

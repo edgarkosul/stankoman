@@ -13,6 +13,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class RunYandexMarketFeedImportJob implements ShouldQueue
@@ -49,6 +50,13 @@ class RunYandexMarketFeedImportJob implements ShouldQueue
         $run = ImportRun::query()->find($this->runId);
 
         if (! $run) {
+            Log::warning('Queued yandex import run not found', [
+                'run_id' => $this->runId,
+                'job_class' => self::class,
+                'queue' => $this->job?->getQueue(),
+                'connection' => $this->job?->getConnectionName(),
+            ]);
+
             return;
         }
 
