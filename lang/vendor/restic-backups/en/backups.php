@@ -46,6 +46,8 @@ return [
                         'modal_heading' => 'Init repository',
                         'modal_description' => 'This will initialize a new restic repository at the computed path.',
                         'confirm_label' => 'Type INIT to confirm',
+                        'recompute_path_label' => 'Recompute path from APP_NAME/APP_ENV',
+                        'recompute_path_helper' => 'Before initialization, updates the restic/<app>/<env> path from current config values.',
                     ],
                 ],
                 'storage' => [
@@ -297,6 +299,9 @@ return [
                 'snapshot_delete_queued_body' => 'Delete job has been queued and will run in background.',
                 'restore_queued' => 'Restore queued',
                 'restore_queued_body' => 'Restore job has been queued. During cutover the site will briefly enter maintenance. Use the bypass path from Runs if needed.',
+                'restore_ready' => 'Restore completed',
+                'restore_ready_body' => 'Restore for snapshot :snapshot completed successfully.',
+                'restore_ready_body_generic' => 'Restore completed successfully.',
                 'export_queued' => 'Export queued',
                 'export_queued_body' => 'Archive export job queued. Open Runs to download when it finishes.',
                 'export_ready' => 'Archive ready',
@@ -359,6 +364,7 @@ return [
                 'stage_validate' => 'Stage validation',
                 'cutover_swap' => 'Swap releases',
                 'cutover_env_preserve' => 'Preserve .env',
+                'cutover_runtime_prepare' => 'Prepare runtime directories',
                 'cutover_down_after_swap' => 'Maintenance after swap',
                 'runtime_cleanup' => 'Runtime cleanup',
                 'storage_link' => 'Storage link',
@@ -422,6 +428,8 @@ return [
                     'result_fail' => 'FAIL',
                     'same_fs_ok' => ' / same FS: OK',
                     'same_fs_fail' => ' / same FS: FAIL',
+                    'staging_parent_ok' => ' / staging parent writable: OK',
+                    'staging_parent_fail' => ' / staging parent writable: FAIL',
                 ],
                 'confirmation' => [
                     'phrase_label' => 'Confirmation phrase',
@@ -450,6 +458,7 @@ return [
             ],
             'table' => [
                 'columns' => [
+                    'id' => 'Run ID',
                     'started' => 'Started',
                     'finished' => 'Finished',
                     'type' => 'Type',
@@ -477,6 +486,12 @@ return [
                         'export_snapshot' => 'Export snapshot',
                         'export_full' => 'Export FULL',
                         'export_delta' => 'Export DELTA',
+                    ],
+                    'trigger_options' => [
+                        'manual' => 'Manual',
+                        'schedule' => 'Schedule',
+                        'system' => 'System',
+                        'filament' => 'Filament',
                     ],
                     'started_at' => 'Started date',
                     'from' => 'From',
@@ -510,6 +525,11 @@ return [
             'enabled' => 'enabled',
             'disabled' => 'disabled',
         ],
+        'scope_values' => [
+            'files' => 'Files',
+            'db' => 'Database',
+            'both' => 'Database + files',
+        ],
         'runs' => [
             'labels' => [
                 'status' => 'Status',
@@ -527,8 +547,10 @@ return [
                 'mode' => 'Mode',
                 'safety_backup' => 'Safety backup',
                 'rollback_path' => 'Rollback path',
+                'rollback_path_moved_back' => 'Rollback directory was moved back to project root (:path) during rollback.',
                 'safety_dump' => 'Safety DB dump',
                 'bypass_path' => 'Bypass path',
+                'bypass_notice' => 'If the site returns 503, it is available at:',
                 'copy' => 'Copy',
                 'db_dump' => 'DB Dump',
                 'backup' => 'Backup',
