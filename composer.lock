@@ -6573,7 +6573,7 @@
         },
         {
             "name": "siteko/filament-restic-backups",
-            "version": "v0.2.10",
+            "version": "v0.2.11",
             "source": {
                 "type": "git",
                 "url": "https://github.com/siteko-net/filament-restic-backups.git",
