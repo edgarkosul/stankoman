@@ -10,6 +10,7 @@ test('admin panel has database notifications enabled', function () {
     $panel = $provider->panel(Panel::make());
 
     expect($panel->hasDatabaseNotifications())->toBeTrue();
+    expect($panel->hasLazyLoadedDatabaseNotifications())->toBeFalse();
     expect($panel->getDatabaseNotificationsPollingInterval())->toBe('10s');
 });
 

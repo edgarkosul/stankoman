@@ -19,6 +19,7 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Siteko\FilamentResticBackups\Filament\ResticBackupsPlugin;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -27,8 +28,8 @@ class AdminPanelProvider extends PanelProvider
         $plugins = [];
 
         // Avoid hard failures during Composer uninstall/update when optional packages are temporarily unavailable.
-        if (class_exists(\Siteko\FilamentResticBackups\Filament\ResticBackupsPlugin::class)) {
-            $plugins[] = \Siteko\FilamentResticBackups\Filament\ResticBackupsPlugin::make();
+        if (class_exists(ResticBackupsPlugin::class)) {
+            $plugins[] = ResticBackupsPlugin::make();
         }
 
         return $panel
@@ -78,7 +79,7 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make('Меню')->collapsed(),
                 NavigationGroup::make('Настройки')->collapsed(),
             ])
-            ->databaseNotifications()
+            ->databaseNotifications(isLazy: false)
             ->databaseNotificationsPolling('10s')
             ->plugins($plugins);
     }
