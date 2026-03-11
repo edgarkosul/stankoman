@@ -6573,16 +6573,16 @@
         },
         {
             "name": "siteko/filament-restic-backups",
-            "version": "v0.2.11",
+            "version": "v0.2.13",
             "source": {
                 "type": "git",
                 "url": "https://github.com/siteko-net/filament-restic-backups.git",
-                "reference": "1fcd07e4e840e6568f2f51c2438f5e0a8ec78566"
+                "reference": "765b7044af6e2e8d14ce4dc140b7480085eb8d48"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/siteko-net/filament-restic-backups/zipball/1fcd07e4e840e6568f2f51c2438f5e0a8ec78566",
-                "reference": "1fcd07e4e840e6568f2f51c2438f5e0a8ec78566",
+                "url": "https://api.github.com/repos/siteko-net/filament-restic-backups/zipball/765b7044af6e2e8d14ce4dc140b7480085eb8d48",
+                "reference": "765b7044af6e2e8d14ce4dc140b7480085eb8d48",
                 "shasum": ""
             },
             "require": {
@@ -6620,7 +6620,7 @@
                 "issues": "https://github.com/siteko-net/filament-restic-backups/issues",
                 "source": "https://github.com/siteko-net/filament-restic-backups"
             },
-            "time": "2026-03-11T05:41:40+00:00"
+            "time": "2026-03-11T06:04:46+00:00"
         },
         {
             "name": "solution-forest/filament-tree",
