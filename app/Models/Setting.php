@@ -48,9 +48,26 @@ class Setting extends Model
         };
     }
 
+    public function getTranslatedKeyAttribute(): string
+    {
+        return self::translateKey((string) $this->key);
+    }
+
     public static function flushCache(): bool
     {
         return cache()->forget(self::CACHE_KEY);
+    }
+
+    public static function translateKey(string $key): string
+    {
+        $translationKey = 'settings.'.$key;
+        $translated = __($translationKey);
+
+        if ($translated === $translationKey) {
+            return $key;
+        }
+
+        return $translated;
     }
 
     protected function decodeJson(?string $raw): mixed

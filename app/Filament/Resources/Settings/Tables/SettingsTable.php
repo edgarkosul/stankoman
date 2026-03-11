@@ -17,16 +17,7 @@ class SettingsTable
                     ->label('Ключ')
                     ->searchable()
                     ->sortable()
-                    ->formatStateUsing(function (string $state, Setting $record): string {
-                        $translationKey = 'settings.'.$record->key;
-                        $translated = __($translationKey);
-
-                        if ($translated === $translationKey) {
-                            return $record->key;
-                        }
-
-                        return $translated;
-                    }),
+                    ->formatStateUsing(fn (string $state, Setting $record): string => $record->translated_key),
 
                 TextColumn::make('value')
                     ->label('Значение')

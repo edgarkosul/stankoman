@@ -16,13 +16,6 @@ class SettingForm
     {
         return $schema
             ->components([
-                TextInput::make('key')
-                    ->label('Ключ')
-                    ->disabled()
-                    ->dehydrated(true)
-                    ->required()
-                    ->columnSpanFull(),
-
                 Select::make('type')
                     ->label('Тип')
                     ->disabled()
@@ -38,7 +31,6 @@ class SettingForm
 
                 Textarea::make('value')
                     ->label('Значение')
-                    ->helperText('Сохраняется как строка. Приведение к нужному типу делается автоматически.')
                     ->visible(fn (Get $get): bool => ! in_array($get('key'), ['general.manager_emails', 'general.filament_admin_emails'], true))
                     ->dehydrated(fn (Get $get): bool => ! in_array($get('key'), ['general.manager_emails', 'general.filament_admin_emails'], true))
                     ->columnSpanFull(),

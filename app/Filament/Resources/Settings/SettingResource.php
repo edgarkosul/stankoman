@@ -28,7 +28,7 @@ class SettingResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Настройки';
 
-    protected static ?string $recordTitleAttribute = 'key';
+    protected static ?string $recordTitleAttribute = 'translated_key';
 
     protected static ?int $navigationSort = 7;
 
