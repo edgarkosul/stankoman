@@ -152,3 +152,6 @@ Route::middleware(['web', 'auth'])
     ->name('admin.tools.download-import');
 
 require __DIR__.'/settings.php';
+test()->get('/test', function () {
+    return view('test');
+});
