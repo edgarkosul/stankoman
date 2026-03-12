@@ -23,3 +23,9 @@ test('admin sees translated title on the setting edit page', function (): void {
         ->assertSuccessful()
         ->assertSee('Адреса админов Filament');
 });
+
+test('settings global search only uses persisted columns', function (): void {
+    expect(SettingResource::getGloballySearchableAttributes())
+        ->toBe(['key'])
+        ->not->toContain('translated_key');
+});

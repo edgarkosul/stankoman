@@ -56,6 +56,11 @@ class SettingResource extends Resource
         ];
     }
 
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['key'];
+    }
+
     public static function canCreate(): bool
     {
         return false;
