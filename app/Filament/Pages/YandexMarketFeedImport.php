@@ -6,6 +6,7 @@ use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Jobs\RunYandexMarketFeedImportJob;
 use App\Models\ImportFeedSource;
 use App\Models\ImportRun;
+use App\Models\Supplier;
 use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
 use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
 use App\Support\CatalogImport\Yml\YandexMarketFeedSourceHistoryService;
@@ -38,6 +39,8 @@ class YandexMarketFeedImport extends Page implements HasForms
 
     private const DISPLAY_TIMEZONE = 'Europe/Moscow';
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-cloud-arrow-down';
 
     protected static string|UnitEnum|null $navigationGroup = 'Экспорт/Импорт';
@@ -51,6 +54,7 @@ class YandexMarketFeedImport extends Page implements HasForms
     protected string $view = 'filament.pages.yandex-market-feed-import';
 
     /** @var array{
+     *     supplier_id: int|null,
      *     source_mode: string,
      *     source_url: string,
      *     source_upload: TemporaryUploadedFile|array<int|string, TemporaryUploadedFile|string>|string|null,
@@ -65,8 +69,6 @@ class YandexMarketFeedImport extends Page implements HasForms
      *     force_media_recheck: bool,
      *     skip_existing: bool,
      *     show_samples: int,
-     *     mode: string,
-     *     finalize_missing: bool,
      *     create_missing: bool,
      *     update_existing: bool
      * }|null
@@ -117,6 +119,11 @@ class YandexMarketFeedImport extends Page implements HasForms
     protected function getHeaderActions(): array
     {
         return [
+            FormAction::make('deactivate')
+                ->label('Деактивация товаров')
+                ->icon('heroicon-o-power')
+                ->color('gray')
+                ->url(YandexMarketFeedDeactivate::getUrl()),
             FormAction::make('history')
                 ->label('История импортов')
                 ->icon('heroicon-o-clock')
@@ -129,6 +136,30 @@ class YandexMarketFeedImport extends Page implements HasForms
     {
         return $schema
             ->components([
+                Section::make('Поставщик')
+                    ->description('Выберите бизнес-поставщика, в рамках которого будут создаваться и обновляться связи товаров с feed.')
+                    ->schema([
+                        Select::make('supplier_id')
+                            ->label('Поставщик')
+                            ->placeholder('Выберите или создайте поставщика')
+                            ->searchable()
+                            ->native(false)
+                            ->required()
+                            ->options(fn (): array => $this->supplierOptions())
+                            ->getSearchResultsUsing(fn (string $search): array => $this->supplierOptions($search))
+                            ->getOptionLabelUsing(fn ($value): ?string => $this->supplierOptionLabel($value))
+                            ->createOptionForm([
+                                TextInput::make('name')
+                                    ->label('Название поставщика')
+                                    ->required()
+                                    ->maxLength(160),
+                            ])
+                            ->createOptionUsing(fn (array $data): int => $this->createSupplierFromData($data))
+                            ->hintIcon(
+                                Heroicon::InformationCircle,
+                                'Этот поставщик используется для идентичности imported items. Если у разных поставщиков одинаковые external_id, они не пересекутся.',
+                            ),
+                    ]),
                 Section::make('Источник Yandex Market Feed')
                     ->description('Можно запустить импорт всего фида или в два этапа: сначала загрузить категории, затем выбрать одну категорию для прогона.')
                     ->schema([
@@ -220,7 +251,6 @@ class YandexMarketFeedImport extends Page implements HasForms
                             ->options([
                                 'standard' => 'Стандартный (создавать + обновлять)',
                                 'new_only' => 'Только новые товары',
-                                'full_sync' => 'Полная сверка (деактивировать отсутствующие)',
                                 'custom' => 'Пользовательский (расширенные настройки)',
                             ])
                             ->default('standard')
@@ -237,23 +267,10 @@ class YandexMarketFeedImport extends Page implements HasForms
                             ->helperText('Игнорирует TTL переиспользования: для каждого URL будет выполнена проверка изменения файла.'),
                     ]),
                 Section::make('Расширенные настройки (технические)')
-                    ->description('Изменяйте только при точном понимании последствий. Обычно достаточно выбрать сценарий импорта выше.')
+                    ->description('Изменяйте только при точном понимании последствий. Деактивация отсутствующих товаров выполняется на отдельной странице.')
                     ->collapsible()
                     ->collapsed()
                     ->schema([
-                        Select::make('mode')
-                            ->label('Технический режим синхронизации')
-                            ->options([
-                                'partial_import' => 'partial_import',
-                                'full_sync_authoritative' => 'full_sync_authoritative',
-                            ])
-                            ->default('partial_import')
-                            ->live()
-                            ->native(false),
-                        Toggle::make('finalize_missing')
-                            ->label('Деактивировать отсутствующие в фиде (Finalize missing)')
-                            ->helperText('Срабатывает только вместе с mode=full_sync_authoritative.')
-                            ->default(false),
                         Toggle::make('create_missing')
                             ->label('Создавать новые товары')
                             ->default(true),
@@ -326,30 +343,6 @@ class YandexMarketFeedImport extends Page implements HasForms
         $this->applySyncScenario($scenario);
     }
 
-    public function updatedDataMode(mixed $value): void
-    {
-        if ($this->isSyncScenarioInternalUpdate) {
-            return;
-        }
-
-        $mode = is_string($value) ? trim($value) : 'partial_import';
-
-        if ($mode !== 'full_sync_authoritative' && is_array($this->data)) {
-            $this->data['finalize_missing'] = false;
-        }
-
-        $this->syncScenarioFromFlags();
-    }
-
-    public function updatedDataFinalizeMissing(): void
-    {
-        if ($this->isSyncScenarioInternalUpdate) {
-            return;
-        }
-
-        $this->syncScenarioFromFlags();
-    }
-
     public function updatedDataCreateMissing(): void
     {
         if ($this->isSyncScenarioInternalUpdate) {
@@ -392,8 +385,6 @@ class YandexMarketFeedImport extends Page implements HasForms
         $this->isSyncScenarioInternalUpdate = true;
 
         if ($scenario === 'new_only') {
-            $this->data['mode'] = 'partial_import';
-            $this->data['finalize_missing'] = false;
             $this->data['create_missing'] = true;
             $this->data['update_existing'] = false;
             $this->data['skip_existing'] = true;
@@ -402,21 +393,6 @@ class YandexMarketFeedImport extends Page implements HasForms
 
             return;
         }
-
-        if ($scenario === 'full_sync') {
-            $this->data['mode'] = 'full_sync_authoritative';
-            $this->data['finalize_missing'] = true;
-            $this->data['create_missing'] = true;
-            $this->data['update_existing'] = true;
-            $this->data['skip_existing'] = false;
-            $this->data['sync_scenario'] = 'full_sync';
-            $this->isSyncScenarioInternalUpdate = false;
-
-            return;
-        }
-
-        $this->data['mode'] = 'partial_import';
-        $this->data['finalize_missing'] = false;
         $this->data['create_missing'] = true;
         $this->data['update_existing'] = true;
         $this->data['skip_existing'] = false;
@@ -444,40 +420,16 @@ class YandexMarketFeedImport extends Page implements HasForms
 
     private function resolveSyncScenarioFromFlags(): string
     {
-        $mode = (string) ($this->data['mode'] ?? 'partial_import');
-        $finalizeMissing = (bool) ($this->data['finalize_missing'] ?? false);
         $createMissing = (bool) ($this->data['create_missing'] ?? true);
         $updateExisting = (bool) ($this->data['update_existing'] ?? true);
         $skipExisting = (bool) ($this->data['skip_existing'] ?? false);
 
-        if (
-            $mode === 'partial_import'
-            && ! $finalizeMissing
-            && $createMissing
-            && $updateExisting
-            && ! $skipExisting
-        ) {
+        if ($createMissing && $updateExisting && ! $skipExisting) {
             return 'standard';
         }
 
-        if (
-            $mode === 'partial_import'
-            && ! $finalizeMissing
-            && $createMissing
-            && ! $updateExisting
-            && $skipExisting
-        ) {
+        if ($createMissing && ! $updateExisting && $skipExisting) {
             return 'new_only';
-        }
-
-        if (
-            $mode === 'full_sync_authoritative'
-            && $finalizeMissing
-            && $createMissing
-            && $updateExisting
-            && ! $skipExisting
-        ) {
-            return 'full_sync';
         }
 
         return 'custom';
@@ -489,15 +441,11 @@ class YandexMarketFeedImport extends Page implements HasForms
             return 'Создаются только новые товары. Существующие позиции пропускаются и не обновляются.';
         }
 
-        if ($scenario === 'full_sync') {
-            return 'Создание + обновление + деактивация отсутствующих в фиде (в пределах выбранного scope).';
-        }
-
         if ($scenario === 'custom') {
-            return 'Пользовательская комбинация параметров из раздела "Расширенные настройки".';
+            return 'Пользовательская комбинация create/update/skip из раздела "Расширенные настройки". Деактивация вынесена в отдельный сценарий.';
         }
 
-        return 'Создаются новые и обновляются существующие товары. Отсутствующие в фиде не деактивируются.';
+        return 'Создаются новые и обновляются существующие товары. Деактивация отсутствующих выполняется отдельно.';
     }
 
     public function loadFeedCategories(): void
@@ -658,6 +606,18 @@ class YandexMarketFeedImport extends Page implements HasForms
             return;
         }
 
+        $supplierId = $this->normalizeNullableInt($this->data['supplier_id'] ?? null);
+
+        if ($supplierId === null || ! Supplier::query()->whereKey($supplierId)->exists()) {
+            Notification::make()
+                ->title('Выберите поставщика')
+                ->body('Перед запуском dry-run или импорта выберите существующего поставщика либо создайте нового.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
         try {
             $resolvedSource = $this->resolveSelectedSource();
         } catch (RuntimeException $exception) {
@@ -725,6 +685,8 @@ class YandexMarketFeedImport extends Page implements HasForms
      *     source_type: string,
      *     source_id: int|null,
      *     source_label: string,
+     *     supplier_id: int|null,
+     *     supplier_name: string,
      *     category_id: int|null,
      *     limit: int,
      *     timeout: int,
@@ -743,17 +705,18 @@ class YandexMarketFeedImport extends Page implements HasForms
      */
     private function buildOptions(bool $write, array $resolvedSource): array
     {
-        $mode = (string) ($this->data['mode'] ?? 'partial_import');
-
-        if (! in_array($mode, ['partial_import', 'full_sync_authoritative'], true)) {
-            $mode = 'partial_import';
-        }
+        $supplierId = $this->normalizeNullableInt($this->data['supplier_id'] ?? null);
+        $supplierName = $supplierId !== null
+            ? trim((string) Supplier::query()->whereKey($supplierId)->value('name'))
+            : '';
 
         return [
             'source' => (string) $resolvedSource['source'],
             'source_type' => (string) ($resolvedSource['source_type'] ?? YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL),
             'source_id' => $this->normalizeNullableInt($resolvedSource['source_id'] ?? null),
             'source_label' => (string) ($resolvedSource['source_label'] ?? $resolvedSource['source']),
+            'supplier_id' => $supplierId,
+            'supplier_name' => $supplierName,
             'category_id' => $this->normalizeNullableInt($this->data['category_id'] ?? null),
             'limit' => max(0, (int) ($this->data['limit'] ?? 0)),
             'timeout' => max(1, (int) ($this->data['timeout'] ?? 25)),
@@ -764,8 +727,8 @@ class YandexMarketFeedImport extends Page implements HasForms
             'force_media_recheck' => (bool) ($this->data['force_media_recheck'] ?? false),
             'skip_existing' => (bool) ($this->data['skip_existing'] ?? false),
             'show_samples' => max(0, (int) ($this->data['show_samples'] ?? 3)),
-            'mode' => $mode,
-            'finalize_missing' => (bool) ($this->data['finalize_missing'] ?? ($mode === 'full_sync_authoritative')),
+            'mode' => 'partial_import',
+            'finalize_missing' => false,
             'create_missing' => (bool) ($this->data['create_missing'] ?? true),
             'update_existing' => (bool) ($this->data['update_existing'] ?? true),
         ];
@@ -833,6 +796,7 @@ class YandexMarketFeedImport extends Page implements HasForms
             'image_download_failed' => (int) ($meta['image_download_failed'] ?? 0),
             'derivatives_queued' => (int) ($meta['derivatives_queued'] ?? 0),
             'samples_count' => count(is_array($totals['_samples'] ?? null) ? $totals['_samples'] : []),
+            'supplier_label' => trim((string) ($columns['supplier_name'] ?? '')),
             'source' => trim((string) ($columns['source_label'] ?? $columns['source'] ?? '')),
             'category_id' => $this->normalizeNullableInt($columns['category_id'] ?? null),
             'finished_at' => $run->finished_at?->copy()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i'),
@@ -853,6 +817,7 @@ class YandexMarketFeedImport extends Page implements HasForms
     private function defaultData(): array
     {
         return [
+            'supplier_id' => null,
             'source_mode' => 'url',
             'source_url' => '',
             'source_upload' => null,
@@ -867,8 +832,6 @@ class YandexMarketFeedImport extends Page implements HasForms
             'force_media_recheck' => false,
             'skip_existing' => false,
             'show_samples' => 3,
-            'mode' => 'partial_import',
-            'finalize_missing' => false,
             'create_missing' => true,
             'update_existing' => true,
         ];
@@ -1362,6 +1325,64 @@ class YandexMarketFeedImport extends Page implements HasForms
     private function hasActiveRun(): bool
     {
         return $this->resolveActiveRun() !== null;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function supplierOptions(?string $search = null, int $limit = 100): array
+    {
+        if (! DatabaseSchema::hasTable('suppliers')) {
+            return [];
+        }
+
+        $query = Supplier::query()
+            ->where('is_active', true)
+            ->orderBy('name');
+
+        $needle = trim((string) $search);
+
+        if ($needle !== '') {
+            $query->where('name', 'like', '%'.$needle.'%');
+        }
+
+        return $query
+            ->limit($limit)
+            ->pluck('name', 'id')
+            ->mapWithKeys(fn (string $name, int|string $id): array => [(string) $id => $name])
+            ->all();
+    }
+
+    private function supplierOptionLabel(mixed $value): ?string
+    {
+        $supplierId = $this->normalizeNullableInt($value);
+
+        if ($supplierId === null || ! DatabaseSchema::hasTable('suppliers')) {
+            return null;
+        }
+
+        $name = Supplier::query()->whereKey($supplierId)->value('name');
+
+        return is_string($name) && $name !== '' ? $name : null;
+    }
+
+    /**
+     * @param  array{name?: mixed}  $data
+     */
+    private function createSupplierFromData(array $data): int
+    {
+        $name = trim((string) ($data['name'] ?? ''));
+
+        if ($name === '') {
+            throw new RuntimeException('Название поставщика не может быть пустым.');
+        }
+
+        $supplier = Supplier::query()->firstOrCreate(
+            ['name' => $name],
+            ['is_active' => true],
+        );
+
+        return (int) $supplier->getKey();
     }
 
     private function resolveActiveRun(): ?ImportRun

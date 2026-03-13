@@ -2,6 +2,8 @@
 
 namespace App\Support\Products;
 
+use App\Enums\ProductWarranty;
+use App\Models\Category;
 use App\Models\ImportRun;
 use App\Models\Product;
 use App\Support\NameNormalizer;
@@ -468,6 +470,12 @@ class ProductImportService
                 continue;
             }
 
+            if ($h === 'warranty' && ! $this->isValidWarrantyInput($raw)) {
+                $errors[] = "Invalid value for {$h}: {$raw}";
+
+                continue;
+            }
+
             $type = $meta['type'] ?? 'string';
 
             $ok = match (true) {
@@ -485,9 +493,10 @@ class ProductImportService
         return $errors;
     }
 
-    protected function canonical($v, string $type)
+    protected function canonical($v, string $type, ?string $field = null)
     {
         $v = $this->normalizeCanonicalValue($v);
+        $v = $this->normalizeFieldCanonicalValue($field, $v);
 
         if (is_string($v)) {
             $v = trim($v);
@@ -533,6 +542,32 @@ class ProductImportService
         }
 
         return $value;
+    }
+
+    protected function normalizeFieldCanonicalValue(?string $field, mixed $value): mixed
+    {
+        if ($field !== 'warranty') {
+            return $value;
+        }
+
+        $normalized = ProductWarranty::normalizeInput($value);
+
+        return $normalized ?? $value;
+    }
+
+    protected function isValidWarrantyInput(mixed $value): bool
+    {
+        $normalized = $this->normalizeCanonicalValue($value);
+
+        if (is_string($normalized)) {
+            $normalized = trim($normalized);
+        }
+
+        if ($normalized === null || $normalized === '') {
+            return true;
+        }
+
+        return ProductWarranty::normalizeInput($normalized) !== null;
     }
 
     protected function canonicalDecimal($v, string $type)
@@ -621,8 +656,8 @@ class ProductImportService
             }
             $xlsValue = $data[$h] ?? null;
 
-            $dbCanon = $this->canonical($dbValue, $type);
-            $xlsCanon = $this->canonical($xlsValue, $type);
+            $dbCanon = $this->canonical($dbValue, $type, $h);
+            $xlsCanon = $this->canonical($xlsValue, $type, $h);
 
             if ($dbCanon !== $xlsCanon) {
                 return true;
@@ -664,8 +699,8 @@ class ProductImportService
             $dbValue = $product->getAttribute($h);
             $xlsValue = $data[$h] ?? null;
 
-            $dbCanon = $this->canonical($dbValue, $type);
-            $xlsCanon = $this->canonical($xlsValue, $type);
+            $dbCanon = $this->canonical($dbValue, $type, $h);
+            $xlsCanon = $this->canonical($xlsValue, $type, $h);
 
             if ($dbCanon !== $xlsCanon) {
                 $payload[$h] = $this->toDatabaseValue($xlsCanon, $type);
@@ -706,7 +741,7 @@ class ProductImportService
             }
             $type = $meta['type'] ?? 'string';
             $xlsValue = $data[$h] ?? null;
-            $xlsCanon = $this->canonical($xlsValue, $type);
+            $xlsCanon = $this->canonical($xlsValue, $type, $h);
 
             $payload[$h] = $this->toDatabaseValue($xlsCanon, $type);
         }
@@ -1038,8 +1073,8 @@ class ProductImportService
 
                         // попытка прикрепить к служебной категории staging, если есть модель Category и связь
                         $stagingSlug = config('catalog-export.staging_category_slug');
-                        if ($stagingSlug && class_exists(\App\Models\Category::class) && method_exists($created, 'categories')) {
-                            $cat = \App\Models\Category::query()->where('slug', $stagingSlug)->first();
+                        if ($stagingSlug && class_exists(Category::class) && method_exists($created, 'categories')) {
+                            $cat = Category::query()->where('slug', $stagingSlug)->first();
                             if ($cat) {
                                 $created->categories()->syncWithoutDetaching([$cat->id]);
                             }

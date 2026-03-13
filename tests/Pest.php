@@ -1,5 +1,10 @@
 <?php
 
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
+use Tests\TestCase;
+
 /*
 |--------------------------------------------------------------------------
 | Test Case
@@ -11,9 +16,13 @@
 |
 */
 
-pest()->extend(Tests\TestCase::class)
-    ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
+pest()->extend(TestCase::class)
+    ->use(RefreshDatabase::class)
     ->in('Feature');
+
+beforeEach(function (): void {
+    ensureBackupTablesExist();
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -44,4 +53,40 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+function ensureBackupTablesExist(): void
+{
+    if (! Schema::hasTable('backup_settings')) {
+        Schema::create('backup_settings', function (Blueprint $table): void {
+            $table->id();
+            $table->string('endpoint')->nullable();
+            $table->string('bucket')->nullable();
+            $table->string('prefix')->nullable();
+            $table->string('repository_prefix')->nullable();
+            $table->text('access_key')->nullable();
+            $table->text('secret_key')->nullable();
+            $table->text('restic_repository')->nullable();
+            $table->text('restic_password')->nullable();
+            $table->json('retention')->nullable();
+            $table->json('schedule')->nullable();
+            $table->json('paths')->nullable();
+            $table->string('project_root')->nullable();
+            $table->string('baseline_snapshot_id')->nullable();
+            $table->timestamp('baseline_created_at')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    if (! Schema::hasTable('backup_runs')) {
+        Schema::create('backup_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->string('type');
+            $table->string('status');
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
+            $table->json('meta')->nullable();
+            $table->timestamps();
+        });
+    }
 }

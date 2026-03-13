@@ -18,6 +18,8 @@ class ImportRun extends Model
         'totals',
         'source_filename',
         'stored_path',
+        'supplier_id',
+        'supplier_import_source_id',
         'user_id',
         'started_at',
         'finished_at',
@@ -26,6 +28,8 @@ class ImportRun extends Model
     protected $casts = [
         'columns' => 'array',
         'totals' => 'array',
+        'supplier_id' => 'int',
+        'supplier_import_source_id' => 'int',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
     ];
@@ -53,5 +57,15 @@ class ImportRun extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function supplierImportSource(): BelongsTo
+    {
+        return $this->belongsTo(SupplierImportSource::class);
     }
 }

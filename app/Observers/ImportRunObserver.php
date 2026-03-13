@@ -138,6 +138,7 @@ class ImportRunObserver
             'vactool_products' => 'Vactool',
             'metalmaster_products' => 'Metalmaster',
             'yandex_market_feed_products' => 'Yandex Market Feed',
+            'yandex_market_feed_deactivation' => 'Деактивация Yandex Feed',
             'specs_match' => 'Specs match',
             default => $type !== '' ? $type : 'unknown',
         };

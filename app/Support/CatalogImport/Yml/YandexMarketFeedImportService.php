@@ -5,6 +5,7 @@ namespace App\Support\CatalogImport\Yml;
 use App\Models\ProductSupplierReference;
 use App\Support\CatalogImport\Contracts\ImportRunEventLoggerInterface;
 use App\Support\CatalogImport\Contracts\SourceResolverInterface;
+use App\Support\CatalogImport\DTO\ImportError;
 use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\DTO\ResolvedSource;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
@@ -422,17 +423,10 @@ class YandexMarketFeedImportService
             }
 
             if ($normalized['write'] && $normalized['run_id'] !== null) {
-                $this->touchPrefilteredReferences($touchedPrefilteredExternalIds, $normalized['run_id']);
-
-                $this->processor->finalizeMissing(
-                    supplier: $this->profile->supplierKey(),
-                    runId: $normalized['run_id'],
-                    options: [
-                        'mode' => $normalized['mode'],
-                        'finalize_missing' => $normalized['finalize_missing'],
-                        'source_category_id' => $normalized['category_id'],
-                        'event_logger' => $eventLogger,
-                    ],
+                $this->touchPrefilteredReferences(
+                    $touchedPrefilteredExternalIds,
+                    $normalized['run_id'],
+                    $normalized['supplier_id'],
                 );
             }
 
@@ -489,6 +483,7 @@ class YandexMarketFeedImportService
      * @param  array<string, mixed>  $options
      * @return array{
      *     source: string,
+     *     supplier_id: int|null,
      *     category_id: int|null,
      *     limit: int,
      *     timeout: int,
@@ -517,6 +512,7 @@ class YandexMarketFeedImportService
 
         return [
             'source' => trim((string) ($options['source'] ?? $options['feed'] ?? '')),
+            'supplier_id' => $this->normalizeNullableInt($options['supplier_id'] ?? $options['supplier-id'] ?? null),
             'category_id' => $this->normalizeNullableInt($options['category_id'] ?? $options['category-id'] ?? null),
             'limit' => max(0, (int) ($options['limit'] ?? 0)),
             'timeout' => max(1, (int) ($options['timeout'] ?? 25)),
@@ -598,12 +594,19 @@ class YandexMarketFeedImportService
         }
 
         $prefiltered = [];
+        $useSupplierEntityReference = $this->supportsSupplierEntityReference() && $normalized['supplier_id'] !== null;
 
         foreach (array_chunk(array_keys($candidateExternalIds), 1000) as $chunk) {
-            $existing = ProductSupplierReference::query()
-                ->where('supplier', $this->profile->supplierKey())
-                ->whereIn('external_id', $chunk)
-                ->pluck('external_id');
+            $referenceQuery = ProductSupplierReference::query()
+                ->whereIn('external_id', $chunk);
+
+            if ($useSupplierEntityReference) {
+                $referenceQuery->where('supplier_id', $normalized['supplier_id']);
+            } else {
+                $referenceQuery->where('supplier', $this->profile->supplierKey());
+            }
+
+            $existing = $referenceQuery->pluck('external_id');
 
             foreach ($existing as $externalId) {
                 if (is_string($externalId) && $externalId !== '') {
@@ -626,6 +629,7 @@ class YandexMarketFeedImportService
     ): array {
         return [
             'supplier' => $this->profile->supplierKey(),
+            'supplier_id' => $normalized['supplier_id'],
             'run_id' => $normalized['run_id'],
             'create_missing' => $normalized['create_missing'],
             'update_existing' => $normalized['update_existing'] && ! $normalized['skip_existing'],
@@ -643,20 +647,26 @@ class YandexMarketFeedImportService
     /**
      * @param  array<string, true>  $prefilteredExternalIds
      */
-    private function touchPrefilteredReferences(array $prefilteredExternalIds, int $runId): void
+    private function touchPrefilteredReferences(array $prefilteredExternalIds, int $runId, ?int $supplierId = null): void
     {
         if ($prefilteredExternalIds === [] || $runId <= 0) {
             return;
         }
 
-        ProductSupplierReference::query()
-            ->where('supplier', $this->profile->supplierKey())
-            ->whereIn('external_id', array_keys($prefilteredExternalIds))
-            ->update([
-                'last_seen_run_id' => $runId,
-                'last_seen_at' => now(),
-                'updated_at' => now(),
-            ]);
+        $query = ProductSupplierReference::query()
+            ->whereIn('external_id', array_keys($prefilteredExternalIds));
+
+        if ($this->supportsSupplierEntityReference() && $supplierId !== null) {
+            $query->where('supplier_id', $supplierId);
+        } else {
+            $query->where('supplier', $this->profile->supplierKey());
+        }
+
+        $query->update([
+            'last_seen_run_id' => $runId,
+            'last_seen_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     /**
@@ -671,6 +681,12 @@ class YandexMarketFeedImportService
             'retry_times' => 2,
             'retry_sleep_ms' => 300,
         ]);
+    }
+
+    private function supportsSupplierEntityReference(): bool
+    {
+        return Schema::hasTable('product_supplier_references')
+            && Schema::hasColumn('product_supplier_references', 'supplier_id');
     }
 
     /**
@@ -859,7 +875,7 @@ class YandexMarketFeedImportService
     }
 
     /**
-     * @param  array<int, \App\Support\CatalogImport\DTO\ImportError>  $errors
+     * @param  array<int, ImportError>  $errors
      */
     private function countMediaErrors(array $errors): int
     {

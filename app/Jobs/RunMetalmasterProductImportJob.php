@@ -70,6 +70,7 @@ class RunMetalmasterProductImportJob implements ShouldQueue
             $result = $service->run(
                 array_merge($this->options, [
                     'run_id' => $this->runId,
+                    'write' => $this->write,
                 ]),
                 null,
                 function (array $progress) use ($run, $runs): void {

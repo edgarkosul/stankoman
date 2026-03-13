@@ -18,6 +18,8 @@ final class ImportRunOrchestrator
         ?string $sourceFilename = null,
         ?int $userId = null,
         array $meta = [],
+        ?int $supplierId = null,
+        ?int $supplierImportSourceId = null,
     ): ImportRun {
         return ImportRun::query()->create([
             'type' => $type,
@@ -26,6 +28,8 @@ final class ImportRunOrchestrator
             'totals' => $this->initialTotals($mode, $meta),
             'source_filename' => $sourceFilename,
             'stored_path' => null,
+            'supplier_id' => $supplierId,
+            'supplier_import_source_id' => $supplierImportSourceId,
             'user_id' => $userId,
             'started_at' => now(),
         ]);

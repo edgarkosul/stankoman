@@ -18,6 +18,8 @@ class DatabaseSeeder extends Seeder
         $this->call([
             SettingSeeder::class,
             CategorySeeder::class,
+            SupplierSeeder::class,
+            SupplierImportSourceSeeder::class,
             ProductSeeder::class,
         ]);
 

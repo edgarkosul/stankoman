@@ -15,6 +15,15 @@ it('provides fixed warranty options', function (): void {
     ]);
 });
 
+it('normalizes warranty inputs from raw values and labels', function (): void {
+    expect(ProductWarranty::normalizeInput('12'))->toBe(ProductWarranty::Months12->value)
+        ->and(ProductWarranty::normalizeInput(24))->toBe(ProductWarranty::Months24->value)
+        ->and(ProductWarranty::normalizeInput('36 мес.'))->toBe(ProductWarranty::Months36->value)
+        ->and(ProductWarranty::normalizeInput('60 месяцев'))->toBe(ProductWarranty::Months60->value)
+        ->and(ProductWarranty::normalizeInput(ProductWarranty::Months24))->toBe(ProductWarranty::Months24->value)
+        ->and(ProductWarranty::normalizeInput('6 мес.'))->toBeNull();
+});
+
 it('casts warranty to enum and builds display label', function (): void {
     $product = new Product;
     $product->warranty = ProductWarranty::Months24->value;

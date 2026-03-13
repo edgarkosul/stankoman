@@ -105,6 +105,62 @@ it('marks run as failed from queue failed callback for vactool import job', func
     expect($run->issues()->first()?->message)->toContain('Queue timeout exceeded');
 });
 
+it('forwards write mode to vactool import service options', function () {
+    prepareVactoolJobImportTables();
+
+    $options = [
+        'sitemap' => 'https://vactool.ru/sitemap.xml',
+        'match' => '/catalog/product-',
+    ];
+
+    $run = ImportRun::query()->create([
+        'type' => 'vactool_products',
+        'status' => 'pending',
+        'columns' => $options,
+        'totals' => [
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => true,
+            ],
+        ],
+        'started_at' => now(),
+    ]);
+
+    $service = Mockery::mock(VactoolProductImportService::class);
+    $service->shouldReceive('run')
+        ->once()
+        ->withArgs(function (array $receivedOptions, ?callable $output, ?callable $progress) use ($run): bool {
+            expect($receivedOptions['run_id'] ?? null)->toBe($run->id);
+            expect($receivedOptions['write'] ?? null)->toBeTrue();
+
+            return true;
+        })
+        ->andReturn([
+            'found_urls' => 1,
+            'processed' => 1,
+            'errors' => 0,
+            'created' => 1,
+            'updated' => 0,
+            'skipped' => 0,
+            'images_downloaded' => 0,
+            'image_download_failed' => 0,
+            'derivatives_queued' => 0,
+            'samples' => [],
+            'url_errors' => [],
+            'fatal_error' => null,
+            'no_urls' => false,
+            'success' => true,
+        ]);
+
+    $job = new RunVactoolProductImportJob($run->id, $options, true);
+    $job->handle($service, app(ImportRunOrchestrator::class));
+
+    $run->refresh();
+
+    expect($run->status)->toBe('completed');
+    expect((int) data_get($run->totals, 'create'))->toBe(1);
+});
+
 it('marks run as cancelled when it is stopped during queued vactool import job', function () {
     prepareVactoolJobImportTables();
 
@@ -127,7 +183,7 @@ it('marks run as cancelled when it is stopped during queued vactool import job',
         'started_at' => now(),
     ]);
 
-    $service = \Mockery::mock(VactoolProductImportService::class);
+    $service = Mockery::mock(VactoolProductImportService::class);
     $service->shouldReceive('run')
         ->once()
         ->andReturnUsing(function (array $options, ?callable $output, ?callable $progress) use ($run): array {
@@ -186,7 +242,7 @@ it('marks run as failed when error threshold is exceeded in vactool job', functi
         'started_at' => now(),
     ]);
 
-    $service = \Mockery::mock(VactoolProductImportService::class);
+    $service = Mockery::mock(VactoolProductImportService::class);
     $service->shouldReceive('run')
         ->once()
         ->andReturnUsing(function (array $options, ?callable $output, ?callable $progress): array {

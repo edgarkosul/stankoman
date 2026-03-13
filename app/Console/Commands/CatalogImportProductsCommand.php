@@ -21,6 +21,7 @@ class CatalogImportProductsCommand extends Command
         {supplier : Supplier key: vactool, metalmaster, or yandex_market_feed}
         {--profile= : Supplier profile key}
         {--source= : Generic source (URL/file path)}
+        {--supplier-id= : Global supplier id}
         {--sitemap= : Sitemap URL for vactool}
         {--buckets-file= : Buckets file for metalmaster}
         {--feed= : Yandex Market feed URL or file path}
@@ -167,6 +168,7 @@ class CatalogImportProductsCommand extends Command
             'update_existing' => $this->resolveBooleanOption('update-existing', true),
             'error_threshold_count' => $this->nullableIntegerOption('error-threshold-count'),
             'error_threshold_percent' => $this->nullableFloatOption('error-threshold-percent'),
+            'supplier_id' => $this->nullableIntegerOption('supplier-id'),
             'supplier' => $supplier,
             'profile' => $profile,
         ];

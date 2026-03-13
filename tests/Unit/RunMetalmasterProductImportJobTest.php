@@ -118,6 +118,64 @@ it('marks run as failed from queue failed callback for metalmaster import job', 
     expect($run->issues()->first()?->message)->toContain('Queue timeout exceeded');
 });
 
+it('forwards dry-run mode to metalmaster import service options', function () {
+    prepareMetalmasterJobImportTables();
+
+    $options = [
+        'buckets_file' => '/tmp/metalmaster-buckets.json',
+        'bucket' => '',
+    ];
+
+    $run = ImportRun::query()->create([
+        'type' => 'metalmaster_products',
+        'status' => 'pending',
+        'columns' => $options,
+        'totals' => [
+            '_meta' => [
+                'mode' => 'dry-run',
+                'is_running' => true,
+            ],
+        ],
+        'started_at' => now(),
+    ]);
+
+    $service = Mockery::mock(MetalmasterProductImportService::class);
+    $service->shouldReceive('run')
+        ->once()
+        ->withArgs(function (array $receivedOptions, ?callable $output, ?callable $progress) use ($run): bool {
+            expect($receivedOptions['run_id'] ?? null)->toBe($run->id);
+            expect($receivedOptions['write'] ?? null)->toBeFalse();
+
+            return true;
+        })
+        ->andReturn([
+            'found_urls' => 1,
+            'processed' => 1,
+            'errors' => 0,
+            'created' => 0,
+            'updated' => 0,
+            'skipped' => 1,
+            'images_downloaded' => 0,
+            'image_download_failed' => 0,
+            'derivatives_queued' => 0,
+            'samples' => [
+                ['url' => 'https://metalmaster.ru/example', 'title' => 'Demo'],
+            ],
+            'url_errors' => [],
+            'fatal_error' => null,
+            'no_urls' => false,
+            'success' => true,
+        ]);
+
+    $job = new RunMetalmasterProductImportJob($run->id, $options, false);
+    $job->handle($service, app(ImportRunOrchestrator::class));
+
+    $run->refresh();
+
+    expect($run->status)->toBe('completed');
+    expect((int) data_get($run->totals, 'same'))->toBe(1);
+});
+
 it('marks run as cancelled when it is stopped during queued metalmaster import job', function () {
     prepareMetalmasterJobImportTables();
 
@@ -140,7 +198,7 @@ it('marks run as cancelled when it is stopped during queued metalmaster import j
         'started_at' => now(),
     ]);
 
-    $service = \Mockery::mock(MetalmasterProductImportService::class);
+    $service = Mockery::mock(MetalmasterProductImportService::class);
     $service->shouldReceive('run')
         ->once()
         ->andReturnUsing(function (array $options, ?callable $output, ?callable $progress) use ($run): array {

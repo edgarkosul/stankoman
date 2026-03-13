@@ -13,6 +13,7 @@ use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\Enums\ImportErrorLevel;
 use App\Support\CatalogImport\Media\ProductImportMediaService;
 use App\Support\CatalogImport\Runs\ImportRunEventData;
+use App\Support\CatalogImport\Suppliers\SupplierEntityResolver;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -67,9 +68,12 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
     private ?bool $sourceCategoryReferenceSupported = null;
 
+    private ?bool $supplierEntityReferenceSupported = null;
+
     public function __construct(
         private readonly ProductPayloadNormalizer $normalizer = new ProductPayloadNormalizer,
         private readonly ProductImportMediaService $mediaService = new ProductImportMediaService,
+        private readonly SupplierEntityResolver $supplierResolver = new SupplierEntityResolver,
     ) {}
 
     public function process(ProductPayload $payload, array $options = []): ImportProcessResult
@@ -115,11 +119,12 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
         $runId = $this->normalizeRunId($options['run_id'] ?? null);
         $batchSize = $this->normalizeBatchSize($options['batch_size'] ?? null);
+        $resolvedSupplierId = $this->resolveReferenceSupplierId($options, $supplier);
 
         $summary = $this->emptySummary();
 
         foreach (array_chunk($items, $batchSize) as $chunk) {
-            $chunkSummary = $this->processChunk($chunk, $supplier, $runId, $options);
+            $chunkSummary = $this->processChunk($chunk, $supplier, $runId, $options, $resolvedSupplierId);
 
             $summary['processed'] += $chunkSummary['processed'];
             $summary['created'] += $chunkSummary['created'];
@@ -143,6 +148,8 @@ final class ProductImportProcessor implements ImportProcessorInterface
         $sourceCategoryId = $this->positiveIntOrNull(
             $options['source_category_id'] ?? $options['category_id'] ?? null,
         );
+        $resolvedSupplierId = $this->resolveReferenceSupplierId($options, $normalizedSupplier);
+        $useSupplierEntityReference = $this->supportsSupplierEntityReference() && $resolvedSupplierId !== null;
 
         if ($normalizedSupplier === null || $runId <= 0) {
             return [
@@ -175,8 +182,13 @@ final class ProductImportProcessor implements ImportProcessorInterface
             ];
         }
 
-        $referenceQuery = ProductSupplierReference::query()
-            ->where('supplier', $normalizedSupplier);
+        $referenceQuery = ProductSupplierReference::query();
+
+        if ($useSupplierEntityReference) {
+            $referenceQuery->where('supplier_id', $resolvedSupplierId);
+        } else {
+            $referenceQuery->where('supplier', $normalizedSupplier);
+        }
 
         if ($sourceCategoryId !== null) {
             $referenceQuery->where('source_category_id', $sourceCategoryId);
@@ -278,7 +290,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
      * @param  array<string, mixed>  $options
      * @return array{processed:int,created:int,updated:int,skipped:int,errors:int,results:array<int, ImportProcessResult>}
      */
-    private function processChunk(array $payloads, string $supplier, ?int $runId, array $options): array
+    private function processChunk(array $payloads, string $supplier, ?int $runId, array $options, ?int $supplierId = null): array
     {
         $normalizedItems = [];
         $summary = $this->emptySummary();
@@ -287,6 +299,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
         $queueMedia = ($options['download_media'] ?? false) === true;
         $forceMediaRecheck = ($options['force_media_recheck'] ?? false) === true;
         $pendingMediaIds = [];
+        $useSupplierEntityReference = $this->supportsSupplierEntityReference() && $supplierId !== null;
 
         foreach ($payloads as $payload) {
             $normalized = $this->normalizer->normalize($payload);
@@ -335,12 +348,17 @@ final class ProductImportProcessor implements ImportProcessorInterface
         )));
 
         /** @var Collection<string, ProductSupplierReference> $references */
-        $references = ProductSupplierReference::query()
+        $referenceQuery = ProductSupplierReference::query()
             ->with('product')
-            ->where('supplier', $supplier)
-            ->whereIn('external_id', $externalIds)
-            ->get()
-            ->keyBy('external_id');
+            ->whereIn('external_id', $externalIds);
+
+        if ($useSupplierEntityReference) {
+            $referenceQuery->where('supplier_id', $supplierId);
+        } else {
+            $referenceQuery->where('supplier', $supplier);
+        }
+
+        $references = $referenceQuery->get()->keyBy('external_id');
 
         $canCreate = ($options['create_missing'] ?? true) === true;
         $canUpdate = ($options['update_existing'] ?? true) === true;
@@ -354,6 +372,8 @@ final class ProductImportProcessor implements ImportProcessorInterface
             $supplier,
             $runId,
             $references,
+            $supplierId,
+            $useSupplierEntityReference,
             $canCreate,
             $canUpdate,
             $queueMedia,
@@ -481,6 +501,10 @@ final class ProductImportProcessor implements ImportProcessorInterface
                         'updated_at' => $now,
                     ];
 
+                    if ($useSupplierEntityReference) {
+                        $referenceUpsert['supplier_id'] = $supplierId;
+                    }
+
                     if ($supportsSourceCategoryReference) {
                         $resolvedSourceCategoryId = $this->resolveSourceCategoryId($payload, $reference);
                         $referenceUpsert['source_category_id'] = $resolvedSourceCategoryId;
@@ -531,13 +555,19 @@ final class ProductImportProcessor implements ImportProcessorInterface
             if ($referenceUpserts !== []) {
                 $updateColumns = ['product_id', 'last_seen_run_id', 'last_seen_at', 'updated_at'];
 
+                if ($useSupplierEntityReference) {
+                    $updateColumns[] = 'supplier_id';
+                }
+
                 if ($supportsSourceCategoryReference) {
                     $updateColumns[] = 'source_category_id';
                 }
 
                 ProductSupplierReference::query()->upsert(
                     values: $referenceUpserts,
-                    uniqueBy: ['supplier', 'external_id'],
+                    uniqueBy: $useSupplierEntityReference
+                        ? ['supplier_id', 'external_id']
+                        : ['supplier', 'external_id'],
                     update: $updateColumns,
                 );
             }
@@ -860,6 +890,30 @@ final class ProductImportProcessor implements ImportProcessorInterface
             && Schema::hasColumn('product_supplier_references', 'source_category_id');
 
         return $this->sourceCategoryReferenceSupported;
+    }
+
+    private function supportsSupplierEntityReference(): bool
+    {
+        if ($this->supplierEntityReferenceSupported !== null) {
+            return $this->supplierEntityReferenceSupported;
+        }
+
+        $this->supplierEntityReferenceSupported = Schema::hasTable('product_supplier_references')
+            && Schema::hasColumn('product_supplier_references', 'supplier_id');
+
+        return $this->supplierEntityReferenceSupported;
+    }
+
+    private function resolveReferenceSupplierId(array $options, ?string $supplier): ?int
+    {
+        if (! $this->supportsSupplierEntityReference()) {
+            return null;
+        }
+
+        return $this->supplierResolver->resolveId(
+            supplierId: $options['supplier_id'] ?? null,
+            importSupplier: $supplier,
+        );
     }
 
     private function resolveSourceCategoryId(ProductPayload $payload, ?ProductSupplierReference $reference): ?int

@@ -3,6 +3,7 @@
 use App\Filament\Pages\CategoryFiltersImportExport;
 use App\Filament\Pages\ImportExportHelp;
 use App\Filament\Pages\ProductImportExport;
+use App\Filament\Pages\YandexMarketFeedDeactivate;
 use App\Filament\Pages\YandexMarketFeedImport;
 use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Support\Products\CategoryFilterSchemaService;
@@ -62,6 +63,18 @@ test('yandex market feed import page metadata and route are configured', functio
     expect($defaults['view'])->toBe('filament.pages.yandex-market-feed-import');
     expect($defaults['title'])->toBe('Импорт товаров из Yandex Market Feed');
     expect(Route::has('filament.admin.pages.yandex-market-feed-import'))->toBeTrue();
+});
+
+test('yandex market feed deactivation page metadata and route are configured', function () {
+    expect(YandexMarketFeedDeactivate::getNavigationGroup())->toBe('Экспорт/Импорт');
+    expect(YandexMarketFeedDeactivate::getNavigationLabel())->toBe('Деактивация Yandex Feed');
+    expect(YandexMarketFeedDeactivate::getNavigationIcon())->toBe('heroicon-o-power');
+
+    $defaults = (new ReflectionClass(YandexMarketFeedDeactivate::class))->getDefaultProperties();
+
+    expect($defaults['view'])->toBe('filament.pages.yandex-market-feed-deactivate');
+    expect($defaults['title'])->toBe('Деактивация товаров по Yandex Market Feed');
+    expect(Route::has('filament.admin.pages.yandex-market-feed-deactivate'))->toBeTrue();
 });
 
 test('product import export page has instruction header action', function () {

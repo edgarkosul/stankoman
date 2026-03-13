@@ -14,6 +14,45 @@ enum ProductWarranty: string
         return $this->value.' мес.';
     }
 
+    public static function fromInput(mixed $value): ?self
+    {
+        if ($value instanceof self) {
+            return $value;
+        }
+
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        $case = self::tryFrom($normalized);
+
+        if ($case instanceof self) {
+            return $case;
+        }
+
+        $normalized = preg_replace('/\s+/u', ' ', $normalized) ?? $normalized;
+        $normalized = function_exists('mb_strtolower')
+            ? mb_strtolower($normalized, 'UTF-8')
+            : strtolower($normalized);
+
+        if (preg_match('/^(?<months>\d+)\s*(?:мес\.?|месяц|месяца|месяцев)$/u', $normalized, $matches) !== 1) {
+            return null;
+        }
+
+        return self::tryFrom($matches['months']);
+    }
+
+    public static function normalizeInput(mixed $value): ?string
+    {
+        return self::fromInput($value)?->value;
+    }
+
     /**
      * @return array<string, string>
      */

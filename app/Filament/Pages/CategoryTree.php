@@ -38,7 +38,7 @@ class CategoryTree extends TreePage
 
     protected static ?string $title = 'Дерево категорий';
 
-    public function getNodeCollapsedState(?\Illuminate\Database\Eloquent\Model $record = null): bool
+    public function getNodeCollapsedState(?Model $record = null): bool
     {
         return false;
     }
@@ -155,7 +155,7 @@ class CategoryTree extends TreePage
         return [];
     }
 
-    public function getTreeRecordTitle(?\Illuminate\Database\Eloquent\Model $record = null): string
+    public function getTreeRecordTitle(?Model $record = null): string
     {
         if (! $record) {
             return '';
@@ -236,11 +236,11 @@ class CategoryTree extends TreePage
 
         $this->unnestArray($unnestedArr, $list, $defaultParentId);
 
-        $changes = collect($unnestedArr)
+        $plannedPositions = collect($unnestedArr)
             ->map(fn (array $data, $id) => ['data' => $data, 'model' => $records->get($id)])
             ->filter(fn (array $arr) => $arr['model'] instanceof Model)
             ->map(function (array $arr) use ($defaultParentId) {
-                /** @var \Illuminate\Database\Eloquent\Model $model */
+                /** @var Model $model */
                 $model = $arr['model'];
                 $parentColumnName = method_exists($model, 'determineParentColumnName')
                     ? $model->determineParentColumnName()
@@ -261,7 +261,9 @@ class CategoryTree extends TreePage
                     'parent_id' => $newParentId,
                     'order' => $arr['data']['order'],
                 ];
-            })
+            });
+
+        $changes = $plannedPositions
             ->filter(function (array $item) {
                 $model = $item['model'];
 
@@ -274,7 +276,41 @@ class CategoryTree extends TreePage
             return ['reload' => $needReload];
         }
 
-        DB::transaction(function () use ($changes): void {
+        $affectedParentIds = $changes
+            ->flatMap(fn (array $item): array => [
+                (int) $item['model']->getAttribute($item['parent_column']),
+                (int) $item['parent_id'],
+            ])
+            ->unique()
+            ->values()
+            ->all();
+
+        $desiredOrdersByParent = $plannedPositions
+            ->groupBy(fn (array $item): string => (string) $item['parent_id'])
+            ->map(
+                fn ($items): array => $items
+                    ->pluck('order')
+                    ->map(fn (mixed $order): int => (int) $order)
+                    ->all()
+            )
+            ->only(array_map(static fn (int $parentId): string => (string) $parentId, $affectedParentIds))
+            ->all();
+
+        $visibleRecordIds = $records
+            ->keys()
+            ->map(fn (mixed $id): int => (int) $id)
+            ->values()
+            ->all();
+
+        DB::transaction(function () use ($changes, $affectedParentIds, $desiredOrdersByParent, $visibleRecordIds): void {
+            $this->moveHiddenCategoriesOutsideVisibleOrderRange(
+                affectedParentIds: $affectedParentIds,
+                desiredOrdersByParent: $desiredOrdersByParent,
+                visibleRecordIds: $visibleRecordIds,
+            );
+
+            $temporaryOrder = $this->temporaryOrderStart();
+
             foreach ($changes as $item) {
                 $model = $item['model'];
                 $parentColumn = $item['parent_column'];
@@ -282,8 +318,10 @@ class CategoryTree extends TreePage
 
                 $model->forceFill([
                     $parentColumn => $item['parent_id'],
-                    $orderColumn => $this->temporaryOrderValue($model),
+                    $orderColumn => $temporaryOrder,
                 ])->saveQuietly();
+
+                $temporaryOrder--;
             }
 
             foreach ($changes as $item) {
@@ -342,9 +380,64 @@ class CategoryTree extends TreePage
         return $record->ancestorsAndSelf()->count() - 1;
     }
 
-    private function temporaryOrderValue(Model $model): int
+    /**
+     * @param  array<int, int>  $affectedParentIds
+     * @param  array<string, array<int, int>>  $desiredOrdersByParent
+     * @param  array<int, int>  $visibleRecordIds
+     */
+    private function moveHiddenCategoriesOutsideVisibleOrderRange(
+        array $affectedParentIds,
+        array $desiredOrdersByParent,
+        array $visibleRecordIds,
+    ): void {
+        foreach ($affectedParentIds as $parentId) {
+            $desiredOrders = array_values(array_unique(
+                array_map('intval', $desiredOrdersByParent[(string) $parentId] ?? [])
+            ));
+
+            if ($desiredOrders === []) {
+                continue;
+            }
+
+            $hiddenSiblings = Category::query()
+                ->where('parent_id', $parentId)
+                ->when(
+                    $visibleRecordIds !== [],
+                    fn (Builder $query) => $query->whereNotIn('id', $visibleRecordIds),
+                )
+                ->whereIn('order', $desiredOrders)
+                ->orderBy('order')
+                ->orderBy('id')
+                ->get();
+
+            if ($hiddenSiblings->isEmpty()) {
+                continue;
+            }
+
+            $currentMaxOrder = Category::query()
+                ->where('parent_id', $parentId)
+                ->max('order');
+
+            $nextOrder = max(
+                is_numeric($currentMaxOrder) ? (int) $currentMaxOrder : 0,
+                max($desiredOrders),
+            ) + 1;
+
+            foreach ($hiddenSiblings as $hiddenSibling) {
+                $hiddenSibling->forceFill([
+                    'order' => $nextOrder,
+                ])->saveQuietly();
+
+                $nextOrder++;
+            }
+        }
+    }
+
+    private function temporaryOrderStart(): int
     {
-        return -1 * (1_000_000 + (int) $model->getKey());
+        $minimumOrder = Category::query()->min('order');
+
+        return (is_numeric($minimumOrder) ? (int) $minimumOrder : 0) - 1;
     }
 
     private function unnestArray(array &$result, array $current, $parent): void

@@ -2,21 +2,19 @@
 
 namespace App\Jobs;
 
-use App\Exceptions\ImportErrorThresholdExceededException;
 use App\Exceptions\ImportRunCancelledException;
 use App\Models\ImportRun;
 use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
-use App\Support\Vactool\VactoolProductImportService;
+use App\Support\CatalogImport\Yml\YandexMarketFeedDeactivationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
-class RunVactoolProductImportJob implements ShouldQueue
+class RunYandexMarketFeedDeactivationJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -39,24 +37,17 @@ class RunVactoolProductImportJob implements ShouldQueue
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping('catalog_import_vactool'))
+            (new WithoutOverlapping('catalog_import_yandex_market_feed_deactivate'))
                 ->releaseAfter(30)
                 ->expireAfter($this->timeout + 60),
         ];
     }
 
-    public function handle(VactoolProductImportService $service, ImportRunOrchestrator $runs): void
+    public function handle(YandexMarketFeedDeactivationService $service, ImportRunOrchestrator $runs): void
     {
         $run = ImportRun::query()->find($this->runId);
 
         if (! $run) {
-            Log::warning('Queued vactool import run not found', [
-                'run_id' => $this->runId,
-                'job_class' => self::class,
-                'queue' => $this->job?->getQueue(),
-                'connection' => $this->job?->getConnectionName(),
-            ]);
-
             return;
         }
 
@@ -74,20 +65,29 @@ class RunVactoolProductImportJob implements ShouldQueue
                 ]),
                 null,
                 function (array $progress) use ($run, $runs): void {
-                    $runs->saveProgress($run, $progress, $this->mode());
-
-                    $thresholdExceeded = $runs->thresholdExceeded($progress, $this->options);
-
-                    if ($thresholdExceeded !== null) {
-                        throw new ImportErrorThresholdExceededException(
-                            metric: (string) $thresholdExceeded['metric'],
-                            threshold: $thresholdExceeded['threshold'],
-                            actual: $thresholdExceeded['actual'],
-                        );
-                    }
+                    $runs->saveProgress(
+                        run: $run,
+                        progress: [
+                            'found_urls' => (int) ($progress['found_urls'] ?? 0),
+                            'processed' => (int) ($progress['processed'] ?? 0),
+                            'errors' => (int) ($progress['errors'] ?? 0),
+                            'created' => 0,
+                            'updated' => (int) ($progress['deactivated'] ?? 0),
+                            'skipped' => (int) ($progress['candidates'] ?? 0),
+                            'images_downloaded' => 0,
+                            'image_download_failed' => 0,
+                            'derivatives_queued' => 0,
+                            'no_urls' => (bool) ($progress['no_urls'] ?? false),
+                        ],
+                        mode: $this->mode(),
+                        meta: [
+                            'candidates' => (int) ($progress['candidates'] ?? 0),
+                            'deactivated' => (int) ($progress['deactivated'] ?? 0),
+                        ],
+                    );
 
                     if ($runs->isCancelled($run)) {
-                        throw new ImportRunCancelledException('Импорт остановлен пользователем.');
+                        throw new ImportRunCancelledException('Запуск деактивации остановлен пользователем.');
                     }
                 },
             );
@@ -100,48 +100,44 @@ class RunVactoolProductImportJob implements ShouldQueue
                 return;
             }
 
-            $runs->completeFromResult($run, $result, $this->write);
+            $runs->completeFromResult(
+                run: $run,
+                result: [
+                    'found_urls' => (int) ($result['found_urls'] ?? 0),
+                    'processed' => (int) ($result['processed'] ?? 0),
+                    'errors' => (int) ($result['errors'] ?? 0),
+                    'created' => 0,
+                    'updated' => (int) ($result['deactivated'] ?? 0),
+                    'skipped' => (int) ($result['candidates'] ?? 0),
+                    'samples' => $result['samples'] ?? [],
+                    'fatal_error' => $result['fatal_error'] ?? null,
+                    'no_urls' => (bool) ($result['no_urls'] ?? false),
+                ],
+                write: $this->write,
+                meta: [
+                    'candidates' => (int) ($result['candidates'] ?? 0),
+                    'deactivated' => (int) ($result['deactivated'] ?? 0),
+                    'supplier_id' => $this->options['supplier_id'] ?? null,
+                    'supplier_name' => $this->options['supplier_name'] ?? null,
+                    'site_category_id' => $this->options['site_category_id'] ?? null,
+                    'site_category_name' => $this->options['site_category_name'] ?? null,
+                ],
+            );
 
             if (($result['fatal_error'] ?? null) !== null) {
                 $run->issues()->create([
                     'row_index' => null,
-                    'code' => 'sitemap_error',
+                    'code' => 'feed_error',
                     'severity' => 'error',
                     'message' => $result['fatal_error'],
                     'row_snapshot' => [
-                        'sitemap' => $this->options['sitemap'] ?? null,
-                    ],
-                ]);
-            }
-
-            foreach (($result['url_errors'] ?? []) as $urlError) {
-                $run->issues()->create([
-                    'row_index' => null,
-                    'code' => 'parse_error',
-                    'severity' => 'error',
-                    'message' => (string) ($urlError['message'] ?? 'Unknown parse error.'),
-                    'row_snapshot' => [
-                        'url' => (string) ($urlError['url'] ?? ''),
+                        'source' => $this->options['source'] ?? null,
                     ],
                 ]);
             }
         } catch (ImportRunCancelledException) {
             $run->refresh();
             $runs->markCancelled($run, $this->mode());
-        } catch (ImportErrorThresholdExceededException $exception) {
-            $run->refresh();
-
-            $runs->markFailed($run, $this->mode(), [
-                'error_threshold_exceeded' => true,
-            ]);
-
-            $run->issues()->create([
-                'row_index' => null,
-                'code' => 'error_threshold_exceeded',
-                'severity' => 'error',
-                'message' => $exception->getMessage(),
-                'row_snapshot' => $exception->toSnapshot(),
-            ]);
         } catch (Throwable $exception) {
             $runs->markFailed($run, $this->mode());
 

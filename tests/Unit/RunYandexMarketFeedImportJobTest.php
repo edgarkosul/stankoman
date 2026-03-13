@@ -45,7 +45,7 @@ it('updates import run totals and status while handling queued yandex market fee
         'started_at' => now(),
     ]);
 
-    $service = \Mockery::mock(YandexMarketFeedImportService::class);
+    $service = Mockery::mock(YandexMarketFeedImportService::class);
     $service->shouldReceive('run')
         ->once()
         ->andReturnUsing(function (array $options, ?callable $output, ?callable $progress): array {
@@ -135,6 +135,64 @@ it('marks run as failed from queue failed callback for yandex market feed import
     expect($run->issues()->count())->toBe(1);
     expect($run->issues()->first()?->code)->toBe('job_failed');
     expect($run->issues()->first()?->message)->toContain('Queue timeout exceeded');
+});
+
+it('forwards write mode to yandex market feed import service options', function () {
+    prepareYandexMarketFeedJobImportTables();
+
+    $options = [
+        'source' => 'https://example.test/yandex-market-feed.xml',
+    ];
+
+    $run = ImportRun::query()->create([
+        'type' => 'yandex_market_feed_products',
+        'status' => 'pending',
+        'columns' => $options,
+        'totals' => [
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => true,
+            ],
+        ],
+        'source_filename' => $options['source'],
+        'started_at' => now(),
+    ]);
+
+    $service = Mockery::mock(YandexMarketFeedImportService::class);
+    $service->shouldReceive('run')
+        ->once()
+        ->withArgs(function (array $receivedOptions, ?callable $output, ?callable $progress) use ($run): bool {
+            expect($receivedOptions['run_id'] ?? null)->toBe($run->id);
+            expect($receivedOptions['write'] ?? null)->toBeTrue();
+
+            return true;
+        })
+        ->andReturn([
+            'options' => $options,
+            'write_mode' => true,
+            'found_urls' => 1,
+            'processed' => 1,
+            'errors' => 0,
+            'created' => 1,
+            'updated' => 0,
+            'skipped' => 0,
+            'images_downloaded' => 0,
+            'image_download_failed' => 0,
+            'derivatives_queued' => 0,
+            'samples' => [],
+            'url_errors' => [],
+            'fatal_error' => null,
+            'no_urls' => false,
+            'success' => true,
+        ]);
+
+    $job = new RunYandexMarketFeedImportJob($run->id, $options, true);
+    $job->handle($service, app(ImportRunOrchestrator::class));
+
+    $run->refresh();
+
+    expect($run->status)->toBe('completed');
+    expect((int) data_get($run->totals, 'create'))->toBe(1);
 });
 
 function prepareYandexMarketFeedJobImportTables(): void

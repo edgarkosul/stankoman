@@ -35,6 +35,8 @@ class CatalogSupplierImport extends Page implements HasForms
 
     private const DISPLAY_TIMEZONE = 'Europe/Moscow';
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected string $view = 'filament.pages.catalog-supplier-import';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-adjustments-horizontal';

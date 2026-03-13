@@ -273,6 +273,8 @@ function prepareCatalogSupplierImportPageTables(): void
             $table->json('totals')->nullable();
             $table->string('source_filename')->nullable();
             $table->string('stored_path')->nullable();
+            $table->unsignedBigInteger('supplier_id')->nullable();
+            $table->unsignedBigInteger('supplier_import_source_id')->nullable();
             $table->unsignedBigInteger('user_id')->nullable();
             $table->timestamp('started_at')->nullable();
             $table->timestamp('finished_at')->nullable();

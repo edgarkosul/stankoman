@@ -8,6 +8,7 @@ use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 
 class ImportRunsTable
@@ -46,6 +47,16 @@ class ImportRunsTable
                         'info' => 'specs_match',
                     ])
                     ->sortable(),
+
+                TextColumn::make('supplier.name')
+                    ->label('Поставщик')
+                    ->searchable()
+                    ->toggleable(),
+
+                TextColumn::make('supplierImportSource.name')
+                    ->label('Вариант')
+                    ->searchable()
+                    ->toggleable(),
 
                 TextColumn::make('status')
                     ->label('Статус')
@@ -202,7 +213,15 @@ class ImportRunsTable
             ])
             ->defaultSort('id', 'desc')
             ->filters([
-                //
+                SelectFilter::make('supplier')
+                    ->relationship('supplier', 'name')
+                    ->searchable()
+                    ->preload(),
+                SelectFilter::make('supplierImportSource')
+                    ->label('Вариант импорта')
+                    ->relationship('supplierImportSource', 'name')
+                    ->searchable()
+                    ->preload(),
             ])
             ->recordActions([
                 Action::make('view_event_log')
