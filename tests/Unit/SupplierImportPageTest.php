@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema as DatabaseSchema;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 uses(TestCase::class);
@@ -177,6 +178,39 @@ test('supplier import page loads yandex feed categories and exposes tree select 
         '33' => '— — [33] Промышленные',
     ]);
     expect($page->yandexFeedCategoryOptionLabel(22))->toBe('— [22] Пылесосы');
+});
+
+test('supplier import page renders loaded yandex category tree below run summary', function () {
+    prepareSupplierImportPageTables();
+
+    $service = Mockery::mock(YandexMarketFeedImportService::class);
+    $service->shouldReceive('listCategoryNodes')
+        ->once()
+        ->andReturn([
+            ['id' => 11, 'name' => 'Компрессоры', 'parent_id' => null],
+            ['id' => 22, 'name' => 'Пылесосы', 'parent_id' => 11],
+            ['id' => 33, 'name' => 'Промышленные', 'parent_id' => 22],
+        ]);
+
+    app()->instance(YandexMarketFeedImportService::class, $service);
+
+    Livewire::test(SupplierImport::class)
+        ->set('data.driver_key', 'yandex_market_feed')
+        ->set('data.source_settings', [
+            'source_mode' => 'url',
+            'source_url' => 'https://example.test/yandex.xml',
+            'source_history_id' => null,
+            'timeout' => 25,
+            'delay_ms' => 0,
+            'download_images' => true,
+        ])
+        ->call('loadYandexFeedCategories')
+        ->assertSee('Категории из фида')
+        ->assertSee('Компрессоры')
+        ->assertSee('Пылесосы')
+        ->assertSee('Промышленные')
+        ->assertSee('Всего: 3')
+        ->assertSee('листовых: 1');
 });
 
 test('supplier import page can create supplier and marks legacy yandex supplier in labels', function () {

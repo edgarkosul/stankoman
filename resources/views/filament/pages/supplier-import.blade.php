@@ -135,6 +135,69 @@
         @endif
     </div>
 
+    @if (!empty($yandexParsedCategoryTree))
+        @php
+            $previewCategories = array_slice($yandexParsedCategoryTree, 0, 300, true);
+            $hiddenCount = max(0, count($yandexParsedCategoryTree) - count($previewCategories));
+        @endphp
+
+        <div class="mt-6 space-y-3 rounded-xl border border-zinc-200 bg-white/60 p-4">
+            <div class="flex items-center justify-between gap-3">
+                <h2 class="text-sm font-semibold">Категории из фида</h2>
+                <div class="text-xs text-zinc-500">
+                    Всего: {{ count($yandexParsedCategoryTree) }}
+                    · листовых: {{ count($yandexLeafCategoryIds ?? []) }}
+                </div>
+            </div>
+
+            @if (!empty($yandexCategoriesLoadedSource))
+                <div class="text-xs text-zinc-500">
+                    Источник: {{ $yandexCategoriesLoadedSource }}
+                    @if (!empty($yandexCategoriesLoadedAt))
+                        · загружено: {{ $yandexCategoriesLoadedAt }}
+                    @endif
+                </div>
+            @endif
+
+            <div class="max-h-80 overflow-auto rounded-lg border border-zinc-200 bg-zinc-50">
+                <table class="min-w-full text-xs sm:text-sm">
+                    <thead class="sticky top-0 bg-zinc-100">
+                        <tr class="border-b border-zinc-200 text-left text-zinc-600">
+                            <th class="px-3 py-2 font-medium">ID</th>
+                            <th class="px-3 py-2 font-medium">Категория</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-zinc-200">
+                        @foreach ($previewCategories as $category)
+                            @php
+                                $depth = max(0, (int) ($category['depth'] ?? 0));
+                                $isLeaf = (bool) ($category['is_leaf'] ?? false);
+                            @endphp
+                            <tr class="{{ $isLeaf ? 'bg-white/70' : 'bg-transparent' }}">
+                                <td class="whitespace-nowrap px-3 py-2 {{ $isLeaf ? 'font-semibold text-zinc-900' : 'text-zinc-500' }}">
+                                    [{{ $category['id'] }}]
+                                </td>
+                                <td class="px-3 py-2">
+                                    <div class="flex items-center gap-2" style="padding-left: {{ $depth * 18 }}px;">
+                                        <span class="{{ $isLeaf ? 'font-semibold text-zinc-900' : 'text-zinc-700' }}">
+                                            {{ $category['name'] }}
+                                        </span>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+            @if ($hiddenCount > 0)
+                <div class="text-xs text-zinc-500">
+                    Показаны первые {{ count($previewCategories) }} категорий. Осталось скрыто: {{ $hiddenCount }}.
+                </div>
+            @endif
+        </div>
+    @endif
+
     @if (!empty($lastSavedSamples))
         <div class="mt-6 space-y-3 rounded-xl border border-zinc-200 bg-white/60 p-4">
             <div class="flex items-center justify-between gap-3">

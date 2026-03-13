@@ -208,32 +208,39 @@ class Product extends Model
 
     protected static function booted(): void
     {
-        static::saving(function (self $product) {
-            $product->name_normalized = NameNormalizer::normalize($product->name);
+        static::saving(function (self $product): void {
+            $attributes = $product->getAttributes();
+            $hasLoadedName = array_key_exists('name', $attributes);
+
+            if ($hasLoadedName && ($product->isDirty('name') || $product->name_normalized === null || ! $product->exists)) {
+                $product->name_normalized = NameNormalizer::normalize($product->name);
+            }
 
             // Аккуратная генерация slug, если он ещё не задан
-            if (! $product->slug && $product->name) {
-                // Базовый slug из имени
-                $base = Str::slug($product->name) ?: 'product';
-                $slug = $base;
-                $i = 2;
-
-                // Обеспечиваем уникальность slug
-                while (
-                    static::query()
-                        ->where('slug', $slug)
-                        ->when(
-                            $product->exists,
-                            fn ($q) => $q->where('id', '!=', $product->id)
-                        )
-                        ->exists()
-                ) {
-                    $slug = $base.'-'.$i;
-                    $i++;
-                }
-
-                $product->slug = $slug;
+            if (! $hasLoadedName || $product->slug || ! $product->name) {
+                return;
             }
+
+            // Базовый slug из имени
+            $base = Str::slug($product->name) ?: 'product';
+            $slug = $base;
+            $i = 2;
+
+            // Обеспечиваем уникальность slug
+            while (
+                static::query()
+                    ->where('slug', $slug)
+                    ->when(
+                        $product->exists,
+                        fn ($q) => $q->where('id', '!=', $product->id)
+                    )
+                    ->exists()
+            ) {
+                $slug = $base.'-'.$i;
+                $i++;
+            }
+
+            $product->slug = $slug;
         });
     }
 
@@ -443,7 +450,7 @@ class Product extends Model
     /**
      * Набор атрибутов основной категории (если задана).
      *
-     * @return Collection<int,\App\Models\Attribute>
+     * @return Collection<int,AttributeDef>
      */
     public function getPrimaryCategoryAttributes(): Collection
     {
@@ -601,7 +608,7 @@ class Product extends Model
      * Для PAV — пишется/обновляется запись в product_attribute_values.
      *
      * @param  mixed  $value  select: int|null; multiselect: int[]; PAV: см. ProductAttributeValue::setTypedValue()
-     * @return bool|\App\Models\ProductAttributeValue
+     * @return bool|ProductAttributeValue
      */
     public function setAttributeValue(string $attributeSlug, $value)
     {
@@ -648,17 +655,17 @@ class Product extends Model
      * @param  string  $separator  разделитель для мультизначений
      */
     public function attrLabel(
-        string|int|Attribute $attr,
+        string|int|AttributeDef $attr,
         string $separator = ' / ',
         ?Category $category = null,
     ): ?string {
         // 1) Получаем объект атрибута без лишних запросов
-        if ($attr instanceof Attribute) {
+        if ($attr instanceof AttributeDef) {
             $attribute = $attr->loadMissing('unit');
         } else {
             $attribute = is_numeric($attr)
-                ? Attribute::with('unit')->find((int) $attr)
-                : Attribute::with('unit')->where('slug', $attr)->first();
+                ? AttributeDef::with('unit')->find((int) $attr)
+                : AttributeDef::with('unit')->where('slug', $attr)->first();
         }
 
         if (! $attribute) {
@@ -825,7 +832,7 @@ class Product extends Model
     {
         $attrId = is_numeric($attr)
             ? (int) $attr
-            : \App\Models\Attribute::where('slug', $attr)->value('id');
+            : AttributeDef::where('slug', $attr)->value('id');
 
         if (! $attrId) {
             return false;
@@ -929,7 +936,7 @@ class Product extends Model
     /**
      * Недостающие обязательные атрибуты (id, name, slug, input_type, data_type).
      */
-    public function missingRequiredAttributes(?int $categoryId = null): \Illuminate\Support\Collection
+    public function missingRequiredAttributes(?int $categoryId = null): Collection
     {
         $req = $this->requiredAttributeIds($categoryId);
         if (! $req) {
@@ -939,7 +946,7 @@ class Product extends Model
         $filled = $this->filledAttributeIds($req);
         $missingIds = array_values(array_diff($req, $filled));
 
-        return \App\Models\Attribute::query()
+        return AttributeDef::query()
             ->whereIn('id', $missingIds)
             ->get(['id', 'name', 'slug', 'input_type', 'data_type']);
     }
