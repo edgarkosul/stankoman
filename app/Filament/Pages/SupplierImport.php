@@ -149,10 +149,9 @@ class SupplierImport extends Page implements HasForms
         return $schema
             ->components([
                 Section::make('Поставщик')
-                    ->description('Supplier — бизнес-сущность. SupplierImportSource — сохраненная конфигурация запуска импорта.')
                     ->schema([
                         Select::make('supplier_id')
-                            ->label('Поставщик')
+                            ->hiddenLabel()
                             ->placeholder('Выберите или создайте поставщика')
                             ->helperText(fn (): ?string => $this->supplierHelperText())
                             ->searchable()
@@ -178,7 +177,7 @@ class SupplierImport extends Page implements HasForms
                             }),
                     ]),
                 Section::make('Вариант импорта')
-                    ->description('Вариант импорта хранит preset драйвера, а не идентичность товара. Уникальность товара остается в рамках supplier + external_id.')
+                    ->description('Вариант импорта включает в себя настройки драйвера и его параметров для конкретного поставщика. Вы можете сохранять варианты импорта для повторного использования или создавать новый вариант при каждом запуске.')
                     ->schema([
                         Select::make('supplier_import_source_id')
                             ->label('Сохраненный вариант')
@@ -251,7 +250,7 @@ class SupplierImport extends Page implements HasForms
                         ]),
                     ]),
                 Section::make('Деактивация')
-                    ->description('Деактивация выполняется только в рамках выбранного Supplier и использует feed текущего варианта импорта. Перед apply обязателен dry-run.')
+                    ->description('Деактивация работает только для выбранного поставщика и категории сайта. Проверка выполняется по feed текущего варианта импорта. Если товара нет в feed, он будет деактивирован. Перед нажатием Apply обязательно запустите dry-run.')
                     ->visible(fn (): bool => $this->currentDriver()->supportsDeactivation())
                     ->schema([
                         Grid::make(2)
@@ -1194,15 +1193,15 @@ class SupplierImport extends Page implements HasForms
                 ->afterStateUpdated(function (): void {
                     $this->updateSyncScenarioFromFlags();
                 }),
-            TextInput::make('runtime.error_threshold_count')
-                ->label('Порог ошибок (count)')
-                ->numeric()
-                ->integer()
-                ->minValue(1),
-            TextInput::make('runtime.error_threshold_percent')
-                ->label('Порог ошибок (%)')
-                ->numeric()
-                ->minValue(0),
+            // TextInput::make('runtime.error_threshold_count')
+            //     ->label('Порог ошибок (count)')
+            //     ->numeric()
+            //     ->integer()
+            //     ->minValue(1),
+            // TextInput::make('runtime.error_threshold_percent')
+            //     ->label('Порог ошибок (%)')
+            //     ->numeric()
+            //     ->minValue(0),
         ];
     }
 
@@ -1541,7 +1540,7 @@ class SupplierImport extends Page implements HasForms
             return 'Для этого поставщика доступны только универсальные драйверы.';
         }
 
-        return 'Универсальные драйверы доступны всегда. Специализированные показываются только у совместимых поставщиков.';
+        return 'Yandex Market Feed доступен для любого поставщика. Специализированные драйверы под конкретного поставщика надо заказывать у разработчика.';
     }
 
     private function defaultDriverForCurrentSupplier(?string $includeKey = null): SupplierImportDriver
