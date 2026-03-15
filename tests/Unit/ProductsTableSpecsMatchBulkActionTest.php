@@ -392,6 +392,14 @@ it('sets selected category as primary in categories mass edit mode', function ()
         'is_active' => true,
     ]);
 
+    $stagingCategory = Category::query()->create([
+        'name' => 'Staging',
+        'slug' => 'staging',
+        'parent_id' => -1,
+        'order' => 203,
+        'is_active' => true,
+    ]);
+
     $product = Product::query()->create([
         'name' => 'Товар для смены категории',
         'slug' => 'primary-category-switch-product',
@@ -400,6 +408,7 @@ it('sets selected category as primary in categories mass edit mode', function ()
 
     $product->categories()->attach($oldCategory->id, ['is_primary' => true]);
     $product->categories()->attach($newCategory->id, ['is_primary' => false]);
+    $product->categories()->attach($stagingCategory->id, ['is_primary' => false]);
 
     Livewire::test(ListProducts::class)
         ->assertCanSeeTableRecords([$product])
@@ -428,23 +437,44 @@ it('sets selected category as primary in categories mass edit mode', function ()
     )->toBe(0);
 });
 
-it('finds all leaf categories in primary category search even when options are limited', function () {
+it('shows a limited list of leaf categories and searches across all leaf categories for primary category selection', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
+    $categoryOptionsLimit = (new ReflectionClass(ProductsTable::class))
+        ->getConstant('CATEGORY_OPTIONS_LIMIT');
+
     $visibleLeafCategory = Category::query()->create([
-        'name' => 'Листовая категория в списке',
+        'name' => 'AAA Листовая категория в списке',
         'slug' => 'listed-leaf-category',
         'parent_id' => -1,
         'order' => 411,
         'is_active' => true,
     ]);
 
+    foreach (range(1, $categoryOptionsLimit - 1) as $index) {
+        Category::query()->create([
+            'name' => sprintf('BBB Category %03d', $index),
+            'slug' => sprintf('leaf-category-%03d', $index),
+            'parent_id' => -1,
+            'order' => 411 + $index,
+            'is_active' => true,
+        ]);
+    }
+
     $searchOnlyLeafCategory = Category::query()->create([
-        'name' => 'Уникальная листовая категория для поиска',
+        'name' => 'ZZZ Уникальная листовая категория для поиска',
         'slug' => 'search-only-leaf-category',
         'parent_id' => -1,
-        'order' => 412,
+        'order' => 999,
+        'is_active' => true,
+    ]);
+
+    $stagingCategory = Category::query()->create([
+        'name' => 'Staging category',
+        'slug' => 'staging',
+        'parent_id' => -1,
+        'order' => 1000,
         'is_active' => true,
     ]);
 
@@ -454,7 +484,7 @@ it('finds all leaf categories in primary category search even when options are l
         'price_amount' => 2100,
     ]);
 
-    $product->categories()->attach($visibleLeafCategory->id, ['is_primary' => true]);
+    $product->categories()->attach($stagingCategory->id, ['is_primary' => true]);
 
     Livewire::test(ListProducts::class)
         ->assertCanSeeTableRecords([$product])
@@ -463,18 +493,19 @@ it('finds all leaf categories in primary category search even when options are l
             'mode' => 'categories',
             'cat_op' => 'set_primary',
         ])
-        ->assertFormFieldExists('primary_category_id', function (Select $field) use ($visibleLeafCategory, $searchOnlyLeafCategory): bool {
+        ->assertFormFieldExists('primary_category_id', function (Select $field) use ($categoryOptionsLimit, $visibleLeafCategory, $searchOnlyLeafCategory): bool {
             $optionIds = collect(array_keys($field->getOptions()))
                 ->map(fn ($id): int => (int) $id)
                 ->values()
                 ->all();
 
-            $searchResultIds = collect(array_keys($field->getSearchResults('Уникальная листовая категория')))
+            $searchResultIds = collect(array_keys($field->getSearchResults('ZZZ Уникальная листовая категория')))
                 ->map(fn ($id): int => (int) $id)
                 ->values()
                 ->all();
 
-            return in_array($visibleLeafCategory->id, $optionIds, true)
+            return count($optionIds) === $categoryOptionsLimit
+                && in_array($visibleLeafCategory->id, $optionIds, true)
                 && ! in_array($searchOnlyLeafCategory->id, $optionIds, true)
                 && in_array($searchOnlyLeafCategory->id, $searchResultIds, true);
         });

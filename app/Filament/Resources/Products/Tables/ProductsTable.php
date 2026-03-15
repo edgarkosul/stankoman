@@ -42,6 +42,8 @@ use Illuminate\Support\Facades\DB;
 
 class ProductsTable
 {
+    private const CATEGORY_OPTIONS_LIMIT = 50;
+
     private const LOADING_WAIT_MESSAGE = 'Ожидайте загрузки...';
 
     private const SEARCHING_WAIT_MESSAGE = 'Ищем варианты...';
@@ -301,11 +303,7 @@ class ProductsTable
                         Select::make('primary_category_id')
                             ->label('Основная категория')
                             ->searchable()
-                            ->options(fn () => Category::query()
-                                ->leaf()
-                                ->whereHas('products')
-                                ->orderBy('name')
-                                ->pluck('name', 'id'))
+                            ->options(fn (): array => self::leafCategoryOptions())
                             ->getSearchResultsUsing(fn (string $search): array => self::leafCategorySearchResults($search))
                             ->getOptionLabelUsing(fn ($value): ?string => self::categoryOptionLabel($value))
                             ->visible(fn ($get) => $get('mode') === 'categories' && $get('cat_op') === 'set_primary')
@@ -332,10 +330,7 @@ class ProductsTable
                                         ->pluck('name', 'id');
                                 }
 
-                                return $baseQuery
-                                    ->leaf()
-                                    ->whereHas('products')
-                                    ->pluck('name', 'id');
+                                return self::leafCategoryOptions();
                             })
                             ->getSearchResultsUsing(function (string $search, Get $get, $livewire): array {
                                 if ($get('cat_op') === 'detach_extra') {
@@ -1351,13 +1346,26 @@ class ProductsTable
     /**
      * @return array<int, string>
      */
+    private static function leafCategoryOptions(): array
+    {
+        return Category::query()
+            ->leaf()
+            ->orderBy('name')
+            ->limit(self::CATEGORY_OPTIONS_LIMIT)
+            ->pluck('name', 'id')
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
     private static function leafCategorySearchResults(string $search): array
     {
         return Category::query()
             ->leaf()
             ->where('name', 'like', "%{$search}%")
             ->orderBy('name')
-            ->limit(50)
+            ->limit(self::CATEGORY_OPTIONS_LIMIT)
             ->pluck('name', 'id')
             ->all();
     }
@@ -1383,7 +1391,7 @@ class ProductsTable
             ->whereHas('products', fn ($q) => $q->whereIn('products.id', $selectedIds))
             ->where('name', 'like', "%{$search}%")
             ->orderBy('name')
-            ->limit(50)
+            ->limit(self::CATEGORY_OPTIONS_LIMIT)
             ->pluck('name', 'id')
             ->all();
     }
