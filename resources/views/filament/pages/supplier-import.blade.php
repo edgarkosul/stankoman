@@ -72,7 +72,7 @@
                     </div>
                     <div>
                         <div class="text-zinc-500">Категория feed</div>
-                        <div class="font-semibold text-zinc-900">{{ $lastSavedRun['feed_category_id'] ?? '—' }}</div>
+                        <div class="font-semibold text-zinc-900">{{ $lastSavedRun['feed_category_label'] ?: ($lastSavedRun['feed_category_id'] ?? '—') }}</div>
                     </div>
                     <div>
                         <div class="text-zinc-500">Категория сайта</div>
@@ -183,6 +183,63 @@
                                             {{ $category['name'] }}
                                         </span>
                                     </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+            @if ($hiddenCount > 0)
+                <div class="text-xs text-zinc-500">
+                    Показаны первые {{ count($previewCategories) }} категорий. Осталось скрыто: {{ $hiddenCount }}.
+                </div>
+            @endif
+        </div>
+    @endif
+
+    @if (!empty($metaltecParsedCategoryTree))
+        @php
+            $previewCategories = array_slice($metaltecParsedCategoryTree, 0, 300, true);
+            $hiddenCount = max(0, count($metaltecParsedCategoryTree) - count($previewCategories));
+        @endphp
+
+        <div class="mt-6 space-y-3 rounded-xl border border-zinc-200 bg-white/60 p-4">
+            <div class="flex items-center justify-between gap-3">
+                <h2 class="text-sm font-semibold">Категории из фида</h2>
+                <div class="text-xs text-zinc-500">
+                    Всего: {{ count($metaltecParsedCategoryTree) }}
+                    · листовых: {{ count($metaltecLeafCategoryIds ?? []) }}
+                </div>
+            </div>
+
+            @if (!empty($metaltecCategoriesLoadedSource))
+                <div class="text-xs text-zinc-500">
+                    Источник: {{ $metaltecCategoriesLoadedSource }}
+                    @if (!empty($metaltecCategoriesLoadedAt))
+                        · загружено: {{ $metaltecCategoriesLoadedAt }}
+                    @endif
+                </div>
+            @endif
+
+            <div class="max-h-80 overflow-auto rounded-lg border border-zinc-200 bg-zinc-50">
+                <table class="min-w-full text-xs sm:text-sm">
+                    <thead class="sticky top-0 bg-zinc-100">
+                        <tr class="border-b border-zinc-200 text-left text-zinc-600">
+                            <th class="px-3 py-2 font-medium">ID</th>
+                            <th class="px-3 py-2 font-medium">Категория</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-zinc-200">
+                        @foreach ($previewCategories as $category)
+                            <tr class="bg-white/70">
+                                <td class="whitespace-nowrap px-3 py-2 font-semibold text-zinc-900">
+                                    [{{ $category['id'] }}]
+                                </td>
+                                <td class="px-3 py-2">
+                                    <span class="font-semibold text-zinc-900">
+                                        {{ $category['name'] }}
+                                    </span>
                                 </td>
                             </tr>
                         @endforeach

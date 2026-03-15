@@ -1,13 +1,16 @@
 <?php
 
 use App\Filament\Pages\SupplierImport;
+use App\Jobs\RunMetaltecProductImportJob;
 use App\Jobs\RunVactoolProductImportJob;
 use App\Jobs\RunYandexMarketFeedDeactivationJob;
 use App\Models\Category;
 use App\Models\ImportRun;
 use App\Models\Supplier;
 use App\Models\SupplierImportSource;
+use App\Support\CatalogImport\Suppliers\Metaltec\MetaltecSupplierProfile;
 use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
+use App\Support\Metaltec\MetaltecProductImportService;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -78,7 +81,7 @@ test('supplier import form has supplier, source and driver controls', function (
     expect($finalizeMissingField)->toBeNull();
 });
 
-test('supplier import page hides internal driver fields and uses bucket select for metalmaster', function () {
+test('supplier import page hides internal driver fields and exposes metaltec url field', function () {
     prepareSupplierImportPageTables();
 
     $supplier = Supplier::query()->create([
@@ -110,6 +113,22 @@ test('supplier import page hides internal driver fields and uses bucket select f
 
     expect($bucketsFileField)->toBeNull();
     expect($bucketField)->not->toBeNull();
+
+    $metaltecSupplier = Supplier::query()->create([
+        'name' => 'Metaltec',
+        'slug' => 'metaltec',
+        'is_active' => true,
+    ]);
+
+    $page->data['supplier_id'] = $metaltecSupplier->id;
+    $page->data['driver_key'] = 'metaltec_xml';
+
+    $metaltecSchema = $page->form(Schema::make($page));
+    $sourceUrlField = $metaltecSchema->getComponent(
+        fn ($component) => $component instanceof TextInput && $component->getName() === 'source_settings.source_url',
+    );
+
+    expect($sourceUrlField)->not->toBeNull();
 });
 
 test('supplier import page loads yandex feed categories and exposes tree select options', function () {
@@ -563,6 +582,11 @@ test('supplier import page filters drivers by supplier and defaults to compatibl
         'slug' => 'vactool',
         'is_active' => true,
     ]);
+    $metaltecSupplier = Supplier::query()->create([
+        'name' => 'Metaltec',
+        'slug' => 'metaltec',
+        'is_active' => true,
+    ]);
 
     $page = new SupplierImport;
     $page->mount();
@@ -588,6 +612,143 @@ test('supplier import page filters drivers by supplier and defaults to compatibl
         'yandex_market_feed' => 'Yandex Market Feed',
     ]);
     expect(data_get($page->data, 'driver_key'))->toBe('vactool_html');
+
+    $page->data['supplier_id'] = $metaltecSupplier->id;
+    \Livewire\invade($page)->handleSupplierChanged();
+
+    expect(\Livewire\invade($page)->availableDriverOptions())->toBe([
+        'metaltec_xml' => 'Metaltec XML',
+        'yandex_market_feed' => 'Yandex Market Feed',
+    ]);
+    expect(data_get($page->data, 'driver_key'))->toBe('metaltec_xml');
+});
+
+test('supplier import page saves source and dispatches metaltec dry run', function () {
+    prepareSupplierImportPageTables();
+    Queue::fake();
+
+    $supplier = Supplier::query()->create([
+        'name' => 'Metaltec',
+        'slug' => 'metaltec',
+        'is_active' => true,
+    ]);
+
+    $page = new SupplierImport;
+    $page->mount();
+    $page->data['supplier_id'] = $supplier->id;
+    $page->data['supplier_import_source_id'] = null;
+    $page->data['source_name'] = 'Основной XML';
+    $page->data['driver_key'] = 'metaltec_xml';
+    $page->data['source_is_active'] = true;
+    $page->data['source_settings'] = [
+        'source_url' => 'https://metaltec.com.ru/upload/catalog-metaltec-char.xml',
+    ];
+
+    $page->doDryRun();
+
+    $source = SupplierImportSource::query()->first();
+    $run = ImportRun::query()->find($page->lastRunId);
+
+    expect($source)->not->toBeNull();
+    expect($source?->supplier_id)->toBe($supplier->id);
+    expect($source?->driver_key)->toBe('metaltec_xml');
+    expect($source?->profile_key)->toBe('metaltec_xml');
+    expect($run?->type)->toBe('metaltec_products');
+    expect($run?->supplier_id)->toBe($supplier->id);
+    expect($run?->supplier_import_source_id)->toBe($source?->id);
+    expect(data_get($run?->columns, 'supplier_import_source_name'))->toBe('Основной XML');
+    expect(data_get($run?->columns, 'source'))->toBe('https://metaltec.com.ru/upload/catalog-metaltec-char.xml');
+
+    Queue::assertPushed(RunMetaltecProductImportJob::class, function (RunMetaltecProductImportJob $job) use ($page): bool {
+        return $job->runId === $page->lastRunId
+            && $job->write === false
+            && ($job->options['source'] ?? null) === 'https://metaltec.com.ru/upload/catalog-metaltec-char.xml'
+            && ($job->options['mode'] ?? null) === 'partial_import'
+            && ($job->options['finalize_missing'] ?? null) === false
+            && ($job->options['profile'] ?? null) === 'metaltec_xml';
+    });
+});
+
+test('supplier import page loads metaltec feed categories and dispatches import with selected section category', function () {
+    prepareSupplierImportPageTables();
+    Queue::fake();
+
+    $supplier = Supplier::query()->create([
+        'name' => 'Metaltec',
+        'slug' => 'metaltec',
+        'is_active' => true,
+    ]);
+    $profile = new MetaltecSupplierProfile;
+    $millingId = $profile->categoryIdForSection('Фрезерные станки');
+    $latheId = $profile->categoryIdForSection('Токарные станки');
+
+    $service = Mockery::mock(MetaltecProductImportService::class);
+    $service->shouldReceive('listCategoryNodes')
+        ->once()
+        ->andReturn([
+            ['id' => $millingId, 'name' => 'Фрезерные станки', 'parent_id' => null],
+            ['id' => $latheId, 'name' => 'Токарные станки', 'parent_id' => null],
+        ]);
+
+    app()->instance(MetaltecProductImportService::class, $service);
+
+    $page = new SupplierImport;
+    $page->mount();
+    $page->data['supplier_id'] = $supplier->id;
+    $page->data['source_name'] = 'Основной XML';
+    $page->data['driver_key'] = 'metaltec_xml';
+    $page->data['source_is_active'] = true;
+    $page->data['source_settings'] = [
+        'source_url' => 'https://metaltec.com.ru/upload/catalog-metaltec-char.xml',
+    ];
+
+    $page->loadMetaltecFeedCategories();
+
+    expect($page->metaltecParsedCategories)->toBe([
+        $millingId => 'Фрезерные станки',
+        $latheId => 'Токарные станки',
+    ]);
+    expect($page->metaltecParsedCategoryTree)->toBe([
+        $millingId => [
+            'id' => $millingId,
+            'name' => 'Фрезерные станки',
+            'parent_id' => null,
+            'depth' => 0,
+            'is_leaf' => true,
+            'tree_name' => 'Фрезерные станки',
+        ],
+        $latheId => [
+            'id' => $latheId,
+            'name' => 'Токарные станки',
+            'parent_id' => null,
+            'depth' => 0,
+            'is_leaf' => true,
+            'tree_name' => 'Токарные станки',
+        ],
+    ]);
+    expect($page->metaltecFeedCategoryOptions())->toBe([
+        (string) $millingId => 'Фрезерные станки',
+        (string) $latheId => 'Токарные станки',
+    ]);
+    expect($page->metaltecFeedCategoryOptionLabel($latheId))->toBe('Токарные станки');
+
+    data_set($page->data, 'runtime.category_id', $latheId);
+    $page->doDryRun();
+
+    $run = ImportRun::query()->find($page->lastRunId);
+
+    expect($run?->type)->toBe('metaltec_products');
+    expect($run?->supplier_id)->toBe($supplier->id);
+    expect(data_get($run?->columns, 'source'))->toBe('https://metaltec.com.ru/upload/catalog-metaltec-char.xml');
+    expect(data_get($run?->columns, 'category_id'))->toBe($latheId);
+    expect(data_get($run?->columns, 'category_name'))->toBe('Токарные станки');
+
+    Queue::assertPushed(RunMetaltecProductImportJob::class, function (RunMetaltecProductImportJob $job) use ($page, $latheId): bool {
+        return $job->runId === $page->lastRunId
+            && $job->write === false
+            && ($job->options['category_id'] ?? null) === $latheId
+            && ($job->options['category_name'] ?? null) === 'Токарные станки';
+    });
 });
 
 test('supplier import page requires deactivation dry run before apply and dispatches yandex deactivation dry run', function () {

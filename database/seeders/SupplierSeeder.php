@@ -33,6 +33,11 @@ class SupplierSeeder extends Seeder
                 'slug' => 'metalmaster',
                 'is_active' => true,
             ],
+            [
+                'name' => 'Metaltec',
+                'slug' => 'metaltec',
+                'is_active' => true,
+            ],
         ];
     }
 }

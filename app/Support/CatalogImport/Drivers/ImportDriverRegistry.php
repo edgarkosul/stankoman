@@ -15,6 +15,7 @@ class ImportDriverRegistry
     public function __construct(
         private readonly VactoolHtmlDriver $vactool,
         private readonly MetalmasterHtmlDriver $metalmaster,
+        private readonly MetaltecXmlDriver $metaltec,
         private readonly YandexMarketFeedDriver $yandex,
     ) {}
 
@@ -30,6 +31,7 @@ class ImportDriverRegistry
         $this->drivers = collect([
             $this->vactool,
             $this->metalmaster,
+            $this->metaltec,
             $this->yandex,
         ])
             ->mapWithKeys(fn (SupplierImportDriver $driver): array => [$driver->key() => $driver])

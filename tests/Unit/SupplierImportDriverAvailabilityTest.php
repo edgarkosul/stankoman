@@ -18,16 +18,22 @@ test('driver registry filters drivers by supplier and picks compatible defaults'
         'name' => 'Metalmaster',
         'slug' => 'metalmaster',
     ]);
+    $metaltecSupplier = new Supplier([
+        'name' => 'Metaltec',
+        'slug' => 'metaltec',
+    ]);
 
     expect(array_keys($registry->optionsForSupplier(null)))->toBe(['yandex_market_feed']);
     expect(array_keys($registry->optionsForSupplier($genericSupplier)))->toBe(['yandex_market_feed']);
     expect(array_keys($registry->optionsForSupplier($vactoolSupplier)))->toBe(['vactool_html', 'yandex_market_feed']);
     expect(array_keys($registry->optionsForSupplier($metalmasterSupplier)))->toBe(['metalmaster_html', 'yandex_market_feed']);
+    expect(array_keys($registry->optionsForSupplier($metaltecSupplier)))->toBe(['metaltec_xml', 'yandex_market_feed']);
 
     expect($registry->defaultForSupplier(null)->key())->toBe('yandex_market_feed');
     expect($registry->defaultForSupplier($genericSupplier)->key())->toBe('yandex_market_feed');
     expect($registry->defaultForSupplier($vactoolSupplier)->key())->toBe('vactool_html');
     expect($registry->defaultForSupplier($metalmasterSupplier)->key())->toBe('metalmaster_html');
+    expect($registry->defaultForSupplier($metaltecSupplier)->key())->toBe('metaltec_xml');
 
     expect(array_keys($registry->optionsForSupplier($genericSupplier, 'vactool_html')))->toBe([
         'vactool_html',

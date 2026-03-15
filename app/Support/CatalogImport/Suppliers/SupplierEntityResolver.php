@@ -60,6 +60,7 @@ class SupplierEntityResolver
         return match ($normalized) {
             'vactool' => ['name' => 'Vactool', 'slug' => 'vactool'],
             'metalmaster' => ['name' => 'Metalmaster', 'slug' => 'metalmaster'],
+            'metaltec' => ['name' => 'Metaltec', 'slug' => 'metaltec'],
             'yandex_market_feed' => ['name' => 'Yandex Market Feed', 'slug' => 'yandex-market-feed'],
             default => [
                 'name' => Str::of($normalized)

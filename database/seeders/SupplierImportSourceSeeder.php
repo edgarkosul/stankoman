@@ -22,6 +22,11 @@ class SupplierImportSourceSeeder extends Seeder
                 'driver_key' => 'metalmaster_html',
                 'sort' => 10,
             ],
+            'metaltec' => [
+                'name' => 'Основной XML',
+                'driver_key' => 'metaltec_xml',
+                'sort' => 10,
+            ],
         ];
 
         foreach ($defaults as $supplierSlug => $definition) {

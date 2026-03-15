@@ -9,6 +9,7 @@ use App\Models\SupplierImportSource;
 use App\Support\CatalogImport\Drivers\Contracts\SupplierImportDriver;
 use App\Support\CatalogImport\Drivers\DriverAvailability;
 use App\Support\CatalogImport\Drivers\ImportDriverRegistry;
+use App\Support\CatalogImport\Drivers\MetaltecXmlDriver;
 use App\Support\CatalogImport\Drivers\YandexMarketFeedDriver;
 use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
 use App\Support\Metalmaster\MetalmasterBucketCatalog;
@@ -80,6 +81,21 @@ class SupplierImport extends Page implements HasForms
     public ?string $yandexCategoriesLoadedSource = null;
 
     public ?string $yandexCategoriesLoadedSourceKey = null;
+
+    /** @var array<int, string> */
+    public array $metaltecParsedCategories = [];
+
+    /** @var array<int, array{id: int, name: string, parent_id: int|null, depth: int, is_leaf: bool, tree_name: string}> */
+    public array $metaltecParsedCategoryTree = [];
+
+    /** @var array<int, true> */
+    public array $metaltecLeafCategoryIds = [];
+
+    public ?string $metaltecCategoriesLoadedAt = null;
+
+    public ?string $metaltecCategoriesLoadedSource = null;
+
+    public ?string $metaltecCategoriesLoadedSourceKey = null;
 
     private bool $isSyncScenarioInternalUpdate = false;
 
@@ -280,7 +296,7 @@ class SupplierImport extends Page implements HasForms
     public function startNewSource(): void
     {
         $this->data = array_merge($this->data ?? [], $this->freshSourceState());
-        $this->resetYandexFeedCategoriesIfSourceChanged();
+        $this->resetFeedCategoriesIfSourceChanged();
         $this->form->fill($this->data);
         $this->refreshLastSavedRun();
     }
@@ -466,6 +482,59 @@ class SupplierImport extends Page implements HasForms
             ->send();
     }
 
+    public function loadMetaltecFeedCategories(): void
+    {
+        $driver = $this->currentDriver();
+
+        if (! $driver instanceof MetaltecXmlDriver) {
+            Notification::make()
+                ->title('Загрузка недоступна')
+                ->body('Категории feed можно загружать только для драйвера Metaltec XML.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        try {
+            $loadedCategories = $driver->loadFeedCategories($this->currentSourceSettings());
+        } catch (RuntimeException $exception) {
+            Notification::make()
+                ->title('Не удалось загрузить категории')
+                ->body($exception->getMessage())
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $this->metaltecParsedCategories = $loadedCategories['categories'];
+        $this->metaltecParsedCategoryTree = $loadedCategories['category_tree'];
+        $this->metaltecLeafCategoryIds = $loadedCategories['leaf_category_ids'];
+        $this->metaltecCategoriesLoadedAt = now()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i:s');
+        $this->metaltecCategoriesLoadedSource = $loadedCategories['source_label'];
+        $this->metaltecCategoriesLoadedSourceKey = $loadedCategories['source_key'];
+
+        $selectedCategoryId = $this->normalizeNullableInt(data_get($this->data, 'runtime.category_id'));
+
+        if ($selectedCategoryId !== null && ! isset($this->metaltecParsedCategoryTree[$selectedCategoryId])) {
+            data_set($this->data, 'runtime.category_id', null);
+            data_set($this->data, 'runtime.category_name', null);
+        }
+
+        $this->form->fill($this->data);
+        $this->rememberPageState();
+
+        Notification::make()
+            ->title('Категории загружены')
+            ->body(
+                'Найдено категорий: '.count($this->metaltecParsedCategories)
+                .'. Разделы определены по полю <Раздел>.'
+            )
+            ->success()
+            ->send();
+    }
+
     public function refreshLastSavedRun(): void
     {
         if (! DatabaseSchema::hasTable('import_runs')) {
@@ -532,6 +601,7 @@ class SupplierImport extends Page implements HasForms
             'source' => trim((string) ($columns['source_label'] ?? $columns['source'] ?? '')),
             'scope' => trim((string) ($columns['bucket'] ?? $columns['scope'] ?? '')),
             'feed_category_id' => $this->normalizeNullableInt($columns['category_id'] ?? null),
+            'feed_category_label' => trim((string) ($columns['category_name'] ?? '')),
             'site_category_label' => trim((string) ($columns['site_category_name'] ?? $meta['site_category_name'] ?? '')),
             'found_urls' => $foundUrls,
             'processed' => $processed,
@@ -567,6 +637,7 @@ class SupplierImport extends Page implements HasForms
     {
         $this->lastRunId = null;
         $this->clearYandexFeedCategories(resetRuntimeCategory: true);
+        $this->clearMetaltecFeedCategories(resetRuntimeCategory: true);
 
         if ($this->currentSupplier() === null) {
             $this->data = array_merge($this->data ?? [], [
@@ -620,7 +691,7 @@ class SupplierImport extends Page implements HasForms
             'source_settings' => $settings,
         ]);
 
-        $this->resetYandexFeedCategoriesIfSourceChanged();
+        $this->resetFeedCategoriesIfSourceChanged();
         $this->form->fill($this->data);
         $this->refreshLastSavedRun();
     }
@@ -642,7 +713,7 @@ class SupplierImport extends Page implements HasForms
             $this->applySyncScenario('standard');
         }
 
-        $this->resetYandexFeedCategoriesIfSourceChanged();
+        $this->resetFeedCategoriesIfSourceChanged();
         $this->form->fill($this->data);
     }
 
@@ -652,7 +723,7 @@ class SupplierImport extends Page implements HasForms
             $source = $this->persistSource();
             $driver = $this->drivers()->get($source->driver_key)
                 ?? $this->defaultDriverForCurrentSupplier($source->driver_key);
-            $this->resetYandexFeedCategoriesIfSourceChanged();
+            $this->resetFeedCategoriesIfSourceChanged();
             $runtime = $this->normalizedRuntime();
 
             if ($write && ! $runtime['create_missing'] && ! $runtime['update_existing']) {
@@ -885,6 +956,82 @@ class SupplierImport extends Page implements HasForms
         $this->clearYandexFeedCategories(resetRuntimeCategory: true);
     }
 
+    public function resetMetaltecFeedCategoriesIfSourceChanged(): void
+    {
+        $driver = $this->currentDriver();
+
+        if (! $driver instanceof MetaltecXmlDriver) {
+            $this->clearMetaltecFeedCategories(resetRuntimeCategory: false);
+
+            return;
+        }
+
+        $sourceKey = $driver->sourceKey($this->currentSourceSettings());
+
+        if ($sourceKey === $this->metaltecCategoriesLoadedSourceKey) {
+            return;
+        }
+
+        $this->clearMetaltecFeedCategories(resetRuntimeCategory: true);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function metaltecFeedCategoryOptions(?string $search = null, int $limit = 100): array
+    {
+        $driver = $this->currentDriver();
+
+        if (! $driver instanceof MetaltecXmlDriver || ! $this->hasLoadedMetaltecFeedCategories()) {
+            return [];
+        }
+
+        return $driver->categoryOptions($this->metaltecParsedCategoryTree, $search, $limit);
+    }
+
+    public function metaltecFeedCategoryOptionLabel(mixed $value): ?string
+    {
+        $driver = $this->currentDriver();
+
+        if (! $driver instanceof MetaltecXmlDriver || ! $this->hasLoadedMetaltecFeedCategories()) {
+            return null;
+        }
+
+        return $driver->categoryOptionLabel($this->metaltecParsedCategoryTree, $this->metaltecParsedCategories, $value);
+    }
+
+    public function metaltecFeedCategoryHelperText(): string
+    {
+        $driver = $this->currentDriver();
+
+        if (! $driver instanceof MetaltecXmlDriver) {
+            return 'Оставьте пустым для импорта всего feed.';
+        }
+
+        $sourceSettings = $this->currentSourceSettings();
+        $sourceKey = $driver->sourceKey($sourceSettings);
+        $sourceIsSelected = trim((string) ($sourceSettings['source_url'] ?? '')) !== '';
+
+        if (! $sourceIsSelected) {
+            return 'Сначала укажите URL фида, затем загрузите категории из поля <Раздел>.';
+        }
+
+        if ($this->metaltecParsedCategoryTree === []) {
+            return 'Нажмите "Загрузить категории <Раздел>", затем выберите раздел. Оставьте пустым для импорта всего feed.';
+        }
+
+        if ($sourceKey !== $this->metaltecCategoriesLoadedSourceKey) {
+            return 'Источник изменился. Загрузите категории заново перед выбором раздела.';
+        }
+
+        $sourceLabel = $this->metaltecCategoriesLoadedSource ?? 'текущий источник';
+        $loadedAt = $this->metaltecCategoriesLoadedAt ?? 'только что';
+
+        return 'Загружено категорий: '.count($this->metaltecParsedCategories)
+            .'. Источник: '.$sourceLabel
+            .'. Обновлено: '.$loadedAt.'.';
+    }
+
     /**
      * @return array<string, string>
      */
@@ -1006,6 +1153,21 @@ class SupplierImport extends Page implements HasForms
         }
     }
 
+    private function clearMetaltecFeedCategories(bool $resetRuntimeCategory = true): void
+    {
+        $this->metaltecParsedCategories = [];
+        $this->metaltecParsedCategoryTree = [];
+        $this->metaltecLeafCategoryIds = [];
+        $this->metaltecCategoriesLoadedAt = null;
+        $this->metaltecCategoriesLoadedSource = null;
+        $this->metaltecCategoriesLoadedSourceKey = null;
+
+        if ($resetRuntimeCategory && is_array($this->data)) {
+            data_set($this->data, 'runtime.category_id', null);
+            data_set($this->data, 'runtime.category_name', null);
+        }
+    }
+
     private function hasLoadedYandexFeedCategories(): bool
     {
         $driver = $this->currentDriver();
@@ -1016,6 +1178,18 @@ class SupplierImport extends Page implements HasForms
 
         return $this->yandexParsedCategoryTree !== []
             && $driver->sourceKey($this->currentSourceSettings()) === $this->yandexCategoriesLoadedSourceKey;
+    }
+
+    private function hasLoadedMetaltecFeedCategories(): bool
+    {
+        $driver = $this->currentDriver();
+
+        if (! $driver instanceof MetaltecXmlDriver) {
+            return false;
+        }
+
+        return $this->metaltecParsedCategoryTree !== []
+            && $driver->sourceKey($this->currentSourceSettings()) === $this->metaltecCategoriesLoadedSourceKey;
     }
 
     private function restoreContextFromRunId(int $runId): void
@@ -1465,9 +1639,18 @@ class SupplierImport extends Page implements HasForms
     {
         $runtime = is_array(data_get($this->data, 'runtime')) ? data_get($this->data, 'runtime') : [];
         $categoryId = $this->normalizeNullableInt($runtime['category_id'] ?? null);
+        $categoryName = null;
 
         if ($this->currentDriver() instanceof YandexMarketFeedDriver && ! $this->hasLoadedYandexFeedCategories()) {
             $categoryId = null;
+        }
+
+        if ($this->currentDriver() instanceof MetaltecXmlDriver) {
+            if (! $this->hasLoadedMetaltecFeedCategories()) {
+                $categoryId = null;
+            } elseif ($categoryId !== null) {
+                $categoryName = $this->metaltecFeedCategoryOptionLabel($categoryId);
+            }
         }
 
         return [
@@ -1483,7 +1666,14 @@ class SupplierImport extends Page implements HasForms
             'error_threshold_percent' => $this->normalizeNullableFloat($runtime['error_threshold_percent'] ?? null),
             'scope' => trim((string) ($runtime['scope'] ?? '')),
             'category_id' => $categoryId,
+            'category_name' => $categoryName,
         ];
+    }
+
+    private function resetFeedCategoriesIfSourceChanged(): void
+    {
+        $this->resetYandexFeedCategoriesIfSourceChanged();
+        $this->resetMetaltecFeedCategoriesIfSourceChanged();
     }
 
     /**
@@ -1788,6 +1978,7 @@ class SupplierImport extends Page implements HasForms
         return match ($type) {
             'vactool_products' => 'Vactool',
             'metalmaster_products' => 'Metalmaster',
+            'metaltec_products' => 'Metaltec',
             'yandex_market_feed_products' => 'Yandex Market Feed',
             'yandex_market_feed_deactivation' => 'Деактивация Yandex Feed',
             default => $type !== '' ? $type : 'unknown',
