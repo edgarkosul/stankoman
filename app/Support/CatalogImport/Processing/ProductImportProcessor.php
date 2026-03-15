@@ -415,8 +415,10 @@ final class ProductImportProcessor implements ImportProcessorInterface
                         $attributes = $this->buildProductAttributes($payload, $options, isNew: false);
                         $attributes = $this->sanitizeExistingProductUpdateAttributes(
                             attributes: $attributes,
+                            payload: $payload,
                             queueMedia: $queueMedia,
                             hasPayloadImages: $payload->images !== [],
+                            preserveMissingPrice: ($options['preserve_missing_price_on_update'] ?? false) === true,
                         );
 
                         $product->fill($attributes);
@@ -1245,9 +1247,15 @@ final class ProductImportProcessor implements ImportProcessorInterface
      */
     private function sanitizeExistingProductUpdateAttributes(
         array $attributes,
+        ProductPayload $payload,
         bool $queueMedia,
         bool $hasPayloadImages,
+        bool $preserveMissingPrice,
     ): array {
+        if ($preserveMissingPrice && $payload->priceAmount === null && $payload->discountPrice === null) {
+            $attributes = array_diff_key($attributes, array_flip(['price_amount', 'discount_price', 'currency']));
+        }
+
         if (! $queueMedia || ! $hasPayloadImages) {
             return $attributes;
         }

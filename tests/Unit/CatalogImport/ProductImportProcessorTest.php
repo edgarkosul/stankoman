@@ -177,6 +177,62 @@ it('updates existing product by supplier and external id without changing catego
         ->and($reference?->last_seen_run_id)->toBe($secondRun->id);
 });
 
+it('preserves existing pricing on update when payload price is missing and option is enabled', function (): void {
+    $firstRun = createImportRun('catalog_import_metaltec');
+    $secondRun = createImportRun('catalog_import_metaltec');
+
+    $product = Product::query()->create([
+        'name' => 'Товар с ценой',
+        'slug' => 'product-with-price',
+        'price_amount' => 150000,
+        'discount_price' => 140000,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'qty' => 5,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'metaltec',
+        'external_id' => '469',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: '469',
+            name: 'Товар с обновленным названием',
+            inStock: false,
+            qty: 0,
+        ),
+    ], [
+        'supplier' => 'metaltec',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'preserve_missing_price_on_update' => true,
+    ]);
+
+    expect($summary['processed'])->toBe(1)
+        ->and($summary['updated'])->toBe(1)
+        ->and($summary['errors'])->toBe(0);
+
+    $product->refresh();
+
+    expect($product->name)->toBe('Товар с обновленным названием')
+        ->and($product->price_amount)->toBe(150000)
+        ->and($product->discount_price)->toBe(140000)
+        ->and($product->currency)->toBe('RUB')
+        ->and($product->in_stock)->toBeFalse()
+        ->and($product->qty)->toBe(0);
+});
+
 it('does not change is_active for existing product during update', function (): void {
     $firstRun = createImportRun('catalog_import_yml');
     $secondRun = createImportRun('catalog_import_yml');
