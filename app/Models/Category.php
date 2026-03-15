@@ -10,9 +10,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use SolutionForest\FilamentTree\Concern\ModelTree;
 
 /**
@@ -25,8 +27,8 @@ use SolutionForest\FilamentTree\Concern\ModelTree;
  * @property int $order
  * @property string|null $meta_description
  * @property array<array-key, mixed>|null $meta_json
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read CategoryAttribute|null $pivot
  * @property-read \Illuminate\Database\Eloquent\Collection<int, AttributeDef> $attributeDefs
  * @property-read int|null $attribute_defs_count
@@ -34,7 +36,7 @@ use SolutionForest\FilamentTree\Concern\ModelTree;
  * @property-read int|null $children_count
  * @property-read string|null $image_url
  * @property-read Category|null $parent
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Product> $products
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Product> $products
  * @property-read int|null $products_count
  * @property-read mixed $slug_path
  *
@@ -204,7 +206,7 @@ class Category extends Model
     /** Корневая категория для текущего узла */
     public function root(): self
     {
-        /** @var \App\Models\Category $root */
+        /** @var Category $root */
         $root = $this->ancestorsAndSelf()->first();
 
         return $root;
@@ -228,20 +230,47 @@ class Category extends Model
 
     // ===== Атрибуты =====
 
-    public function getImageUrlAttribute(): ?string
+    public static function normalizeImagePath(?string $path): ?string
     {
-        $path = $this->img;
-        if (! $path) {
+        if (! is_string($path) || trim($path) === '') {
             return null;
         }
 
-        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+        $path = trim(str_replace('\\', '/', $path));
+
+        if (Str::startsWith($path, '//')) {
+            return 'https:'.$path;
+        }
+
+        if (Str::startsWith($path, '/storage/')) {
+            return Str::after($path, '/storage/');
+        }
+
+        if (Str::startsWith($path, 'storage/')) {
+            return Str::after($path, 'storage/');
+        }
+
+        return $path;
+    }
+
+    public static function resolveImageUrl(?string $path): ?string
+    {
+        $path = static::normalizeImagePath($path);
+
+        if ($path === null) {
+            return null;
+        }
+
+        if (Str::startsWith($path, ['http://', 'https://', '/'])) {
             return $path;
         }
-        /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
-        $disk = Storage::disk('public');
 
-        return $disk->url($path);
+        return Storage::disk('public')->url($path);
+    }
+
+    public function getImageUrlAttribute(): ?string
+    {
+        return static::resolveImageUrl($this->img);
     }
 
     public function getUniqueBrands(): Collection

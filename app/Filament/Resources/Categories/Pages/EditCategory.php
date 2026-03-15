@@ -5,14 +5,18 @@ namespace App\Filament\Resources\Categories\Pages;
 use App\Filament\Concerns\QueuesContentImageDerivatives;
 use App\Filament\Resources\Categories\CategoryResource;
 use App\Filament\Resources\ImportRuns\ImportRunResource;
+use App\Models\Category;
 use App\Models\ImportRun;
 use App\Support\Products\CategoryFilterImportService;
 use App\Support\Products\CategoryFilterTemplateExportService;
+use App\Support\Products\CategoryProductImageCandidates;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Forms\Components\FileUpload;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\View\View as ViewContract;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
@@ -20,11 +24,37 @@ class EditCategory extends EditRecord
 {
     use QueuesContentImageDerivatives;
 
+    private const CATEGORY_IMAGE_PER_PAGE = 24;
+
     protected static string $resource = CategoryResource::class;
+
+    public string $categoryImageSearch = '';
+
+    public int $categoryImagePage = 1;
 
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('pickCategoryImage')
+                ->label('Выбрать изображение категории')
+                ->icon('heroicon-o-photo')
+                ->color('gray')
+                ->extraAttributes(['class' => 'hidden'])
+                ->slideOver()
+                ->modalHeading('Выбор изображения категории')
+                ->modalSubmitAction(false)
+                ->modalCancelActionLabel('Закрыть')
+                ->mountUsing(function (): void {
+                    $this->resetCategoryImagePicker();
+                })
+                ->modalContent(fn (): ViewContract => view(
+                    'filament.resources.categories.actions.pick-category-image',
+                    [
+                        'candidates' => $this->getCategoryImageCandidatesPaginator(),
+                        'scopeLeafCategoryCount' => $this->getCategoryImageScopeLeafCount(),
+                        'selectedPath' => Category::normalizeImagePath($this->data['img'] ?? $this->record?->img),
+                    ],
+                )),
             Action::make('generate_webp_derivatives')
                 ->label('Сгенерировать WebP')
                 ->icon('heroicon-o-photo')
@@ -188,6 +218,60 @@ class EditCategory extends EditRecord
         ];
     }
 
+    public function openCategoryImagePicker(): void
+    {
+        $this->mountAction('pickCategoryImage');
+    }
+
+    public function clearCategoryImage(): void
+    {
+        $this->syncCategoryImageState(null);
+    }
+
+    public function selectCategoryImage(string $path): void
+    {
+        $normalizedPath = Category::normalizeImagePath($path);
+
+        if ($normalizedPath === null) {
+            return;
+        }
+
+        $this->syncCategoryImageState($normalizedPath);
+        $this->unmountAction(canCancelParentActions: false);
+
+        Notification::make()
+            ->success()
+            ->title('Изображение категории обновлено')
+            ->send();
+    }
+
+    public function updatedCategoryImageSearch(): void
+    {
+        $this->categoryImagePage = 1;
+    }
+
+    public function nextCategoryImagePage(): void
+    {
+        $lastPage = $this->getCategoryImageCandidatesPaginator()->lastPage();
+
+        if ($this->categoryImagePage < $lastPage) {
+            $this->categoryImagePage++;
+        }
+    }
+
+    public function previousCategoryImagePage(): void
+    {
+        if ($this->categoryImagePage > 1) {
+            $this->categoryImagePage--;
+        }
+    }
+
+    public function resetCategoryImagePicker(): void
+    {
+        $this->categoryImageSearch = '';
+        $this->categoryImagePage = 1;
+    }
+
     /**
      * @return array<int, mixed>
      */
@@ -215,5 +299,26 @@ class EditCategory extends EditRecord
         }
 
         return null;
+    }
+
+    private function syncCategoryImageState(?string $path): void
+    {
+        $this->data['img'] = $path;
+        $this->form->fill($this->data);
+    }
+
+    private function getCategoryImageCandidatesPaginator(): LengthAwarePaginator
+    {
+        return app(CategoryProductImageCandidates::class)->paginate(
+            category: $this->record,
+            search: $this->categoryImageSearch,
+            page: $this->categoryImagePage,
+            perPage: self::CATEGORY_IMAGE_PER_PAGE,
+        );
+    }
+
+    private function getCategoryImageScopeLeafCount(): int
+    {
+        return count(app(CategoryProductImageCandidates::class)->scopeLeafCategoryIds($this->record));
     }
 }

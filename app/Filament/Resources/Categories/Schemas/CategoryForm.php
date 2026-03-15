@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\Categories\Schemas;
 
 use App\Models\Category;
-use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -11,6 +10,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Str;
 
@@ -72,16 +72,10 @@ class CategoryForm
                     ->label('Meta description')
                     ->maxLength(255),
 
-                FileUpload::make('img')
-                    ->label('Изображение для категории')
-                    ->disk('public')
-                    ->imageEditor()
-                    ->imageEditorAspectRatios([
-                        '16:9',
-                        '4:3',
-                        '1:1',
-                    ])
-                    ->directory('pics'),
+                Hidden::make('img'),
+
+                View::make('filament.resources.categories.components.image-picker')
+                    ->columnSpanFull(),
 
                 Toggle::make('is_active')
                     ->label('Активна')
