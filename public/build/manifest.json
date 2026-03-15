@@ -6,7 +6,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-B7e5CmoF.css",
+    "file": "assets/app-D4VuteXi.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -15,7 +15,7 @@
     ]
   },
   "resources/css/filament/admin/theme.css": {
-    "file": "assets/theme-SquAPguI.css",
+    "file": "assets/theme-CDIyFyVw.css",
     "src": "resources/css/filament/admin/theme.css",
     "isEntry": true,
     "name": "theme",
@@ -32,7 +32,7 @@
     "src": "resources/fonts/roboto-flex/roboto-flex-latin.woff2"
   },
   "resources/js/app.js": {
-    "file": "assets/app-CWt-gcKw.js",
+    "file": "assets/app-gyHm33Y-.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
