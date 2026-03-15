@@ -734,6 +734,80 @@ const prettyNumberInputFactory = (config = {}) => ({
     },
 });
 
+const escapeTooltipHtml = (value) => String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+
+const overflowTooltipFactory = (content = '') => ({
+    content,
+    observer: null,
+    rafId: 0,
+    resizeHandler: null,
+    tooltipContent: '',
+
+    init() {
+        this.queueSync();
+
+        if (typeof ResizeObserver !== 'undefined') {
+            this.observer = new ResizeObserver(() => this.queueSync());
+            this.observer.observe(this.$el);
+
+            return;
+        }
+
+        this.resizeHandler = () => this.queueSync();
+        window.addEventListener('resize', this.resizeHandler);
+    },
+
+    destroy() {
+        if (this.rafId) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = 0;
+        }
+
+        try {
+            this.observer?.disconnect();
+        } catch {
+            //
+        }
+
+        if (this.resizeHandler) {
+            window.removeEventListener('resize', this.resizeHandler);
+            this.resizeHandler = null;
+        }
+    },
+
+    queueSync() {
+        if (this.rafId) {
+            cancelAnimationFrame(this.rafId);
+        }
+
+        this.rafId = requestAnimationFrame(() => {
+            this.rafId = 0;
+            this.sync();
+        });
+    },
+
+    sync() {
+        const element = this.$el;
+
+        if (!(element instanceof HTMLElement)) {
+            this.tooltipContent = '';
+
+            return;
+        }
+
+        const isOverflowing = element.scrollWidth > element.clientWidth;
+
+        this.tooltipContent = isOverflowing
+            ? escapeTooltipHtml(this.content)
+            : '';
+    },
+});
+
 if (typeof window !== 'undefined') {
     window.prettyNumberInput = prettyNumberInputFactory;
 }
@@ -1154,6 +1228,7 @@ const registerAlpineData = () => {
     alpine.data('navDropdown', navDropdownFactory);
     alpine.data('catalogMenu', catalogMenuFactory);
     alpine.data('compareEqualizer', compareEqualizerFactory);
+    alpine.data('overflowTooltip', overflowTooltipFactory);
     alpine.data('prettyNumberInput', prettyNumberInputFactory);
     alpine.data('cartModal', cartModalFactory);
     registerRecentProductsStore(alpine);

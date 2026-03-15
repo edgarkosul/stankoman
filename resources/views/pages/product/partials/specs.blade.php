@@ -18,9 +18,17 @@
         @foreach ($specColumns as $column)
             <div class="space-y-0">
                 @foreach ($column as $spec)
+                    @php($specName = (string) ($spec['name'] ?? ''))
                     <div
                         class="grid grid-cols-[minmax(0,1fr)_12rem] items-center gap-3 border-b border-zinc-300 py-3 text-sm leading-snug text-zinc-900 sm:grid-cols-[minmax(0,1fr)_12rem] sm:gap-5 lg:grid-cols-[minmax(0,1fr)_12rem]">
-                        <span class="min-w-0 truncate whitespace-nowrap pr-2">{{ $spec['name'] }}</span>
+                        <span
+                            class="min-w-0 truncate whitespace-nowrap pr-2"
+                            x-data="overflowTooltip(@js($specName))"
+                            x-tooltip.theme-ks-light="tooltipContent"
+                            x-on:mouseenter="queueSync()"
+                            x-on:focus="queueSync()"
+                            data-tooltip-max-width="360"
+                        >{{ $specName }}</span>
                         <span class="truncate whitespace-nowrap text-left font-medium text-zinc-900">{{ $spec['value'] }}</span>
                     </div>
                 @endforeach

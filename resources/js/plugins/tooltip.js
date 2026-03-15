@@ -80,6 +80,7 @@ export default function (Alpine) {
         // === lifecycle tippy ===
         let instance = null
         let lastContent = ''
+        const hasContent = () => lastContent.trim().length > 0
 
         // cleanup для press-mode слушателей
         let pressCleanup = () => { }
@@ -177,15 +178,23 @@ export default function (Alpine) {
         }
 
         const sync = () => {
-            if (shouldEnable()) createInstance()
-            else destroyInstance()
+            if (!shouldEnable() || !hasContent()) {
+                destroyInstance()
+                return
+            }
+
+            createInstance()
+
+            if (instance) {
+                instance.setContent(lastContent)
+            }
         }
 
         // реактивное обновление контента (только если instance существует)
         effect(() => {
             getContent(c => {
                 lastContent = (c == null ? '' : String(c))
-                if (instance) instance.setContent(lastContent)
+                sync()
             })
         })
 

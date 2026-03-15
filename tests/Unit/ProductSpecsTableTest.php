@@ -1,6 +1,9 @@
 <?php
 
+use App\Models\Attribute;
+use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductAttributeValue;
 use App\Models\Unit;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -255,7 +258,7 @@ it('hides empty product tabs', function () {
 });
 
 it('renders feature value in primary category display unit', function (): void {
-    $category = \App\Models\Category::query()->create([
+    $category = Category::query()->create([
         'name' => 'Тестовая категория',
         'slug' => 'test-category-specs-units',
         'parent_id' => -1,
@@ -287,7 +290,7 @@ it('renders feature value in primary category display unit', function (): void {
         'si_offset' => 0,
     ]);
 
-    $attribute = \App\Models\Attribute::query()->create([
+    $attribute = Attribute::query()->create([
         'name' => 'Длина',
         'slug' => 'length',
         'data_type' => 'number',
@@ -302,7 +305,7 @@ it('renders feature value in primary category display unit', function (): void {
         'visible_in_specs' => true,
     ]);
 
-    \App\Models\ProductAttributeValue::query()->create([
+    ProductAttributeValue::query()->create([
         'product_id' => $product->id,
         'attribute_id' => $attribute->id,
         'value_number' => 2,
@@ -312,4 +315,27 @@ it('renders feature value in primary category display unit', function (): void {
         ->assertSuccessful()
         ->assertSee('Длина:')
         ->assertSee('200 см');
+});
+
+it('renders overflow-aware tooltip hooks for product spec names', function (): void {
+    $product = Product::query()->create([
+        'name' => 'Товар с длинной характеристикой',
+        'slug' => 'product-spec-tooltip',
+        'is_active' => true,
+        'price_amount' => 1000,
+        'specs' => [
+            [
+                'name' => 'Очень длинное название характеристики для всплывающей подсказки',
+                'value' => '100',
+            ],
+        ],
+    ]);
+
+    $this->get(route('product.show', ['product' => $product]))
+        ->assertSuccessful()
+        ->assertSee('overflowTooltip(', false)
+        ->assertSee('x-tooltip.theme-ks-light="tooltipContent"', false)
+        ->assertSee('data-tooltip-max-width="360"', false)
+        ->assertSeeText('Очень длинное название характеристики для всплывающей подсказки')
+        ->assertSeeText('100');
 });
