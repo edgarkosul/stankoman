@@ -23,6 +23,7 @@ use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Auth;
@@ -190,6 +191,13 @@ class YandexMarketFeedImport extends Page implements HasForms
                             ->disk('local')
                             ->directory(YandexMarketFeedSourceHistoryService::temporaryUploadDirectory())
                             ->visibility('private')
+                            ->afterStateUpdated(function (mixed $state, Set $set): void {
+                                $storedPath = $this->resolveStoredFeedUploadPath($state);
+
+                                if ($storedPath !== null) {
+                                    $set('source_upload', [$storedPath]);
+                                }
+                            })
                             ->visible(fn (Get $get): bool => (string) $get('source_mode') === 'upload')
                             ->required(fn (Get $get): bool => (string) $get('source_mode') === 'upload'),
                         Select::make('source_history_id')
@@ -1102,7 +1110,19 @@ class YandexMarketFeedImport extends Page implements HasForms
             return is_string($storedPath) && $storedPath !== '' ? $storedPath : null;
         }
 
+        if (is_string($value) && trim($value) !== '' && $this->looksLikeStoredPath($value)) {
+            return ltrim(trim($value), '/');
+        }
+
         if (is_array($value)) {
+            foreach (['path', 'stored_path', 'storedPath', 'relative_path', 'relativePath'] as $key) {
+                $candidate = $value[$key] ?? null;
+
+                if (is_string($candidate) && trim($candidate) !== '' && $this->looksLikeStoredPath($candidate)) {
+                    return ltrim(trim($candidate), '/');
+                }
+            }
+
             $first = reset($value);
 
             if ($first instanceof TemporaryUploadedFile) {
@@ -1111,18 +1131,27 @@ class YandexMarketFeedImport extends Page implements HasForms
                 return is_string($storedPath) && $storedPath !== '' ? $storedPath : null;
             }
 
-            if (is_string($first) && trim($first) !== '') {
+            if (is_string($first) && trim($first) !== '' && $this->looksLikeStoredPath($first)) {
                 return ltrim(trim($first), '/');
+            }
+
+            foreach ($value as $nestedValue) {
+                $nestedPath = $this->resolveStoredFeedUploadPath($nestedValue);
+
+                if ($nestedPath !== null) {
+                    return $nestedPath;
+                }
             }
 
             return null;
         }
 
-        if (is_string($value) && trim($value) !== '') {
-            return ltrim(trim($value), '/');
-        }
-
         return null;
+    }
+
+    private function looksLikeStoredPath(string $candidate): bool
+    {
+        return str_contains($candidate, '/') || str_contains($candidate, '\\');
     }
 
     /**

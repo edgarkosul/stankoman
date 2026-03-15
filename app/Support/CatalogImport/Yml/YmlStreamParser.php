@@ -58,8 +58,6 @@ class YmlStreamParser implements RecordParserInterface
                     $categoryParents[$parsed['id']] = $parsed['parent_id'];
                 }
 
-                $reader->next();
-
                 continue;
             }
 
@@ -99,8 +97,6 @@ class YmlStreamParser implements RecordParserInterface
                     categoryId: $categoryId,
                     xml: $xml,
                 );
-
-                $reader->next();
             }
         } finally {
             $reader->close();

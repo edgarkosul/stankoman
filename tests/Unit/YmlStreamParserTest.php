@@ -69,6 +69,50 @@ XML;
     }
 });
 
+it('parses all categories and offers from minified yml feed', function () {
+    $xml = '<?xml version="1.0" encoding="UTF-8"?><yml_catalog date="2026-03-15 00:00"><shop><categories><category id="16">Круглопильные станки</category><category id="17">Ленточнопильные станки</category><category id="18">Фуговальные станки</category><category id="19">Рейсмусовые станки</category><category id="21">Фрезерные станки</category><category id="20">Фуговально-рейсмусовые станки</category><category id="22">Шлифовальные станки</category><category id="93">Сверлильные станки</category><category id="23">Токарные станки</category><category id="69">Торцовочные пилы</category><category id="5014">Лобзиковые станки</category><category id="70">Вытяжные установки (стружкоотсосы)</category><category id="12785">Долбежно-пазовальные станки</category></categories><offers><offer id="A1" available="true"><name>Станок 1</name><price>100</price><currencyId>RUB</currencyId><categoryId>16</categoryId></offer><offer id="A2" available="true"><name>Станок 2</name><price>200</price><currencyId>RUB</currencyId><categoryId>17</categoryId></offer><offer id="A3" available="true"><name>Станок 3</name><price>300</price><currencyId>RUB</currencyId><categoryId>18</categoryId></offer><offer id="A4" available="true"><name>Станок 4</name><price>400</price><currencyId>RUB</currencyId><categoryId>19</categoryId></offer></offers></shop></yml_catalog>';
+
+    $path = tempnam(sys_get_temp_dir(), 'yml_');
+    file_put_contents($path, $xml);
+
+    try {
+        $stream = (new YmlStreamParser)->open($path);
+
+        expect($stream->categories)->toBe([
+            16 => 'Круглопильные станки',
+            17 => 'Ленточнопильные станки',
+            18 => 'Фуговальные станки',
+            19 => 'Рейсмусовые станки',
+            21 => 'Фрезерные станки',
+            20 => 'Фуговально-рейсмусовые станки',
+            22 => 'Шлифовальные станки',
+            93 => 'Сверлильные станки',
+            23 => 'Токарные станки',
+            69 => 'Торцовочные пилы',
+            5014 => 'Лобзиковые станки',
+            70 => 'Вытяжные установки (стружкоотсосы)',
+            12785 => 'Долбежно-пазовальные станки',
+        ]);
+
+        $offers = iterator_to_array($stream->offers);
+
+        expect(array_map(fn ($offer) => $offer->id, $offers))->toBe([
+            'A1',
+            'A2',
+            'A3',
+            'A4',
+        ]);
+        expect(array_map(fn ($offer) => $offer->categoryId, $offers))->toBe([
+            16,
+            17,
+            18,
+            19,
+        ]);
+    } finally {
+        @unlink($path);
+    }
+});
+
 it('maps simplified and vendor.model offers into product payloads', function () {
     $xml = <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>

@@ -4,13 +4,17 @@ use App\Filament\Pages\SupplierImport;
 use App\Jobs\RunMetaltecProductImportJob;
 use App\Jobs\RunVactoolProductImportJob;
 use App\Jobs\RunYandexMarketFeedDeactivationJob;
+use App\Jobs\RunYandexMarketFeedImportJob;
 use App\Models\Category;
+use App\Models\ImportFeedSource;
 use App\Models\ImportRun;
 use App\Models\Supplier;
 use App\Models\SupplierImportSource;
 use App\Support\CatalogImport\Suppliers\Metaltec\MetaltecSupplierProfile;
 use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
+use App\Support\CatalogImport\Yml\YandexMarketFeedSourceHistoryService;
 use App\Support\Metaltec\MetaltecProductImportService;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -21,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema as DatabaseSchema;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -131,6 +136,36 @@ test('supplier import page hides internal driver fields and exposes metaltec url
     expect($sourceUrlField)->not->toBeNull();
 });
 
+test('supplier import page exposes yandex upload field for unified feed source', function () {
+    prepareSupplierImportPageTables();
+
+    $supplier = Supplier::query()->create([
+        'name' => 'Upload Supplier',
+        'is_active' => true,
+    ]);
+
+    $page = new SupplierImport;
+    $page->mount();
+    $page->data['supplier_id'] = $supplier->id;
+    $page->data['driver_key'] = 'yandex_market_feed';
+    $page->data['source_settings'] = [
+        'source_mode' => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD,
+        'source_url' => '',
+        'source_upload' => null,
+        'source_history_id' => null,
+        'timeout' => 25,
+        'delay_ms' => 0,
+        'download_images' => true,
+    ];
+
+    $schema = $page->form(Schema::make($page));
+    $sourceUploadField = $schema->getComponent(
+        fn ($component) => $component instanceof FileUpload && $component->getName() === 'source_settings.source_upload',
+    );
+
+    expect($sourceUploadField)->not->toBeNull();
+});
+
 test('supplier import page loads yandex feed categories and exposes tree select options', function () {
     prepareSupplierImportPageTables();
 
@@ -230,6 +265,48 @@ test('supplier import page renders loaded yandex category tree below run summary
         ->assertSee('Промышленные')
         ->assertSee('Всего: 3')
         ->assertSee('листовых: 1');
+});
+
+test('supplier import page loads yandex categories from uploaded file metadata state', function () {
+    prepareSupplierImportPageTables();
+    Storage::fake('local');
+
+    $uploadedPath = YandexMarketFeedSourceHistoryService::temporaryUploadDirectory().'/metadata-feed.xml';
+    Storage::disk('local')->put($uploadedPath, '<yml_catalog date="2026-03-15"></yml_catalog>');
+
+    $service = Mockery::mock(YandexMarketFeedImportService::class);
+    $service->shouldReceive('listCategoryNodes')
+        ->once()
+        ->andReturn([
+            ['id' => 11, 'name' => 'Компрессоры', 'parent_id' => null],
+        ]);
+
+    app()->instance(YandexMarketFeedImportService::class, $service);
+
+    $page = new SupplierImport;
+    $page->mount();
+    $page->data['driver_key'] = 'yandex_market_feed';
+    $page->data['source_settings'] = [
+        'source_mode' => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD,
+        'source_url' => '',
+        'source_upload' => [[
+            'name' => 'metadata-feed.xml',
+            'size' => 1024,
+            'path' => $uploadedPath,
+        ]],
+        'source_history_id' => null,
+        'timeout' => 25,
+        'delay_ms' => 0,
+        'download_images' => true,
+    ];
+
+    $page->loadYandexFeedCategories();
+
+    expect($page->yandexParsedCategories)->toBe([
+        11 => 'Компрессоры',
+    ]);
+    expect(data_get($page->data, 'source_settings.source_upload.0'))->toBeString();
+    expect(data_get($page->data, 'source_settings.source_upload.0'))->toStartWith('catalog-import/yandex-feed-sources/');
 });
 
 test('supplier import page can create supplier and marks legacy yandex supplier in labels', function () {
@@ -858,6 +935,76 @@ test('supplier import page dispatches yandex import with selected feed category'
     expect(data_get($run?->columns, 'source'))->toBe('https://example.test/feed.xml');
     expect(data_get($run?->columns, 'category_id'))->toBe(22);
     expect(data_get($run?->columns, 'finalize_missing'))->toBeFalse();
+});
+
+test('supplier import page dispatches yandex import from uploaded feed file and remembers stored upload path', function () {
+    prepareSupplierImportPageTables();
+    Queue::fake();
+    Storage::fake('local');
+
+    $supplier = Supplier::query()->create([
+        'name' => 'Uploaded Feed Supplier',
+        'is_active' => true,
+    ]);
+
+    $uploadedPath = YandexMarketFeedSourceHistoryService::temporaryUploadDirectory().'/test-feed.xml';
+    Storage::disk('local')->put($uploadedPath, '<yml_catalog date="2026-03-15"></yml_catalog>');
+
+    $service = Mockery::mock(YandexMarketFeedImportService::class);
+    $service->shouldReceive('listCategoryNodes')
+        ->once()
+        ->andReturn([]);
+
+    app()->instance(YandexMarketFeedImportService::class, $service);
+
+    $page = new SupplierImport;
+    $page->mount();
+    $page->data['supplier_id'] = $supplier->id;
+    $page->data['source_name'] = 'Основной feed';
+    $page->data['driver_key'] = 'yandex_market_feed';
+    $page->data['source_is_active'] = true;
+    $page->data['source_settings'] = [
+        'source_mode' => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD,
+        'source_url' => '',
+        'source_upload' => [[
+            'name' => 'test-feed.xml',
+            'size' => 2048,
+            'path' => $uploadedPath,
+        ]],
+        'source_history_id' => null,
+        'timeout' => 25,
+        'delay_ms' => 0,
+        'download_images' => true,
+    ];
+
+    $page->doDryRun();
+
+    $source = SupplierImportSource::query()->first();
+    $run = ImportRun::query()->find($page->lastRunId);
+    $rememberedSource = ImportFeedSource::query()->first();
+    $savedUploadPath = data_get($source?->settings, 'source_upload.0');
+    $pageUploadState = data_get($page->data, 'source_settings.source_upload');
+    $pageUploadPath = is_array($pageUploadState) ? data_get($pageUploadState, '0') : $pageUploadState;
+
+    expect($source)->not->toBeNull();
+    expect($run?->type)->toBe('yandex_market_feed_products');
+    expect(data_get($run?->columns, 'source_type'))->toBe(YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD);
+    expect(data_get($run?->columns, 'source_label'))->toBe('test-feed.xml');
+    expect($savedUploadPath)->toBeString();
+    expect($savedUploadPath)->toStartWith('catalog-import/yandex-feed-sources/');
+    expect($pageUploadPath)->toBe($savedUploadPath);
+    expect(Storage::disk('local')->exists($uploadedPath))->toBeFalse();
+    expect(Storage::disk('local')->exists($savedUploadPath))->toBeTrue();
+    expect($rememberedSource)->not->toBeNull();
+    expect($rememberedSource?->source_type)->toBe(YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD);
+    expect($rememberedSource?->stored_path)->toBe($savedUploadPath);
+
+    Queue::assertPushed(RunYandexMarketFeedImportJob::class, function (RunYandexMarketFeedImportJob $job) use ($page): bool {
+        return $job->runId === $page->lastRunId
+            && $job->write === false
+            && ($job->options['source_type'] ?? null) === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD
+            && ($job->options['source_id'] ?? null) !== null;
+    });
 });
 
 function prepareSupplierImportPageTables(): void

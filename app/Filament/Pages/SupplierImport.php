@@ -12,6 +12,7 @@ use App\Support\CatalogImport\Drivers\ImportDriverRegistry;
 use App\Support\CatalogImport\Drivers\MetaltecXmlDriver;
 use App\Support\CatalogImport\Drivers\YandexMarketFeedDriver;
 use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
+use App\Support\CatalogImport\Yml\YandexMarketFeedSourceHistoryService;
 use App\Support\Metalmaster\MetalmasterBucketCatalog;
 use BackedEnum;
 use Filament\Actions\Action as FormAction;
@@ -462,6 +463,13 @@ class SupplierImport extends Page implements HasForms
         $this->yandexCategoriesLoadedAt = now()->setTimezone(self::DISPLAY_TIMEZONE)->format('Y-m-d H:i:s');
         $this->yandexCategoriesLoadedSource = $loadedCategories['source_label'];
         $this->yandexCategoriesLoadedSourceKey = $loadedCategories['source_key'];
+        $normalizedSourceSettings = is_array($loadedCategories['settings'] ?? null)
+            ? $loadedCategories['settings']
+            : null;
+
+        if ($normalizedSourceSettings !== null) {
+            $this->data['source_settings'] = $normalizedSourceSettings;
+        }
 
         $selectedCategoryId = $this->normalizeNullableInt(data_get($this->data, 'runtime.category_id'));
 
@@ -470,6 +478,11 @@ class SupplierImport extends Page implements HasForms
         }
 
         $this->form->fill($this->data);
+
+        if ($normalizedSourceSettings !== null) {
+            $this->data['source_settings'] = $normalizedSourceSettings;
+        }
+
         $this->rememberPageState();
 
         Notification::make()
@@ -735,6 +748,11 @@ class SupplierImport extends Page implements HasForms
             }
 
             $options = $driver->buildImportOptions($source, $runtime);
+            $source->refresh();
+            $normalizedSourceSettings = $driver->normalizeSettings((array) ($source->settings ?? []));
+            $this->data['source_settings'] = $normalizedSourceSettings;
+            $this->form->fill($this->data);
+            $this->data['source_settings'] = $normalizedSourceSettings;
         } catch (ValidationException $exception) {
             $this->setErrorBag($exception->validator->errors());
 
@@ -817,6 +835,11 @@ class SupplierImport extends Page implements HasForms
             }
 
             $options = $driver->buildDeactivationOptions($source, $deactivation);
+            $source->refresh();
+            $normalizedSourceSettings = $driver->normalizeSettings((array) ($source->settings ?? []));
+            $this->data['source_settings'] = $normalizedSourceSettings;
+            $this->form->fill($this->data);
+            $this->data['source_settings'] = $normalizedSourceSettings;
         } catch (ValidationException $exception) {
             $this->setErrorBag($exception->validator->errors());
 
@@ -1067,12 +1090,15 @@ class SupplierImport extends Page implements HasForms
 
         $sourceSettings = $this->currentSourceSettings();
         $sourceKey = $driver->sourceKey($sourceSettings);
-        $sourceIsSelected = (($sourceSettings['source_mode'] ?? null) === 'history')
-            ? $this->normalizeNullableInt($sourceSettings['source_history_id'] ?? null) !== null
-            : trim((string) ($sourceSettings['source_url'] ?? '')) !== '';
+        $sourceMode = (string) ($sourceSettings['source_mode'] ?? '');
+        $sourceIsSelected = match ($sourceMode) {
+            'history' => $this->normalizeNullableInt($sourceSettings['source_history_id'] ?? null) !== null,
+            YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD => $sourceKey !== 'upload|',
+            default => trim((string) ($sourceSettings['source_url'] ?? '')) !== '',
+        };
 
         if (! $sourceIsSelected) {
-            return 'Сначала укажите URL фида или выберите источник из истории, затем загрузите категории <category>.';
+            return 'Сначала укажите URL фида, загрузите XML/YML файл или выберите источник из истории, затем загрузите категории <category>.';
         }
 
         if ($this->yandexParsedCategoryTree === []) {

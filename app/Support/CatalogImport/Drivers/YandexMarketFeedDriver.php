@@ -13,12 +13,16 @@ use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
 use App\Support\CatalogImport\Yml\YandexMarketFeedProfile;
 use App\Support\CatalogImport\Yml\YandexMarketFeedSourceHistoryService;
 use Filament\Actions\Action as FormAction;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use RuntimeException;
 use Throwable;
 
@@ -75,6 +79,7 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
         return [
             'source_mode' => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL,
             'source_url' => '',
+            'source_upload' => null,
             'source_history_id' => null,
             'timeout' => 25,
             'delay_ms' => 0,
@@ -89,6 +94,7 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
                 ->label('Источник feed')
                 ->options([
                     YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL => 'URL',
+                    YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD => 'Загрузить файл',
                     'history' => 'Из истории успешных',
                 ])
                 ->default(YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL)
@@ -110,6 +116,35 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
                 )
                 ->url()
                 ->afterStateUpdated(function ($livewire): void {
+                    if (method_exists($livewire, 'resetYandexFeedCategoriesIfSourceChanged')) {
+                        $livewire->resetYandexFeedCategoriesIfSourceChanged();
+                    }
+                }),
+            FileUpload::make('source_settings.source_upload')
+                ->label('Файл фида (XML/YML)')
+                ->acceptedFileTypes([
+                    'application/xml',
+                    'text/xml',
+                    'application/octet-stream',
+                    'text/plain',
+                ])
+                ->preserveFilenames()
+                ->disk('local')
+                ->directory(YandexMarketFeedSourceHistoryService::temporaryUploadDirectory())
+                ->visibility('private')
+                ->visible(
+                    fn (Get $get): bool => (string) $get('source_settings.source_mode') === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD,
+                )
+                ->required(
+                    fn (Get $get): bool => (string) $get('source_settings.source_mode') === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD,
+                )
+                ->afterStateUpdated(function (mixed $state, Set $set, $livewire): void {
+                    $storedPath = $this->resolveStoredFeedUploadPath($state);
+
+                    if ($storedPath !== null) {
+                        $set('source_settings.source_upload', [$storedPath]);
+                    }
+
                     if (method_exists($livewire, 'resetYandexFeedCategoriesIfSourceChanged')) {
                         $livewire->resetYandexFeedCategoriesIfSourceChanged();
                     }
@@ -196,11 +231,17 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
     public function normalizeSettings(array $settings): array
     {
         $mode = (string) ($settings['source_mode'] ?? YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL);
-        $mode = $mode === 'history' ? 'history' : YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL;
+        $mode = match ($mode) {
+            'history' => 'history',
+            YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD,
+            default => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL,
+        };
+        $storedUploadPath = $this->resolveStoredFeedUploadPath($settings['source_upload'] ?? null);
 
         return [
             'source_mode' => $mode,
             'source_url' => $this->trimmedString($settings['source_url'] ?? null) ?? '',
+            'source_upload' => $storedUploadPath !== null ? [$storedUploadPath] : null,
             'source_history_id' => $this->nullableInt($settings['source_history_id'] ?? null),
             'timeout' => max(1, (int) ($settings['timeout'] ?? 25)),
             'delay_ms' => max(0, (int) ($settings['delay_ms'] ?? 0)),
@@ -214,6 +255,12 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
 
         if ($normalized['source_mode'] === 'history') {
             return $this->history->historyOptionLabel($normalized['source_history_id']) ?? 'Источник из истории';
+        }
+
+        if ($normalized['source_mode'] === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD) {
+            $storedPath = $this->resolveStoredFeedUploadPath($normalized['source_upload'] ?? null);
+
+            return $storedPath !== null ? basename($storedPath) : 'Загруженный файл';
         }
 
         return (string) $normalized['source_url'];
@@ -233,6 +280,7 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
     {
         $settings = $this->normalizeSettings((array) ($source->settings ?? []));
         $resolvedSource = $this->resolveAndValidateSource($settings);
+        $this->syncSourceSettings($source, $resolvedSource['normalized_settings'] ?? $settings);
 
         return [
             'supplier' => $this->profile->supplierKey(),
@@ -265,6 +313,7 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
     {
         $settings = $this->normalizeSettings((array) ($source->settings ?? []));
         $resolvedSource = $this->resolveAndValidateSource($settings);
+        $this->syncSourceSettings($source, $resolvedSource['normalized_settings'] ?? $settings);
         $siteCategoryId = $this->nullableInt($runtime['site_category_id'] ?? null);
 
         if ($siteCategoryId === null) {
@@ -316,7 +365,8 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
      *     category_tree: array<int, array{id: int, name: string, parent_id: int|null, depth: int, is_leaf: bool, tree_name: string}>,
      *     leaf_category_ids: array<int, true>,
      *     source_label: string,
-     *     source_key: string
+     *     source_key: string,
+     *     settings: array<string, mixed>
      * }
      */
     public function loadFeedCategories(array $settings): array
@@ -333,15 +383,7 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
             throw new RuntimeException($exception->getMessage(), previous: $exception);
         }
 
-        if ($resolved['source_type'] === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL) {
-            $record = $this->history->rememberValidUrl(
-                url: $resolved['source'],
-                userId: Auth::id(),
-            );
-
-            $resolved['source_id'] = (int) $record->id;
-            $resolved['source_label'] = (string) ($record->source_url ?: $resolved['source']);
-        }
+        $resolved = $this->rememberValidatedSource($resolved);
 
         $categories = [];
         $normalizedCategories = [];
@@ -381,7 +423,8 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
             'category_tree' => $categoryTree,
             'leaf_category_ids' => $leafCategoryIds,
             'source_label' => $resolved['source_label'],
-            'source_key' => $this->sourceKey($normalized),
+            'source_key' => $this->sourceKey($resolved['normalized_settings'] ?? $normalized),
+            'settings' => $resolved['normalized_settings'] ?? $normalized,
         ];
     }
 
@@ -394,6 +437,10 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
 
         if (($normalized['source_mode'] ?? null) === 'history') {
             return 'history|'.(string) ($this->nullableInt($normalized['source_history_id'] ?? null) ?? '');
+        }
+
+        if (($normalized['source_mode'] ?? null) === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD) {
+            return 'upload|'.(string) ($this->resolveStoredFeedUploadPath($normalized['source_upload'] ?? null) ?? '');
         }
 
         return 'url|'.trim((string) ($normalized['source_url'] ?? ''));
@@ -478,7 +525,16 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
 
     /**
      * @param  array<string, mixed>  $settings
-     * @return array{source:string,source_type:string,source_id:int|null,source_label:string}
+     * @return array{
+     *     source: string,
+     *     source_type: string,
+     *     source_id: int|null,
+     *     source_label: string,
+     *     source_url: string|null,
+     *     stored_path: string|null,
+     *     original_filename: string|null,
+     *     normalized_settings: array<string, mixed>
+     * }
      */
     private function resolveAndValidateSource(array $settings): array
     {
@@ -493,22 +549,21 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
             throw new RuntimeException($exception->getMessage(), previous: $exception);
         }
 
-        if ($resolved['source_type'] === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL) {
-            $record = $this->history->rememberValidUrl(
-                url: $resolved['source'],
-                userId: Auth::id(),
-            );
-
-            $resolved['source_id'] = (int) $record->id;
-            $resolved['source_label'] = (string) ($record->source_url ?: $resolved['source']);
-        }
-
-        return $resolved;
+        return $this->rememberValidatedSource($resolved);
     }
 
     /**
      * @param  array<string, mixed>  $settings
-     * @return array{source:string,source_type:string,source_id:int|null,source_label:string}
+     * @return array{
+     *     source: string,
+     *     source_type: string,
+     *     source_id: int|null,
+     *     source_label: string,
+     *     source_url: string|null,
+     *     stored_path: string|null,
+     *     original_filename: string|null,
+     *     normalized_settings: array<string, mixed>
+     * }
      */
     private function resolveSource(array $settings): array
     {
@@ -530,6 +585,36 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
                 'source_type' => (string) $resolved['source_type'],
                 'source_id' => $this->nullableInt($resolved['source_id'] ?? null),
                 'source_label' => (string) ($resolved['source_label'] ?? 'Источник из истории'),
+                'source_url' => is_string($resolved['source_url'] ?? null) ? trim((string) $resolved['source_url']) : null,
+                'stored_path' => is_string($resolved['stored_path'] ?? null) ? trim((string) $resolved['stored_path']) : null,
+                'original_filename' => is_string($resolved['stored_path'] ?? null) ? basename((string) $resolved['stored_path']) : null,
+                'normalized_settings' => $settings,
+            ];
+        }
+
+        if (($settings['source_mode'] ?? null) === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD) {
+            $storedPath = $this->resolveStoredFeedUploadPath($settings['source_upload'] ?? null);
+
+            if ($storedPath === null) {
+                throw new RuntimeException('Загрузите XML/YML файл фида перед запуском.');
+            }
+
+            if (! Storage::disk('local')->exists($storedPath)) {
+                throw new RuntimeException('Загруженный файл не найден. Повторите загрузку.');
+            }
+
+            $normalizedSettings = $settings;
+            $normalizedSettings['source_upload'] = [$storedPath];
+
+            return [
+                'source' => Storage::disk('local')->path($storedPath),
+                'source_type' => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD,
+                'source_id' => null,
+                'source_label' => basename($storedPath),
+                'source_url' => null,
+                'stored_path' => $storedPath,
+                'original_filename' => basename($storedPath),
+                'normalized_settings' => $normalizedSettings,
             ];
         }
 
@@ -544,7 +629,113 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
             'source_type' => YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL,
             'source_id' => null,
             'source_label' => $sourceUrl,
+            'source_url' => $sourceUrl,
+            'stored_path' => null,
+            'original_filename' => null,
+            'normalized_settings' => $settings,
         ];
+    }
+
+    /**
+     * @param  array{
+     *     source: string,
+     *     source_type: string,
+     *     source_id: int|null,
+     *     source_label: string,
+     *     source_url: string|null,
+     *     stored_path: string|null,
+     *     original_filename: string|null,
+     *     normalized_settings: array<string, mixed>
+     * }  $resolved
+     * @return array{
+     *     source: string,
+     *     source_type: string,
+     *     source_id: int|null,
+     *     source_label: string,
+     *     source_url: string|null,
+     *     stored_path: string|null,
+     *     original_filename: string|null,
+     *     normalized_settings: array<string, mixed>
+     * }
+     */
+    private function rememberValidatedSource(array $resolved): array
+    {
+        if (($resolved['source_type'] ?? null) === YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD) {
+            $storedPath = trim((string) ($resolved['stored_path'] ?? ''));
+
+            if ($storedPath === '') {
+                return $resolved;
+            }
+
+            $record = $this->history->rememberValidUploadedPath(
+                storedPath: $storedPath,
+                originalFilename: is_string($resolved['original_filename'] ?? null)
+                    ? trim((string) $resolved['original_filename'])
+                    : null,
+                userId: Auth::id(),
+            );
+
+            $rememberedPath = trim((string) ($record->stored_path ?? ''));
+
+            if ($rememberedPath === '') {
+                return $resolved;
+            }
+
+            $originalFilename = trim((string) ($record->original_filename ?: basename($rememberedPath)));
+
+            $resolved['source'] = Storage::disk('local')->path($rememberedPath);
+            $resolved['source_type'] = YandexMarketFeedSourceHistoryService::SOURCE_TYPE_UPLOAD;
+            $resolved['source_id'] = (int) $record->id;
+            $resolved['source_label'] = $originalFilename;
+            $resolved['source_url'] = null;
+            $resolved['stored_path'] = $rememberedPath;
+            $resolved['original_filename'] = $originalFilename;
+            $resolved['normalized_settings']['source_upload'] = [$rememberedPath];
+
+            return $resolved;
+        }
+
+        if (($resolved['source_type'] ?? null) !== YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL) {
+            return $resolved;
+        }
+
+        $sourceUrl = trim((string) ($resolved['source_url'] ?? $resolved['source'] ?? ''));
+
+        if ($sourceUrl === '') {
+            return $resolved;
+        }
+
+        $record = $this->history->rememberValidUrl(
+            url: $sourceUrl,
+            userId: Auth::id(),
+        );
+
+        $resolved['source'] = (string) ($record->source_url ?: $sourceUrl);
+        $resolved['source_type'] = YandexMarketFeedSourceHistoryService::SOURCE_TYPE_URL;
+        $resolved['source_id'] = (int) $record->id;
+        $resolved['source_label'] = (string) ($record->source_url ?: $sourceUrl);
+        $resolved['source_url'] = (string) ($record->source_url ?: $sourceUrl);
+        $resolved['stored_path'] = null;
+        $resolved['original_filename'] = null;
+        $resolved['normalized_settings']['source_url'] = (string) ($record->source_url ?: $sourceUrl);
+
+        return $resolved;
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     */
+    private function syncSourceSettings(SupplierImportSource $source, array $settings): void
+    {
+        $normalizedSettings = $this->normalizeSettings($settings);
+
+        if ($source->settings === $normalizedSettings) {
+            return;
+        }
+
+        $source->forceFill([
+            'settings' => $normalizedSettings,
+        ])->save();
     }
 
     private function categoryLabel(int $categoryId, string $categoryName, int $depth = 0): string
@@ -695,6 +886,58 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
         $label = Category::query()->whereKey($categoryId)->value('name');
 
         return is_string($label) && trim($label) !== '' ? trim($label) : null;
+    }
+
+    private function resolveStoredFeedUploadPath(mixed $value): ?string
+    {
+        if ($value instanceof TemporaryUploadedFile) {
+            $storedPath = $value->store(path: YandexMarketFeedSourceHistoryService::temporaryUploadDirectory(), options: 'local');
+
+            return is_string($storedPath) && trim($storedPath) !== '' ? ltrim(trim($storedPath), '/') : null;
+        }
+
+        if (is_string($value) && trim($value) !== '' && $this->looksLikeStoredPath($value)) {
+            return ltrim(trim($value), '/');
+        }
+
+        if (is_array($value)) {
+            foreach (['path', 'stored_path', 'storedPath', 'relative_path', 'relativePath'] as $key) {
+                $candidate = $value[$key] ?? null;
+
+                if (is_string($candidate) && trim($candidate) !== '' && $this->looksLikeStoredPath($candidate)) {
+                    return ltrim(trim($candidate), '/');
+                }
+            }
+
+            $first = reset($value);
+
+            if ($first instanceof TemporaryUploadedFile) {
+                $storedPath = $first->store(path: YandexMarketFeedSourceHistoryService::temporaryUploadDirectory(), options: 'local');
+
+                return is_string($storedPath) && trim($storedPath) !== '' ? ltrim(trim($storedPath), '/') : null;
+            }
+
+            if (is_string($first) && trim($first) !== '' && $this->looksLikeStoredPath($first)) {
+                return ltrim(trim($first), '/');
+            }
+
+            foreach ($value as $nestedValue) {
+                $nestedPath = $this->resolveStoredFeedUploadPath($nestedValue);
+
+                if ($nestedPath !== null) {
+                    return $nestedPath;
+                }
+            }
+
+            return null;
+        }
+
+        return null;
+    }
+
+    private function looksLikeStoredPath(string $candidate): bool
+    {
+        return str_contains($candidate, '/') || str_contains($candidate, '\\');
     }
 
     private function trimmedString(mixed $value): ?string
