@@ -16,9 +16,16 @@ class EditSetting extends EditRecord
         'general.filament_admin_emails' => 'filament_admin_emails',
     ];
 
+    private function resolveEmailListField(?string $key = null): ?string
+    {
+        $settingKey = $key ?? $this->getRecord()->key;
+
+        return self::EMAIL_LIST_KEYS[$settingKey] ?? null;
+    }
+
     protected function mutateFormDataBeforeFill(array $data): array
     {
-        $field = self::EMAIL_LIST_KEYS[$data['key'] ?? ''] ?? null;
+        $field = $this->resolveEmailListField($data['key'] ?? null);
 
         if ($field === null) {
             return $data;
@@ -39,7 +46,7 @@ class EditSetting extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        $field = self::EMAIL_LIST_KEYS[$data['key'] ?? ''] ?? null;
+        $field = $this->resolveEmailListField();
 
         if ($field === null) {
             return $data;

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductPrintController;
 use App\Http\Middleware\CartNotEmpty;
 use App\Livewire\Checkout\Wizard as CheckoutWizard;
 use App\Livewire\Pages\Cart\Index as CartIndex;
@@ -77,6 +78,9 @@ Route::get('/search', function (Request $request) {
         'items' => $items,
     ]);
 })->name('search');
+
+Route::get('/product/{product:slug}/print', ProductPrintController::class)
+    ->name('product.print');
 
 Route::get('/compare', ComparePage::class)
     ->name('compare.index');
