@@ -90,8 +90,8 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
 
         $priceAmount = $this->parsePriceAmount($priceRaw);
         $vendor = $this->textOrNull($xml->vendor ?? null);
-        $description = $this->textOrNull($xml->description ?? null);
         $pictures = $this->extractPictures($xml);
+        $description = $this->extractDescription($xml, $pictures);
         $params = $this->extractParams($xml);
         $resolvedSku = $this->resolveSku($externalId, $name, $xml);
 
@@ -160,8 +160,8 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $name = implode(' ', $nameParts);
 
         $priceAmount = $this->parsePriceAmount($priceRaw);
-        $description = $this->textOrNull($xml->description ?? null);
         $pictures = $this->extractPictures($xml);
+        $description = $this->extractDescription($xml, $pictures);
         $params = $this->extractParams($xml);
         $resolvedSku = $this->resolveSku($externalId, $name, $xml);
 
@@ -259,6 +259,33 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         return (int) round((float) $normalized);
     }
 
+    /**
+     * @param  array<int, string>  $pictures
+     */
+    private function extractDescription(SimpleXMLElement $xml, array $pictures): ?string
+    {
+        $description = $this->textOrNull($xml->description ?? null);
+
+        if ($description === null || ! str_contains($description, '<img')) {
+            return $description;
+        }
+
+        $baseUrl = $this->baseUrlFromPictures($pictures);
+
+        if ($baseUrl === null) {
+            return $description;
+        }
+
+        return preg_replace_callback(
+            '/(<img\b[^>]*\bsrc\s*=\s*)(["\']?)([^"\'>\s]+)(\2)/iu',
+            fn (array $matches): string => $matches[1]
+                .$matches[2]
+                .$this->resolveRelativeUrl($matches[3], $baseUrl)
+                .$matches[4],
+            $description,
+        ) ?? $description;
+    }
+
     private function resolveCurrency(mixed $value): ?string
     {
         $currency = $this->textOrNull($value);
@@ -268,6 +295,43 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         }
 
         return $this->textOrNull($this->profile->defaults()['currency'] ?? null);
+    }
+
+    /**
+     * @param  array<int, string>  $pictures
+     */
+    private function baseUrlFromPictures(array $pictures): ?string
+    {
+        foreach ($pictures as $picture) {
+            $parts = parse_url($picture);
+
+            if (! is_array($parts)) {
+                continue;
+            }
+
+            $scheme = $parts['scheme'] ?? null;
+            $host = $parts['host'] ?? null;
+
+            if (! is_string($scheme) || ! is_string($host) || $scheme === '' || $host === '') {
+                continue;
+            }
+
+            $authority = $scheme.'://'.$host;
+            $port = $parts['port'] ?? null;
+
+            if (is_int($port)) {
+                $authority .= ':'.$port;
+            }
+
+            $path = isset($parts['path']) && is_string($parts['path']) ? $parts['path'] : '/';
+            $directory = rtrim(str_replace('\\', '/', dirname($path)), '/');
+
+            return $directory === '' || $directory === '.'
+                ? $authority.'/'
+                : $authority.$directory.'/';
+        }
+
+        return null;
     }
 
     /**
@@ -376,6 +440,48 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
 
         return trim($name);
+    }
+
+    private function resolveRelativeUrl(string $value, string $baseUrl): string
+    {
+        $value = trim($value);
+
+        if (
+            $value === ''
+            || preg_match('/^(?:[a-z][a-z0-9+\-.]*:)?\/\//iu', $value) === 1
+            || str_starts_with($value, 'data:')
+            || str_starts_with($value, 'mailto:')
+            || str_starts_with($value, 'tel:')
+            || str_starts_with($value, '#')
+        ) {
+            return $value;
+        }
+
+        $parts = parse_url($baseUrl);
+
+        if (! is_array($parts)) {
+            return $value;
+        }
+
+        $scheme = $parts['scheme'] ?? null;
+        $host = $parts['host'] ?? null;
+
+        if (! is_string($scheme) || ! is_string($host) || $scheme === '' || $host === '') {
+            return $value;
+        }
+
+        $authority = $scheme.'://'.$host;
+        $port = $parts['port'] ?? null;
+
+        if (is_int($port)) {
+            $authority .= ':'.$port;
+        }
+
+        if (str_starts_with($value, '/')) {
+            return $authority.$value;
+        }
+
+        return rtrim($baseUrl, '/').'/'.$value;
     }
 
     /**

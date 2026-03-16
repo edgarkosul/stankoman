@@ -205,6 +205,43 @@ XML;
     }
 });
 
+it('converts relative image sources in html description to absolute urls using picture host', function () {
+    $xml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<yml_catalog date="2026-03-05 00:00">
+  <shop>
+    <offers>
+      <offer id="A1" available="true">
+        <name>Simple Product</name>
+        <description><![CDATA[<p>Описание</p><img width="410" src="/upload/medialibrary/93c/example.png" alt="test"><img src="gallery/inner.png">]]></description>
+        <price>123</price>
+        <currencyId>RUB</currencyId>
+        <picture>https://startweld.ru/upload/iblock/77a/77a3f1bf177c65e85fe180fc0ca1e98c.png</picture>
+        <categoryId>1</categoryId>
+      </offer>
+    </offers>
+  </shop>
+</yml_catalog>
+XML;
+
+    $path = tempnam(sys_get_temp_dir(), 'yml_');
+    file_put_contents($path, $xml);
+
+    try {
+        $stream = (new YmlStreamParser)->open($path);
+        $offers = iterator_to_array($stream->offers);
+
+        $result = (new YandexMarketFeedAdapter)->mapOffer($offers[0]);
+
+        expect($result->isSuccess())->toBeTrue();
+        expect($result->payload?->description)->toBe(
+            '<p>Описание</p><img width="410" src="https://startweld.ru/upload/medialibrary/93c/example.png" alt="test"><img src="https://startweld.ru/upload/iblock/77a/gallery/inner.png">'
+        );
+    } finally {
+        @unlink($path);
+    }
+});
+
 it('skips vendor.model offers when required fields are missing', function () {
     $xml = <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
