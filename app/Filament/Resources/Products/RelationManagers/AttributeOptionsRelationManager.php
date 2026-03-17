@@ -21,7 +21,7 @@ class AttributeOptionsRelationManager extends RelationManager
 {
     protected static string $relationship = 'attributeOptions';
 
-    protected static ?string $title = 'Фильтры — заданные варианты';
+    protected static ?string $title = 'Заданные варианты';
 
     private const OPTION_INPUT_TYPES = ['select', 'multiselect'];
 

@@ -4,6 +4,8 @@ namespace App\Filament\Resources\Products\RelationManagers;
 
 use App\Filament\Resources\Attributes\AttributeResource;
 use App\Models\Attribute;
+use App\Models\CategoryAttribute;
+use App\Models\ProductAttributeValue;
 use App\Models\Unit;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -27,7 +29,7 @@ use Illuminate\Validation\Rule;
 
 class AttributeValuesRelationManager extends RelationManager
 {
-    protected static ?string $title = 'Фильтры — свободные значения';
+    protected static ?string $title = 'Свободные значения';
 
     protected static string $relationship = 'attributeValues';
 
@@ -793,7 +795,7 @@ class AttributeValuesRelationManager extends RelationManager
     /**
      * Pivot category_attribute для primary-категории текущего товара и заданного атрибута.
      */
-    protected function getPrimaryCategoryPivotForAttr(int $attrId): ?\App\Models\CategoryAttribute
+    protected function getPrimaryCategoryPivotForAttr(int $attrId): ?CategoryAttribute
     {
         $product = $this->getOwnerRecord();
 
@@ -1003,7 +1005,7 @@ class AttributeValuesRelationManager extends RelationManager
      */
     protected function formatDisplayValueForCategory($record): ?string
     {
-        /** @var \App\Models\ProductAttributeValue $record */
+        /** @var ProductAttributeValue $record */
         $attribute = $record->attribute;
 
         if (! $attribute) {
