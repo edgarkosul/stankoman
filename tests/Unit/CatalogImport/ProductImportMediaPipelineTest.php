@@ -259,7 +259,6 @@ it('forces media recheck for fresh completed media when option is enabled', func
 
     $product = Product::query()->create([
         'name' => 'Товар с принудительной перепроверкой медиа',
-        'title' => 'Товар с принудительной перепроверкой медиа',
         'slug' => 'force-recheck-media-product',
         'price_amount' => 100,
         'currency' => 'RUB',

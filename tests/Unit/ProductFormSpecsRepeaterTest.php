@@ -6,6 +6,7 @@ use App\Filament\Resources\Products\Schemas\ProductForm;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
 use Tests\TestCase;
 
@@ -42,6 +43,7 @@ it('configures specs as a compact table repeater in product form', function (): 
         'dom',
         'import',
         'legacy',
+        'yml',
     ]);
 });
 
@@ -78,6 +80,20 @@ it('configures warranty as enum select with nullable placeholder', function (): 
     /** @var Select $warrantyField */
     expect($warrantyField->getOptions())->toBe(ProductWarranty::options())
         ->and($warrantyField->getPlaceholder())->toBe('Без гарантии');
+});
+
+it('uses meta_title as the editable seo title field', function (): void {
+    $page = new CreateProduct;
+    $schema = $page->form(Schema::make($page));
+
+    $metaTitleField = $schema->getComponentByStatePath('meta_title', withHidden: true);
+    $legacyTitleField = $schema->getComponentByStatePath('title', withHidden: true);
+
+    expect($metaTitleField)->toBeInstanceOf(TextInput::class)
+        ->and($metaTitleField->getLabel())->toBe('META Title')
+        ->and($legacyTitleField)->toBeInstanceOf(TextInput::class)
+        ->and($legacyTitleField->getLabel())->toBe('Legacy title')
+        ->and($legacyTitleField->isDisabled())->toBeTrue();
 });
 
 it('configures instructions and video as separate rich editors', function (): void {

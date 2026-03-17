@@ -1,0 +1,28 @@
+<?php
+
+use App\Models\Product;
+use App\Support\ViewModels\ProductPageViewModel;
+use Tests\TestCase;
+
+uses(TestCase::class);
+
+it('prefers meta_title over the legacy title field', function (): void {
+    $viewModel = new ProductPageViewModel(new Product([
+        'name' => 'Токарный станок',
+        'title' => 'Legacy title',
+        'meta_title' => 'SEO title',
+        'price_amount' => 125000,
+    ]));
+
+    expect($viewModel->metaTitle())->toBe('SEO title');
+});
+
+it('falls back to generated title instead of the legacy title field', function (): void {
+    $viewModel = new ProductPageViewModel(new Product([
+        'name' => 'Токарный станок',
+        'title' => 'Legacy title',
+        'price_amount' => 125000,
+    ]));
+
+    expect($viewModel->metaTitle())->toBe('Токарный станок купить по цене 125 000 ₽ в KratonShop');
+});

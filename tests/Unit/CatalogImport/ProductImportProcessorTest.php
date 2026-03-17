@@ -288,7 +288,6 @@ it('marks existing product as unchanged when payload has no effective changes', 
 
     $product = Product::query()->create([
         'name' => 'Без изменений',
-        'title' => 'Без изменений',
         'slug' => 'unchanged-product',
         'price_amount' => 0,
         'currency' => 'RUB',
@@ -546,7 +545,6 @@ it('does not mark product as updated when only media fields differ and media dow
 
     $product = Product::query()->create([
         'name' => 'Товар с изображением',
-        'title' => 'Товар с изображением',
         'slug' => 'deferred-image-context-product',
         'price_amount' => 100,
         'currency' => 'RUB',
@@ -621,7 +619,6 @@ it('marks product as unchanged when media is fully reused on repeated import', f
 
     $product = Product::query()->create([
         'name' => 'Товар с переиспользуемой картинкой',
-        'title' => 'Товар с переиспользуемой картинкой',
         'slug' => 'reused-image-context-product',
         'price_amount' => 100,
         'currency' => 'RUB',

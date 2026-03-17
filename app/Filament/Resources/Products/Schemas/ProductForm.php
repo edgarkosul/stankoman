@@ -55,7 +55,7 @@ class ProductForm
                             $set('slug', Str::slug($state));
                         }
 
-                        if (filled($get('title')) || blank($state)) {
+                        if (filled($get('meta_title')) || blank($state)) {
                             return;
                         }
                         $price = (int) ($get('price_amount') ?? 0);
@@ -70,11 +70,19 @@ class ProductForm
                         } else {
                             $title = "Купить {$state}";
                         }
-                        $set('title', $title);
+                        $set('meta_title', $title);
                     }),
-                TextInput::make('title')
+                TextInput::make('meta_title')
                     ->label('META Title')
-                    ->unique()
+                    ->maxLength(255)
+                    ->helperText('Используется в SEO title страницы товара. Если оставить пустым, будет сгенерирован автоматически.')
+                    ->columnSpanFull(),
+                TextInput::make('title')
+                    ->label('Legacy title')
+                    ->disabled()
+                    ->dehydrated(false)
+                    ->helperText('Устаревшее поле. Больше не используется в витрине и новых импортных данных.')
+                    ->visible(fn (?Product $record): bool => filled($record?->title))
                     ->columnSpanFull(),
                 Textarea::make('meta_description')
                     ->label('META Description')

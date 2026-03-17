@@ -617,7 +617,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
         $attributes = [
             'name' => $this->limit($payload->name, 255) ?? 'Imported product',
-            'title' => $this->limit($payload->title, 255) ?? $this->limit($payload->name, 255),
+            'title' => null,
             'sku' => $this->limit($payload->sku, 255),
             'brand' => $this->limit($payload->brand, 255),
             'country' => $this->limit($payload->country, 255),
@@ -634,7 +634,9 @@ final class ProductImportProcessor implements ImportProcessorInterface
             'image' => $payload->images[0] ?? null,
             'thumb' => $payload->images[0] ?? null,
             'gallery' => $payload->images === [] ? null : $payload->images,
-            'meta_title' => $this->limit($payload->metaTitle, 255) ?? $this->limit($payload->name, 255),
+            'meta_title' => $this->limit($payload->metaTitle, 255)
+                ?? $this->limit($payload->title, 255)
+                ?? $this->limit($payload->name, 255),
             'meta_description' => $this->limit($payload->metaDescription, 255) ?? $this->metaDescriptionFromText($description),
         ];
 

@@ -175,7 +175,6 @@ it('updates existing product by legacy matcher without restaging categories', fu
 
         Product::query()->create([
             'name' => $title,
-            'title' => $title,
             'slug' => Str::slug($title),
             'brand' => $brand,
             'price_amount' => 10000,

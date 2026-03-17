@@ -298,7 +298,6 @@ function createDeactivationProduct(
 ): Product {
     $product = Product::query()->create([
         'name' => $name,
-        'title' => $name,
         'slug' => strtolower(str_replace(' ', '-', $name)).'-'.uniqid(),
         'price_amount' => 1000,
         'currency' => 'RUB',

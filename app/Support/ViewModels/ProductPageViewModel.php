@@ -2,16 +2,15 @@
 
 namespace App\Support\ViewModels;
 
-
 use App\Models\Product;
 use App\Models\ProductTab;
-use Illuminate\Support\Str;
-use Jenssegers\Agent\Agent;
-use Illuminate\Support\Collection;
-use App\Support\Seo\SeoTextExtractor;
 use App\Support\ImageDerivativesResolver;
+use App\Support\Seo\SeoTextExtractor;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Jenssegers\Agent\Agent;
 
 class ProductPageViewModel
 {
@@ -19,20 +18,19 @@ class ProductPageViewModel
 
     public function metaTitle(): string
     {
-        // Если в товаре явно задан META Title — используем его
-        if (filled($this->product->title)) {
-            return $this->product->title;
+        if (filled($this->product->meta_title)) {
+            return $this->product->meta_title;
         }
 
-        // Иначе — динамический fallback
         $price = number_format($this->product->price_final, 0, ' ', ' ');
 
         return "{$this->product->name} купить по цене {$price} ₽ в KratonShop";
     }
 
-    public function isMobile()
+    public function isMobile(): bool
     {
-        $agent = new Agent();
+        $agent = new Agent;
+
         return $agent->isMobile();
     }
 
@@ -41,7 +39,9 @@ class ProductPageViewModel
         if (filled($this->product->meta_description)) {
             return $this->product->meta_description;
         }
+
         $desk = app(SeoTextExtractor::class)->extractDescriptionFromHtml($this->product->description);
+
         return $desk;
     }
 
@@ -49,12 +49,12 @@ class ProductPageViewModel
     {
         // источники в порядке приоритета
         $srcs = collect([
-            $this->product->image,   // основная
-            $this->product->thumb,   // миниатюра как запасной вариант
+            $this->product->image,
+            $this->product->thumb,
         ])
             ->merge($this->normalizeGallery($this->product->gallery ?? null))
-            ->map(fn($v) => is_string($v) ? trim($v) : null)
-            ->filter()   // убираем null/пустые строки
+            ->map(fn ($v) => is_string($v) ? trim($v) : null)
+            ->filter()
             ->unique()
             ->values();
 
@@ -82,6 +82,7 @@ class ProductPageViewModel
             $normalized = strtolower((string) $key);
             if (str_starts_with($normalized, 'utm_')) {
                 $trackingKeys[] = $key;
+
                 continue;
             }
             if (in_array($normalized, [
@@ -113,13 +114,11 @@ class ProductPageViewModel
         }
 
         if (is_string($gallery)) {
-            // пробуем как JSON
             $decoded = json_decode($gallery, true);
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
                 return $decoded;
             }
 
-            // иначе — делим по | , или пробелам
             return preg_split('/[|,\s]+/', $gallery, -1, PREG_SPLIT_NO_EMPTY) ?: [];
         }
 
@@ -130,12 +129,13 @@ class ProductPageViewModel
     {
         $stavka_nds = config('settings.product.stavka_nds', 0);
         $dns = $this->product->with_dns ? "(НДС $stavka_nds% в том числе)" : "(+ НДС $stavka_nds%)";
+
         return [
-            'price'      => $this->product->price,
-            'discount_price'  => $this->product->discount_price ?? null,
-            'in_stock'   => $this->product->in_stock ?? true,
-            'sku'        => $this->product->sku ?? null,
-            'with_dns'  => $dns,
+            'price' => $this->product->price,
+            'discount_price' => $this->product->discount_price ?? null,
+            'in_stock' => $this->product->in_stock ?? true,
+            'sku' => $this->product->sku ?? null,
+            'with_dns' => $dns,
         ];
     }
 
@@ -153,8 +153,11 @@ class ProductPageViewModel
     {
         // Заглушка: возьми 8 товаров из той же категории
         $cat = $this->primaryCategory();
-        if (!$cat) return [];
-        return $this->product->whereHas('categories', fn($q) => $q->whereKey($cat->getKey()))
+        if (! $cat) {
+            return [];
+        }
+
+        return $this->product->whereHas('categories', fn ($q) => $q->whereKey($cat->getKey()))
             ->where('id', '!=', $this->product->id)
             ->latest('id')
             ->limit(8)
@@ -181,7 +184,7 @@ class ProductPageViewModel
             }
 
             if (str_starts_with($value, 'storage/')) {
-                return '/' . $value;
+                return '/'.$value;
             }
 
             return Storage::disk('public')->url($value);
@@ -193,16 +196,16 @@ class ProductPageViewModel
 
         return [
             $this->product->id => [
-                "id" => $this->product->id,
-                "name" => $this->product->name,
-                "price" => $this->product->price_int,
-                "price_final" => $this->product->price_final,
-                "has_discount" => $this->product->has_discount,
-                "image" => $imageUrl,
-                "webpSrcset" => $webpSrcset,
-                "slug" => $this->product->slug,
-                "url" => route('product.show', $this->product->slug),
-            ]
+                'id' => $this->product->id,
+                'name' => $this->product->name,
+                'price' => $this->product->price_int,
+                'price_final' => $this->product->price_final,
+                'has_discount' => $this->product->has_discount,
+                'image' => $imageUrl,
+                'webpSrcset' => $webpSrcset,
+                'slug' => $this->product->slug,
+                'url' => route('product.show', $this->product->slug),
+            ],
         ];
     }
 
@@ -232,44 +235,44 @@ class ProductPageViewModel
 
         // 5) Brand (если есть)
         $brand = null;
-        if (!empty($this->product->brand)) {
+        if (! empty($this->product->brand)) {
             $brand = [
                 '@type' => 'Brand',
-                'name'  => $this->product->brand,
+                'name' => $this->product->brand,
             ];
         }
 
         // 6) Category (по основной категории)
         $primaryCategory = $this->primaryCategory();
-        $categoryName    = $primaryCategory?->name;
+        $categoryName = $primaryCategory?->name;
 
         $data = [
-            '@context'    => 'https://schema.org',
-            '@type'       => 'Product',
-            'name'        => $this->product->name,
+            '@context' => 'https://schema.org',
+            '@type' => 'Product',
+            'name' => $this->product->name,
             'description' => $description ?: null,
-            'image'       => $images,
-            'sku'         => $this->product->sku ?? (string) $this->product->id,
-            'brand'       => $brand,
-            'category'    => $categoryName ?: null,
-            'offers'      => [
-                '@type'         => 'Offer',
+            'image' => $images,
+            'sku' => $this->product->sku ?? (string) $this->product->id,
+            'brand' => $brand,
+            'category' => $categoryName ?: null,
+            'offers' => [
+                '@type' => 'Offer',
                 'priceCurrency' => 'RUB', // при желании можно взять из поля product->currency
-                'price'         => $price,
-                'availability'  => $availability,
-                'url'           => route('product.show', $this->product),
+                'price' => $price,
+                'availability' => $availability,
+                'url' => route('product.show', $this->product),
             ],
         ];
 
         // Уберём null-ы на верхнем уровне (brand / category / description, если их нет)
-        return array_filter($data, fn($v) => $v !== null);
+        return array_filter($data, fn ($v) => $v !== null);
     }
 
     private function schemaImages(): array
     {
         $images = array_values(array_filter(
             $this->images(),
-            fn($value) => is_string($value) && trim($value) !== ''
+            fn ($value) => is_string($value) && trim($value) !== ''
         ));
 
         if ($images === []) {
@@ -369,11 +372,12 @@ class ProductPageViewModel
 
         if (Str::startsWith($value, '//')) {
             $scheme = parse_url((string) config('app.url'), PHP_URL_SCHEME) ?: 'https';
-            return $scheme . ':' . $value;
+
+            return $scheme.':'.$value;
         }
 
         if (Str::startsWith($value, 'storage/')) {
-            return url('/' . $value);
+            return url('/'.$value);
         }
 
         if (Str::startsWith($value, '/')) {
@@ -382,7 +386,6 @@ class ProductPageViewModel
 
         return Storage::disk('public')->url($value);
     }
-
 
     private function primaryCategory()
     {
@@ -394,7 +397,7 @@ class ProductPageViewModel
      * Содержимое вкладок продуктов.
      * Кешируется, т.к. одно и то же для всех товаров.
      *
-     * @return \Illuminate\Support\Collection<string,string>
+     * @return Collection<string,string>
      */
     public function tabContents(): Collection
     {
@@ -421,7 +424,7 @@ class ProductPageViewModel
     {
         $source = $this->product->meta_description ?: $this->metaDescription();
 
-        if (!$source) {
+        if (! $source) {
             return null;
         }
 
