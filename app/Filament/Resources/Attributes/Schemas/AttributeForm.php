@@ -163,24 +163,7 @@ HTML)
 
                 Select::make('dimension')
                     ->label('Измерение (семейство единиц)')
-                    ->options(function () {
-                        // Все человекопонятные подписи
-                        $labels = Unit::dimensionOptions();
-
-                        // Только реально существующие измерения
-                        $dims = Unit::query()
-                            ->whereNotNull('dimension')
-                            ->distinct()
-                            ->orderBy('dimension')
-                            ->pluck('dimension')
-                            ->all();
-
-                        return collect($dims)
-                            ->mapWithKeys(fn (string $dim) => [
-                                $dim => $labels[$dim] ?? $dim,
-                            ])
-                            ->toArray();
-                    })
+                    ->options(Unit::dimensionOptions())
                     ->helperText('Определяет, какие единицы будут доступны для этого атрибута.')
                     ->searchable()
                     ->preload()

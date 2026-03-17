@@ -368,4 +368,6 @@
             @endif
         </div>
     </div>
+
+    <x-product.popular :category="$category" />
 </section>

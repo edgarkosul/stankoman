@@ -34,17 +34,24 @@ class ProductSpecsAttributesSyncService
 
         DB::transaction(function () use ($product, $specIndex, &$result): void {
             $product->loadMissing([
+                'categories.attributeDefs.unit',
+                'categories.attributeDefs.units',
+                'categories.attributeDefs.options',
                 'attributeValues.attribute.unit',
                 'attributeValues.attribute.units',
                 'attributeOptions.attribute.options',
             ]);
 
-            foreach ($product->attributeValues as $valueRow) {
-                if (! $valueRow instanceof ProductAttributeValue || ! $valueRow->attribute instanceof Attribute) {
+            $existingValueRowsByAttributeId = $product->attributeValues
+                ->filter(fn (mixed $valueRow): bool => $valueRow instanceof ProductAttributeValue && $valueRow->attribute instanceof Attribute)
+                ->keyBy(fn (ProductAttributeValue $valueRow): int => (int) $valueRow->attribute_id);
+
+            foreach ($this->candidatePavAttributes($product) as $attribute) {
+                $valueRow = $existingValueRowsByAttributeId->get((int) $attribute->getKey());
+
+                if ($valueRow !== null && ! $valueRow instanceof ProductAttributeValue) {
                     continue;
                 }
-
-                $attribute = $valueRow->attribute;
 
                 if ($attribute->usesOptions()) {
                     continue;
@@ -69,10 +76,17 @@ class ProductSpecsAttributesSyncService
 
                 $targetValue = $parsed['value'];
 
-                if ($this->isSamePavValue($valueRow, $attribute, $targetValue)) {
+                if ($valueRow instanceof ProductAttributeValue && $this->isSamePavValue($valueRow, $attribute, $targetValue)) {
                     $result['unchanged']++;
 
                     continue;
+                }
+
+                if (! $valueRow instanceof ProductAttributeValue) {
+                    $valueRow = new ProductAttributeValue([
+                        'product_id' => (int) $product->getKey(),
+                        'attribute_id' => (int) $attribute->getKey(),
+                    ]);
                 }
 
                 $valueRow->setTypedValue($attribute, $targetValue);
@@ -87,23 +101,8 @@ class ProductSpecsAttributesSyncService
                 fn (AttributeOption $option): int => (int) $option->pivot->attribute_id
             );
 
-            foreach ($optionsByAttributeId as $attributeId => $selectedOptions) {
-                if (! $selectedOptions instanceof Collection || $selectedOptions->isEmpty()) {
-                    continue;
-                }
-
-                $firstOption = $selectedOptions->first();
-                $attribute = $firstOption instanceof AttributeOption
-                    ? $firstOption->attribute
-                    : null;
-
-                if (! $attribute instanceof Attribute) {
-                    $attribute = Attribute::query()
-                        ->with('options')
-                        ->find((int) $attributeId);
-                }
-
-                if (! $attribute instanceof Attribute || ! $attribute->usesOptions()) {
+            foreach ($this->candidatePaoAttributes($product, $optionsByAttributeId) as $attribute) {
+                if (! $attribute->usesOptions()) {
                     continue;
                 }
 
@@ -123,6 +122,8 @@ class ProductSpecsAttributesSyncService
 
                     continue;
                 }
+
+                $selectedOptions = $optionsByAttributeId->get((int) $attribute->getKey(), collect());
 
                 $currentOptionIds = $selectedOptions
                     ->pluck('id')
@@ -169,6 +170,51 @@ class ProductSpecsAttributesSyncService
         });
 
         return $result;
+    }
+
+    /**
+     * @return Collection<int, Attribute>
+     */
+    private function candidatePavAttributes(Product $product): Collection
+    {
+        $attributes = $product->attributeValues
+            ->map(fn (ProductAttributeValue $valueRow): ?Attribute => $valueRow->attribute)
+            ->filter(fn (mixed $attribute): bool => $attribute instanceof Attribute);
+
+        return $attributes
+            ->merge($this->primaryCategoryAttributes($product)->filter(fn (Attribute $attribute): bool => ! $attribute->usesOptions()))
+            ->unique(fn (Attribute $attribute): int => (int) $attribute->getKey())
+            ->values();
+    }
+
+    /**
+     * @param  Collection<int, Collection<int, AttributeOption>>  $optionsByAttributeId
+     * @return Collection<int, Attribute>
+     */
+    private function candidatePaoAttributes(Product $product, Collection $optionsByAttributeId): Collection
+    {
+        $attributes = $optionsByAttributeId
+            ->map(function (Collection $selectedOptions): ?Attribute {
+                $firstOption = $selectedOptions->first();
+
+                return $firstOption instanceof AttributeOption ? $firstOption->attribute : null;
+            })
+            ->filter(fn (mixed $attribute): bool => $attribute instanceof Attribute);
+
+        return $attributes
+            ->merge($this->primaryCategoryAttributes($product)->filter(fn (Attribute $attribute): bool => $attribute->usesOptions()))
+            ->unique(fn (Attribute $attribute): int => (int) $attribute->getKey())
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, Attribute>
+     */
+    private function primaryCategoryAttributes(Product $product): Collection
+    {
+        return $product->getPrimaryCategoryAttributes()
+            ->filter(fn (mixed $attribute): bool => $attribute instanceof Attribute)
+            ->values();
     }
 
     /**

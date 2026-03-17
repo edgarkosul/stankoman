@@ -25,6 +25,8 @@
         </div>
         @include('pages.product.partials.tabs', ['tabs' => $tabs])
 
+        <x-product.popular :product="$product" />
+
         <x-product.similar :product="$product" />
 
         <livewire:recent-products-slider />

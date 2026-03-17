@@ -11,3 +11,15 @@ test('brand colors are defined in the tailwind theme', function () {
         ->toContain('.tippy-box[data-theme~="ks-light"]')
         ->toContain('border-radius: 0;');
 });
+
+test('rich content video blocks have shared responsive styles outside static pages', function () {
+    $css = file_get_contents(resource_path('css/app.css'));
+
+    expect($css)
+        ->toContain('.video {')
+        ->toContain('@apply w-full aspect-video shadow-xl;')
+        ->toContain('.video iframe {')
+        ->toContain('.video.video--left {')
+        ->toContain('.video.video--center {')
+        ->toContain('.static-page .video {');
+});

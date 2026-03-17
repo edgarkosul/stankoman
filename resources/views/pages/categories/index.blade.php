@@ -133,4 +133,8 @@
             @endforelse
         </div>
     </div>
+
+    @if (! empty($category))
+        <x-product.popular :category="$category" />
+    @endif
 </div>

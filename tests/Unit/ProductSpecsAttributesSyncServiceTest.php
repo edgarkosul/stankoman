@@ -198,6 +198,117 @@ it('skips values that cannot be parsed for bound attributes', function (): void 
         ->and($persistedOptionIds)->toBe([$red->id]);
 });
 
+it('creates missing pav and pao rows from primary category attributes', function (): void {
+    $din = Unit::query()->create([
+        'name' => 'DIN',
+        'symbol' => 'DIN',
+        'dimension' => 'dimensionless',
+        'base_symbol' => '1',
+        'si_factor' => 1,
+        'si_offset' => 0,
+    ]);
+
+    $shadeRangeAttribute = Attribute::query()->create([
+        'name' => 'Диапазон затемнения',
+        'slug' => 'shade-range',
+        'data_type' => 'range',
+        'input_type' => 'range',
+        'unit_id' => $din->id,
+        'is_filterable' => true,
+    ]);
+
+    $modeAttribute = Attribute::query()->create([
+        'name' => 'Режим',
+        'slug' => 'mode',
+        'data_type' => 'text',
+        'value_source' => 'options',
+        'input_type' => 'select',
+        'is_filterable' => true,
+    ]);
+
+    $manual = AttributeOption::query()->create([
+        'attribute_id' => $modeAttribute->id,
+        'value' => 'Ручной',
+        'sort_order' => 1,
+    ]);
+
+    $categoryId = DB::table('categories')->insertGetId([
+        'name' => 'Маски сварщика',
+        'slug' => 'maski-svarshhika',
+        'is_active' => true,
+        'parent_id' => -1,
+        'order' => 0,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    DB::table('category_attribute')->insert([
+        [
+            'category_id' => $categoryId,
+            'attribute_id' => $shadeRangeAttribute->id,
+            'is_required' => false,
+            'filter_order' => 0,
+            'compare_order' => 0,
+            'visible_in_specs' => true,
+            'visible_in_compare' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+        [
+            'category_id' => $categoryId,
+            'attribute_id' => $modeAttribute->id,
+            'is_required' => false,
+            'filter_order' => 1,
+            'compare_order' => 1,
+            'visible_in_specs' => true,
+            'visible_in_compare' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Маска сварщика X',
+        'slug' => 'welding-mask-x',
+        'price_amount' => 11000,
+        'specs' => [
+            ['name' => 'Диапазон затемнения, DIN', 'value' => '5-13', 'source' => 'yml'],
+            ['name' => 'Режим', 'value' => 'Ручной', 'source' => 'yml'],
+        ],
+    ]);
+
+    DB::table('product_categories')->insert([
+        'product_id' => $product->id,
+        'category_id' => $categoryId,
+        'is_primary' => true,
+    ]);
+
+    $result = (new ProductSpecsAttributesSyncService)->sync($product, $product->specs);
+
+    expect($result['updated_pav'])->toBe(1)
+        ->and($result['updated_pao'])->toBe(1)
+        ->and($result['skipped'])->toBe(0)
+        ->and($result['unchanged'])->toBe(0);
+
+    $persistedRange = ProductAttributeValue::query()
+        ->where('product_id', $product->id)
+        ->where('attribute_id', $shadeRangeAttribute->id)
+        ->first();
+
+    expect($persistedRange)->not->toBeNull()
+        ->and($persistedRange?->value_min)->toBe(5.0)
+        ->and($persistedRange?->value_max)->toBe(13.0);
+
+    $persistedOptionIds = DB::table('product_attribute_option')
+        ->where('product_id', $product->id)
+        ->where('attribute_id', $modeAttribute->id)
+        ->pluck('attribute_option_id')
+        ->map(fn ($id): int => (int) $id)
+        ->all();
+
+    expect($persistedOptionIds)->toBe([$manual->id]);
+});
+
 function rebuildProductSpecsAttributesSyncSchemas(): void
 {
     dropProductSpecsAttributesSyncSchemas();
@@ -217,6 +328,19 @@ function rebuildProductSpecsAttributesSyncSchemas(): void
         $table->boolean('is_in_yml_feed')->default(true);
         $table->boolean('with_dns')->default(true);
         $table->json('specs')->nullable();
+        $table->timestamps();
+    });
+
+    Schema::create('categories', function (Blueprint $table): void {
+        $table->id();
+        $table->string('name');
+        $table->string('slug');
+        $table->string('img')->nullable();
+        $table->boolean('is_active')->default(true);
+        $table->integer('parent_id')->default(-1);
+        $table->integer('order')->default(0);
+        $table->string('meta_description')->nullable();
+        $table->json('meta_json')->nullable();
         $table->timestamps();
     });
 
@@ -269,6 +393,29 @@ function rebuildProductSpecsAttributesSyncSchemas(): void
         $table->unique(['attribute_id', 'value']);
     });
 
+    Schema::create('category_attribute', function (Blueprint $table): void {
+        $table->unsignedBigInteger('category_id');
+        $table->unsignedBigInteger('attribute_id');
+        $table->unsignedBigInteger('display_unit_id')->nullable();
+        $table->unsignedTinyInteger('number_decimals')->nullable();
+        $table->decimal('number_step', 10, 6)->nullable();
+        $table->string('number_rounding')->nullable();
+        $table->boolean('is_required')->default(false);
+        $table->unsignedInteger('filter_order')->default(0);
+        $table->unsignedInteger('compare_order')->default(0);
+        $table->boolean('visible_in_specs')->default(true);
+        $table->boolean('visible_in_compare')->default(true);
+        $table->string('group_override')->nullable();
+        $table->timestamps();
+        $table->primary(['category_id', 'attribute_id']);
+    });
+
+    Schema::create('product_categories', function (Blueprint $table): void {
+        $table->unsignedBigInteger('product_id');
+        $table->unsignedBigInteger('category_id');
+        $table->boolean('is_primary')->default(false);
+    });
+
     Schema::create('product_attribute_values', function (Blueprint $table): void {
         $table->id();
         $table->unsignedBigInteger('product_id');
@@ -298,10 +445,13 @@ function dropProductSpecsAttributesSyncSchemas(): void
 {
     Schema::dropIfExists('product_attribute_option');
     Schema::dropIfExists('product_attribute_values');
+    Schema::dropIfExists('product_categories');
+    Schema::dropIfExists('category_attribute');
     Schema::dropIfExists('attribute_options');
     Schema::dropIfExists('attribute_unit');
     Schema::dropIfExists('attributes');
     Schema::dropIfExists('units');
+    Schema::dropIfExists('categories');
     Schema::dropIfExists('products');
 
     DB::disconnect();

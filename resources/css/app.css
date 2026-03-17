@@ -328,12 +328,24 @@ select:focus[data-flux-control] {
     border-right-color: #fff;
 }
 
-.static-page .video {
-    @apply max-w-7xl mx-auto px-2 aspect-video shadow-xl;
+.video {
+    @apply w-full aspect-video shadow-xl;
 }
 
-.static-page .video iframe {
+.video iframe {
     @apply w-full h-full border border-brand-green;
+}
+
+.video.video--left {
+    @apply ml-0 mr-auto;
+}
+
+.video.video--center {
+    @apply mx-auto;
+}
+
+.static-page .video {
+    @apply max-w-7xl px-2;
 }
 
 .static-page .map {
@@ -350,14 +362,6 @@ select:focus[data-flux-control] {
 }
 
 .static-page .map.map--center {
-    @apply mx-auto;
-}
-
-.static-page .video.video--left {
-    @apply ml-0 mr-auto;
-}
-
-.static-page .video.video--center {
     @apply mx-auto;
 }
 

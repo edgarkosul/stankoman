@@ -20,6 +20,7 @@
 
         <div class="mx-auto max-w-7xl px-2 xs:px-3 sm:px-4 md:px-6 pb-8">
             <x-layouts.partials.action-product-slider />
+            <x-product.popular />
         </div>
     </div>
 
