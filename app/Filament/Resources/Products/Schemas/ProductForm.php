@@ -77,13 +77,13 @@ class ProductForm
                     ->maxLength(255)
                     ->helperText('Используется в SEO title страницы товара. Если оставить пустым, будет сгенерирован автоматически.')
                     ->columnSpanFull(),
-                TextInput::make('title')
-                    ->label('Legacy title')
-                    ->disabled()
-                    ->dehydrated(false)
-                    ->helperText('Устаревшее поле. Больше не используется в витрине и новых импортных данных.')
-                    ->visible(fn (?Product $record): bool => filled($record?->title))
-                    ->columnSpanFull(),
+                // TextInput::make('title')
+                //     ->label('Legacy title')
+                //     ->disabled()
+                //     ->dehydrated(false)
+                //     ->helperText('Устаревшее поле. Больше не используется в витрине и новых импортных данных.')
+                //     ->visible(fn (?Product $record): bool => filled($record?->title))
+                //     ->columnSpanFull(),
                 Textarea::make('meta_description')
                     ->label('META Description')
                     ->rows(3)
