@@ -5,6 +5,7 @@ use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Jobs\RunMetalmasterProductImportJob;
 use App\Jobs\RunVactoolProductImportJob;
 use App\Models\ImportRun;
+use App\Support\Filament\HelpCenter;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Schema;
@@ -60,27 +61,19 @@ test('catalog supplier import form has source and run controls', function () {
     expect($skipExistingField)->not->toBeNull();
 });
 
-test('catalog supplier import page has supplier-aware header actions', function () {
+test('catalog supplier import page keeps history action and is mapped to help page', function () {
     $page = new CatalogSupplierImport;
-    $page->data = array_merge($page->data ?? [], [
-        'supplier' => 'vactool',
-    ]);
 
     $method = new ReflectionMethod(CatalogSupplierImport::class, 'getHeaderActions');
     $method->setAccessible(true);
 
     $actions = $method->invoke($page);
 
-    expect($actions)->toHaveCount(2);
-    expect($actions[0]->getName())->toBe('instructions');
-    expect($actions[0]->getUrl())->toBe('https://help.stankoman.ru/import/vactool-import/');
-    expect($actions[1]->getName())->toBe('history');
-    expect($actions[1]->getUrl())->toBe(ImportRunResource::getUrl());
-
-    $page->data['supplier'] = 'metalmaster';
-    $actions = $method->invoke($page);
-
-    expect($actions[0]->getUrl())->toBe('https://help.stankoman.ru/import/metalmaster-import/');
+    expect($actions)->toHaveCount(1);
+    expect($actions[0]->getName())->toBe('history');
+    expect($actions[0]->getUrl())->toBe(ImportRunResource::getUrl());
+    expect(HelpCenter::urlForRouteName('filament.admin.pages.catalog-supplier-import'))
+        ->toBe('https://help.stankoman.ru/import/supplier-import/');
 });
 
 test('catalog supplier import page applies sync scenario to technical flags', function () {

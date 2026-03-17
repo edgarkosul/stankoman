@@ -99,20 +99,6 @@ class ProductImportExport extends Page implements HasForms
         $this->dryRunPreviewConflict = [];
     }
 
-    /**
-     * @return array<FormAction>
-     */
-    protected function getHeaderActions(): array
-    {
-        return [
-            FormAction::make('instructions')
-                ->label('Инструкция')
-                ->icon('heroicon-o-question-mark-circle')
-                ->color('gray')
-                ->url('https://help.stankoman.ru/import/excel-import/', true),
-        ];
-    }
-
     public function form(Schema $schema): Schema
     {
         $fields = config('catalog-export.fields');

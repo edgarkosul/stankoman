@@ -83,11 +83,6 @@ class CategoryFiltersImportExport extends Page implements HasForms
     protected function getHeaderActions(): array
     {
         return [
-            FormAction::make('instructions')
-                ->label('Инструкция')
-                ->icon('heroicon-o-question-mark-circle')
-                ->color('gray')
-                ->url(ImportExportHelp::getUrl()),
             FormAction::make('history')
                 ->label('История импортов')
                 ->icon('heroicon-o-clock')

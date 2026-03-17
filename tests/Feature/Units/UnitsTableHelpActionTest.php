@@ -1,17 +1,16 @@
 <?php
 
-use App\Filament\Resources\Units\Pages\ListUnits;
 use App\Models\User;
-use Livewire\Livewire;
 
-test('units page has instructions header action in unified style', function (): void {
-    $this->actingAs(User::factory()->create());
+test('units page renders link to help center', function (): void {
+    config(['filament_admin.emails' => ['admin@example.com']]);
 
-    Livewire::test(ListUnits::class)
-        ->assertActionExists('instructions')
-        ->assertActionHasLabel('instructions', 'Инструкция')
-        ->assertActionHasIcon('instructions', 'heroicon-o-question-mark-circle')
-        ->assertActionHasColor('instructions', 'gray')
-        ->assertActionHasUrl('instructions', 'https://help.stankoman.ru/units/')
-        ->assertActionShouldOpenUrlInNewTab('instructions');
+    $this->actingAs(User::factory()->create([
+        'email' => 'admin@example.com',
+    ]));
+
+    $this->get(route('filament.admin.resources.units.index'))
+        ->assertOk()
+        ->assertSee('Инструкция')
+        ->assertSee('https://help.stankoman.ru/units/', false);
 });

@@ -125,11 +125,6 @@ class CatalogSupplierImport extends Page implements HasForms
     protected function getHeaderActions(): array
     {
         return [
-            FormAction::make('instructions')
-                ->label('Инструкция')
-                ->icon('heroicon-o-question-mark-circle')
-                ->color('gray')
-                ->url(fn (): string => $this->instructionsUrlForSupplier((string) ($this->data['supplier'] ?? 'vactool')), true),
             FormAction::make('history')
                 ->label('История импортов')
                 ->icon('heroicon-o-clock')
@@ -1057,14 +1052,6 @@ class CatalogSupplierImport extends Page implements HasForms
         return match ($supplier) {
             'metalmaster' => 'metalmaster_products',
             default => 'vactool_products',
-        };
-    }
-
-    private function instructionsUrlForSupplier(string $supplier): string
-    {
-        return match ($supplier) {
-            'metalmaster' => 'https://help.stankoman.ru/import/metalmaster-import/',
-            default => 'https://help.stankoman.ru/import/vactool-import/',
         };
     }
 

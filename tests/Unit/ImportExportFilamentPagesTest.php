@@ -6,6 +6,7 @@ use App\Filament\Pages\ProductImportExport;
 use App\Filament\Pages\YandexMarketFeedDeactivate;
 use App\Filament\Pages\YandexMarketFeedImport;
 use App\Filament\Resources\ImportRuns\ImportRunResource;
+use App\Support\Filament\HelpCenter;
 use App\Support\Products\CategoryFilterSchemaService;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
@@ -77,18 +78,9 @@ test('yandex market feed deactivation page metadata and route are configured', f
     expect(Route::has('filament.admin.pages.yandex-market-feed-deactivate'))->toBeTrue();
 });
 
-test('product import export page has instruction header action', function () {
-    $page = new ProductImportExport;
-
-    $method = new ReflectionMethod(ProductImportExport::class, 'getHeaderActions');
-    $method->setAccessible(true);
-
-    $actions = $method->invoke($page);
-
-    expect($actions)->toHaveCount(1);
-    expect($actions[0]->getName())->toBe('instructions');
-    expect($actions[0]->getLabel())->toBe('Инструкция');
-    expect($actions[0]->getUrl())->toBe('https://help.stankoman.ru/import/excel-import/');
+test('product import export page is mapped to production help page', function () {
+    expect(HelpCenter::urlForRouteName('filament.admin.pages.product-import-export'))
+        ->toBe('https://help.stankoman.ru/import/excel-import/');
 });
 
 test('import runs resource metadata is configured', function () {
