@@ -21,7 +21,7 @@ class EditSlider extends EditRecord
                 ->label('Сгенерировать WebP')
                 ->icon('heroicon-o-photo')
                 ->color('gray')
-                ->disabled(fn () => ! $this->hasAnyContentImages($this->sliderContentValues()))
+                ->disabled(fn () => ! $this->hasAnyContentImages($this->data ?? []))
                 ->action(function () {
                     $queued = $this->queueContentImageDerivatives($this->sliderContentValues(), false);
                     $this->notifyContentImageDerivativesQueued($queued, false);
@@ -31,7 +31,7 @@ class EditSlider extends EditRecord
                 ->icon('heroicon-o-arrow-path')
                 ->color('warning')
                 ->requiresConfirmation()
-                ->disabled(fn () => ! $this->hasAnyContentImages($this->sliderContentValues()))
+                ->disabled(fn () => ! $this->hasAnyContentImages($this->data ?? []))
                 ->action(function () {
                     $queued = $this->queueContentImageDerivatives($this->sliderContentValues(), true);
                     $this->notifyContentImageDerivativesQueued($queued, true);
