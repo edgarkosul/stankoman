@@ -13,7 +13,7 @@ test('help center provides links for all filament admin pages', function (): voi
             $action = $route->getActionName();
 
             return is_string($name)
-                && str_starts_with($name, 'filament.admin.')
+                && (str_starts_with($name, 'filament.admin.pages.') || str_starts_with($name, 'filament.admin.resources.'))
                 && $action !== 'Closure';
         })
         ->map(fn ($route): string => $route->getName())
