@@ -14,16 +14,20 @@ use App\Livewire\Pages\Orders\Show as OrderShow;
 use App\Models\ImportRun;
 use App\Models\Page;
 use App\Models\Product;
+use App\Support\Seo\SiteSeoDataBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
-Route::get('/', function () {
+Route::get('/', function (SiteSeoDataBuilder $seoBuilder) {
     $homePage = Page::query()->where('slug', 'home')->first();
 
     return view('pages.home', [
         'homePage' => $homePage,
+        'seo' => [
+            'description' => $seoBuilder->descriptionFromHtml($homePage?->content),
+        ],
     ]);
 })->name('home');
 
@@ -65,6 +69,12 @@ Route::get('/search', function (Request $request) {
         return view('pages.search', [
             'q' => $qOriginal,
             'items' => collect(),
+            'seo' => [
+                'description' => $qOriginal !== ''
+                    ? 'Результаты поиска по запросу «'.$qOriginal.'» на сайте '.config('app.name').'.'
+                    : null,
+                'type' => 'website',
+            ],
         ]);
     }
 
@@ -76,6 +86,12 @@ Route::get('/search', function (Request $request) {
     return view('pages.search', [
         'q' => $qOriginal,
         'items' => $items,
+        'seo' => [
+            'description' => $qOriginal !== ''
+                ? 'Результаты поиска по запросу «'.$qOriginal.'» на сайте '.config('app.name').'.'
+                : null,
+            'type' => 'website',
+        ],
     ]);
 })->name('search');
 

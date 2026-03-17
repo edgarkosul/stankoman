@@ -1,4 +1,4 @@
-@props(['title' => null])
+@props(['title' => null, 'seo' => []])
 
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scrollbar-w-0.5 scrollbar scrollbar-thumb-brand-green scrollbar-track-zinc-50">
@@ -13,7 +13,7 @@
 <link rel="manifest" href="/site.webmanifest">
 
 <meta name="theme-color" content="#ffffff">
-    @include('partials.head', ['title' => $title])
+    @include('partials.head', ['head' => $head ?? null, 'title' => $title])
     @stack('head')
     @stack('styles')
 </head>

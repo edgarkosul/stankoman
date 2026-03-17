@@ -11,6 +11,7 @@ use App\Models\Category;
 use App\Support\CartService;
 use App\Support\CompareService;
 use App\Support\FavoritesService;
+use App\Support\Seo\SiteSeoDataBuilder;
 use Carbon\CarbonImmutable;
 use Filament\Forms\Components\RichEditor\TipTapExtensions\ImageExtension as FilamentImageExtension;
 use Filament\Support\Assets\Js;
@@ -93,6 +94,21 @@ class AppServiceProvider extends ServiceProvider
 
     protected function registerViewComposers(): void
     {
+        View::composer('components.layouts.app', function ($view): void {
+            $builder = app(SiteSeoDataBuilder::class);
+            $data = $view->getData();
+
+            $view->with('head', $builder->build([
+                'title' => $data['title'] ?? null,
+                'description' => data_get($data, 'seo.description'),
+                'url' => data_get($data, 'seo.url'),
+                'image' => data_get($data, 'seo.image'),
+                'type' => data_get($data, 'seo.type'),
+                'schemas' => data_get($data, 'seo.schemas', []),
+                'robots' => data_get($data, 'seo.robots'),
+            ]));
+        });
+
         View::composer('components.layouts.partials.header', function ($view) {
             $menu = Cache::remember('catalog.menu.v1', now()->addMinutes(30), function () {
                 return $this->buildCatalogMenu();

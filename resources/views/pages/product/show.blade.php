@@ -1,4 +1,4 @@
-<x-layouts.app :title="$meta['page_title']">
+<x-layouts.app :title="$meta['page_title']" :seo="$seo">
     <div class="mx-auto w-full min-w-0 max-w-7xl px-4 py-6">
         <header class="space-y-8 border-b border-brand-gray/50 pb-4">
             <h1 class="text-3xl font-semibold">{{ $meta['heading'] }}</h1>

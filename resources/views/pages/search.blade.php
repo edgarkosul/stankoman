@@ -1,4 +1,4 @@
-<x-layouts.app :title="'Поиск: ' . e($q)">
+<x-layouts.app :title="'Поиск: ' . e($q)" :seo="$seo ?? []">
     <section class="mx-auto flex-1 max-w-7xl space-y-4 bg-zinc-100/80 px-4 py-6">
         <h1 class="text-2xl font-semibold md:text-3xl">
             Результаты поиска для «{{ $q }}»

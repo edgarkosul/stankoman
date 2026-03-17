@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Support\ImageDerivativesResolver;
+use App\Support\ViewModels\ProductPageViewModel;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -21,6 +22,7 @@ class ProductController extends Controller
         ]);
 
         $specs = $this->buildSpecs($product);
+        $viewModel = app(ProductPageViewModel::class, ['product' => $product]);
 
         return view('pages.product.show', [
             'product' => $product,
@@ -29,6 +31,12 @@ class ProductController extends Controller
             'summary' => $this->buildSummary($product),
             'tabs' => $this->buildTabs($product, $specs),
             'features' => $this->buildFeatures($product),
+            'seo' => [
+                'description' => $viewModel->metaDescription(),
+                'image' => $viewModel->ogImage() ?: $this->primaryImageUrl($product),
+                'type' => 'product',
+                'schemas' => [$viewModel->seoSchema()],
+            ],
         ]);
     }
 
@@ -187,6 +195,29 @@ class ProductController extends Controller
             ->filter(fn (array $item) => filled($item['value']))
             ->values()
             ->all();
+    }
+
+    private function primaryImageUrl(Product $product): ?string
+    {
+        foreach ([$product->image, $product->thumb] as $source) {
+            if (! is_string($source) || trim($source) === '') {
+                continue;
+            }
+
+            return $this->resolveImageUrl($source);
+        }
+
+        $gallery = $this->normalizeGallery($product->gallery);
+        $firstImage = collect($gallery)
+            ->map(fn (mixed $value): ?string => is_string($value) ? trim($value) : null)
+            ->filter()
+            ->first();
+
+        if (! is_string($firstImage) || $firstImage === '') {
+            return null;
+        }
+
+        return $this->resolveImageUrl($firstImage);
     }
 
     /**
