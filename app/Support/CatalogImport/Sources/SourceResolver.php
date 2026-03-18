@@ -248,6 +248,11 @@ final class SourceResolver implements SourceResolverInterface
     private function resolveRequestHeaders(array $options, array $cachedMeta): array
     {
         $headers = $this->normalizeHeaders($options['headers'] ?? []);
+
+        if (! $this->hasHeader($headers, 'User-Agent')) {
+            $headers['User-Agent'] = $this->defaultUserAgent();
+        }
+
         $useConditional = $this->boolOption($options, 'use_conditional_headers', true);
 
         if (! $useConditional) {
@@ -266,6 +271,17 @@ final class SourceResolver implements SourceResolverInterface
         }
 
         return $headers;
+    }
+
+    private function defaultUserAgent(): string
+    {
+        $applicationName = preg_replace('/[^A-Za-z0-9._-]+/', '-', trim((string) config('app.name', 'Laravel')));
+
+        if (! is_string($applicationName) || trim($applicationName, '-') === '') {
+            $applicationName = 'Laravel';
+        }
+
+        return trim($applicationName, '-').'-CatalogImport/1.0';
     }
 
     /**

@@ -27,6 +27,7 @@ it('resolves existing local file source', function () {
 
 it('downloads remote source and stores payload in cache', function () {
     Http::preventStrayRequests();
+    config()->set('app.name', 'Test App');
 
     $attempts = 0;
 
@@ -63,6 +64,38 @@ it('downloads remote source and stores payload in cache', function () {
         expect(data_get($resolved->meta, 'transport'))->toBe('http');
         expect(data_get($resolved->meta, 'cached'))->toBeFalse();
         expect(data_get($resolved->meta, 'etag'))->toBe('"feed-v1"');
+
+        Http::assertSent(function (Request $request): bool {
+            return $request->url() === 'https://example.test/feed.xml'
+                && $request->hasHeader('User-Agent', 'Test-App-CatalogImport/1.0');
+        });
+    } finally {
+        File::deleteDirectory($cacheDir);
+    }
+});
+
+it('preserves explicit user agent header for remote source', function () {
+    Http::preventStrayRequests();
+
+    Http::fake([
+        'https://example.test/feed.xml' => Http::response('<feed><offer id="A1"/></feed>', 200),
+    ]);
+
+    $cacheDir = storage_path('framework/testing/catalog-import/'.Str::uuid()->toString());
+    $resolver = new SourceResolver;
+
+    try {
+        $resolver->resolve('https://example.test/feed.xml', [
+            'cache_dir' => $cacheDir,
+            'headers' => [
+                'user-agent' => 'CustomFeedClient/2.0',
+            ],
+        ]);
+
+        Http::assertSent(function (Request $request): bool {
+            return $request->url() === 'https://example.test/feed.xml'
+                && data_get($request->headers(), 'user-agent.0') === 'CustomFeedClient/2.0';
+        });
     } finally {
         File::deleteDirectory($cacheDir);
     }
@@ -111,5 +144,5 @@ it('throws for missing local source', function () {
     $missing = '/tmp/catalog-import-missing-'.Str::uuid()->toString().'.xml';
 
     expect(fn () => (new SourceResolver)->resolve($missing))
-        ->toThrow(\RuntimeException::class);
+        ->toThrow(RuntimeException::class);
 });
