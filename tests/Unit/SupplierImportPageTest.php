@@ -372,6 +372,39 @@ test('supplier import page orders saved sources alphabetically', function () {
     ]);
 });
 
+test('supplier import page exposes delete action on selected source field', function () {
+    prepareSupplierImportPageTables();
+
+    $supplier = Supplier::query()->create([
+        'name' => 'Action Supplier',
+        'is_active' => true,
+    ]);
+
+    $source = SupplierImportSource::query()->create([
+        'supplier_id' => $supplier->id,
+        'name' => 'Main Source',
+        'driver_key' => 'yandex_market_feed',
+        'profile_key' => 'yandex_market_feed',
+        'settings' => [],
+        'is_active' => true,
+        'sort' => 0,
+    ]);
+
+    $page = new SupplierImport;
+    $page->mount();
+    $page->data['supplier_id'] = $supplier->id;
+    $page->data['supplier_import_source_id'] = $source->id;
+
+    $schema = $page->form(Schema::make($page));
+    $sourceField = $schema->getComponent(
+        fn ($component) => $component instanceof Select && $component->getName() === 'supplier_import_source_id',
+    );
+
+    expect($sourceField)->not->toBeNull();
+    expect(array_keys($sourceField->getSuffixActions()))->toContain('delete_source');
+    expect($sourceField->getSuffixActions()['delete_source']->isVisible())->toBeTrue();
+});
+
 test('supplier import page deletes supplier only when it has no dependencies', function () {
     prepareSupplierImportPageTables();
 
@@ -413,6 +446,74 @@ test('supplier import page deletes supplier only when it has no dependencies', f
 
     expect(Supplier::query()->whereKey($safeSupplier->id)->exists())->toBeFalse();
     expect(data_get($page->data, 'supplier_id'))->toBeNull();
+});
+
+test('supplier import page deletes selected source and resets source state', function () {
+    prepareSupplierImportPageTables();
+
+    $supplier = Supplier::query()->create([
+        'name' => 'Source Supplier',
+        'is_active' => true,
+    ]);
+
+    $source = SupplierImportSource::query()->create([
+        'supplier_id' => $supplier->id,
+        'name' => 'Disposable Source',
+        'driver_key' => 'yandex_market_feed',
+        'profile_key' => 'yandex_market_feed',
+        'settings' => [],
+        'is_active' => true,
+        'sort' => 0,
+    ]);
+
+    $page = new SupplierImport;
+    $page->mount();
+    $page->data['supplier_id'] = $supplier->id;
+    $page->data['supplier_import_source_id'] = $source->id;
+
+    $page->deleteSelectedSource();
+
+    expect(SupplierImportSource::query()->whereKey($source->id)->exists())->toBeFalse();
+    expect((int) data_get($page->data, 'supplier_id'))->toBe($supplier->id);
+    expect(data_get($page->data, 'supplier_import_source_id'))->toBeNull();
+});
+
+test('supplier import page does not delete selected source while it has active runs', function () {
+    prepareSupplierImportPageTables();
+
+    $supplier = Supplier::query()->create([
+        'name' => 'Busy Supplier',
+        'is_active' => true,
+    ]);
+
+    $source = SupplierImportSource::query()->create([
+        'supplier_id' => $supplier->id,
+        'name' => 'Busy Source',
+        'driver_key' => 'yandex_market_feed',
+        'profile_key' => 'yandex_market_feed',
+        'settings' => [],
+        'is_active' => true,
+        'sort' => 0,
+    ]);
+
+    DB::table('import_runs')->insert([
+        'type' => 'yandex_market_feed_products',
+        'status' => 'running',
+        'supplier_id' => $supplier->id,
+        'supplier_import_source_id' => $source->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $page = new SupplierImport;
+    $page->mount();
+    $page->data['supplier_id'] = $supplier->id;
+    $page->data['supplier_import_source_id'] = $source->id;
+
+    $page->deleteSelectedSource();
+
+    expect(SupplierImportSource::query()->whereKey($source->id)->exists())->toBeTrue();
+    expect(data_get($page->data, 'supplier_import_source_id'))->toBe($source->id);
 });
 
 test('supplier import page can sync metalmaster buckets and clears stale scope', function () {

@@ -206,6 +206,21 @@ class SupplierImport extends Page implements HasForms
                             ->options(fn (): array => $this->supplierImportSourceOptions())
                             ->getSearchResultsUsing(fn (string $search): array => $this->supplierImportSourceOptions($search))
                             ->getOptionLabelUsing(fn ($value): ?string => $this->supplierImportSourceOptionLabel($value))
+                            ->suffixAction(
+                                FormAction::make('delete_source')
+                                    ->label('Удалить вариант')
+                                    ->tooltip('Удалить выбранный вариант')
+                                    ->icon('heroicon-o-trash')
+                                    ->color('danger')
+                                    ->requiresConfirmation()
+                                    ->modalHeading('Удалить вариант импорта')
+                                    ->modalDescription('Вариант будет удален из списка. История завершенных запусков сохранится.')
+                                    ->modalSubmitActionLabel('Удалить')
+                                    ->visible(fn (): bool => $this->currentSource() instanceof SupplierImportSource)
+                                    ->action(function (): void {
+                                        $this->deleteSelectedSource();
+                                    }),
+                            )
                             ->afterStateUpdated(function (): void {
                                 $this->loadSelectedSource();
                             }),
@@ -1501,6 +1516,56 @@ class SupplierImport extends Page implements HasForms
                 $deletedSources > 0
                     ? "Поставщик «{$supplierName}» и его варианты импорта ({$deletedSources}) удалены."
                     : "Поставщик «{$supplierName}» удален."
+            )
+            ->success()
+            ->send();
+    }
+
+    public function deleteSelectedSource(): void
+    {
+        $source = $this->currentSource();
+
+        if (! $source instanceof SupplierImportSource) {
+            Notification::make()
+                ->title('Вариант не выбран')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        $activeRunsCount = DatabaseSchema::hasTable('import_runs')
+            ? $source->importRuns()
+                ->whereIn('status', ['pending', 'running'])
+                ->count()
+            : 0;
+
+        if ($activeRunsCount > 0) {
+            Notification::make()
+                ->title('Удаление заблокировано')
+                ->body('Сначала дождитесь завершения или остановите активные запуски для этого варианта.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        $sourceName = $source->name;
+        $preservedRunsCount = DatabaseSchema::hasTable('import_runs')
+            ? $source->importRuns()->count()
+            : 0;
+
+        $source->delete();
+
+        $this->data['supplier_import_source_id'] = null;
+        $this->handleSupplierChanged();
+
+        Notification::make()
+            ->title('Вариант удален')
+            ->body(
+                $preservedRunsCount > 0
+                    ? "Вариант «{$sourceName}» удален. История запусков ({$preservedRunsCount}) сохранена."
+                    : "Вариант «{$sourceName}» удален."
             )
             ->success()
             ->send();
