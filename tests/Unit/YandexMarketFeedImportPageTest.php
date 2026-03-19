@@ -76,6 +76,18 @@ test('yandex market feed import form has source, category and run controls', fun
     );
 
     expect($sourceUploadField)->not->toBeNull();
+    expect($sourceUploadField?->getMaxSize())->toBe(YandexMarketFeedSourceHistoryService::maxUploadSizeKilobytes());
+});
+
+test('livewire temporary upload rules allow large feed files', function () {
+    $maxUploadSizeKilobytes = (int) config('catalog-import.feed_upload.max_size_kb');
+    $rules = config('livewire.temporary_file_upload.rules');
+
+    expect($maxUploadSizeKilobytes)->toBeGreaterThan(30 * 1024);
+    expect($rules)->toBeArray();
+    expect($rules)->toContain('required');
+    expect($rules)->toContain('file');
+    expect($rules)->toContain('max:'.$maxUploadSizeKilobytes);
 });
 
 test('yandex market feed import page applies sync scenario to technical flags', function () {

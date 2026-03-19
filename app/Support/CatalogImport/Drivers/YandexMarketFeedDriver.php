@@ -128,6 +128,7 @@ final class YandexMarketFeedDriver implements SupplierImportDriver
                     'application/octet-stream',
                     'text/plain',
                 ])
+                ->maxSize(YandexMarketFeedSourceHistoryService::maxUploadSizeKilobytes())
                 ->preserveFilenames()
                 ->disk('local')
                 ->directory(YandexMarketFeedSourceHistoryService::temporaryUploadDirectory())

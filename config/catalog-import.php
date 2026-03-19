@@ -1,6 +1,9 @@
 <?php
 
 return [
+    'feed_upload' => [
+        'max_size_kb' => (int) env('CATALOG_IMPORT_FEED_UPLOAD_MAX_SIZE_KB', 128 * 1024),
+    ],
     'media' => [
         'queue' => env('CATALOG_IMPORT_MEDIA_QUEUE', 'default'),
         'disk' => env('CATALOG_IMPORT_MEDIA_DISK', 'public'),

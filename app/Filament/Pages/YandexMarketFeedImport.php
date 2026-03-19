@@ -187,6 +187,7 @@ class YandexMarketFeedImport extends Page implements HasForms
                                 'application/octet-stream',
                                 'text/plain',
                             ])
+                            ->maxSize(YandexMarketFeedSourceHistoryService::maxUploadSizeKilobytes())
                             ->preserveFilenames()
                             ->disk('local')
                             ->directory(YandexMarketFeedSourceHistoryService::temporaryUploadDirectory())

@@ -354,6 +354,11 @@ class YandexMarketFeedSourceHistoryService
         return self::TEMP_UPLOAD_DIRECTORY;
     }
 
+    public static function maxUploadSizeKilobytes(): int
+    {
+        return max(1, (int) config('catalog-import.feed_upload.max_size_kb', 50 * 1024));
+    }
+
     private function normalizeNullableInt(mixed $value): ?int
     {
         if ($value === null || $value === '') {

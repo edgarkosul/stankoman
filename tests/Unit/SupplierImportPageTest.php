@@ -164,6 +164,7 @@ test('supplier import page exposes yandex upload field for unified feed source',
     );
 
     expect($sourceUploadField)->not->toBeNull();
+    expect($sourceUploadField?->getMaxSize())->toBe(YandexMarketFeedSourceHistoryService::maxUploadSizeKilobytes());
 });
 
 test('supplier import page loads yandex feed categories and exposes tree select options', function () {
