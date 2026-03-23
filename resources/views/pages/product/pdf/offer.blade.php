@@ -339,7 +339,7 @@
     @endif
 </div>
 <div class="footer">
-    Сформировано {{ now()->format('d.m.Y H:i') }} · KRATONSHOP.RU
+    Сформировано {{ now()->format('d.m.Y H:i') }} · INTERTOOLER.RU
 </div>
 <div class="pdf-footer">
     {{ config('company.legal_name') }} · {{ config('company.site_host') }} · Тел. {{ config('company.phone') }} ·

@@ -32,12 +32,12 @@
                             class="w-5 h-5 [&_.icon-base]:text-white [&_.icon-accent]:text-brand-red" />
                         <span class="whitespace-nowrap ">+7 (900) 246-86-60</span>
                     </a>
-                    <a href="mailto:sale@kratonkuban.ru">
+                    <a href="mailto:sale@intertooler.ru">
                         <div class="flex items-center md:gap-2">
                             <x-icon name="email"
                                 class="w-5 h-5 [&_.icon-base]:text-white [&_.icon-accent]:text-brand-red" />
                             <div>
-                                <span class="">sale@kratonkuban.ru</span>
+                                <span class="">sale@intertooler.ru</span>
                             </div>
                         </div>
                     </a>

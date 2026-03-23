@@ -24,7 +24,7 @@ class ProductPageViewModel
 
         $price = number_format($this->product->price_final, 0, ' ', ' ');
 
-        return "{$this->product->name} купить по цене {$price} ₽ в KratonShop";
+        return "{$this->product->name} купить по цене {$price} ₽ в InterTooler";
     }
 
     public function isMobile(): bool

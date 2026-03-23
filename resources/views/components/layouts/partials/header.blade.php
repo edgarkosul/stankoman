@@ -35,12 +35,12 @@
                     </div>
                 </div>
                 <div class="border-r border border-zinc-300"></div>
-                <div x-data x-tooltip.smart.bottom.offset-10.lt-md="'sale@kratonkuban.ru'" class="flex flex-col gap-8">
-                    <a href="mailto:sale@kratonkuban.ru">
+                <div x-data x-tooltip.smart.bottom.offset-10.lt-md="'sale@intertooler.ru'" class="flex flex-col gap-8">
+                    <a href="mailto:sale@intertooler.ru">
                         <div class="flex items-center md:gap-2 text-sm">
                             <x-icon name="email" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
                             <div>
-                                <span class="hidden md:block">sale@kratonkuban.ru</span>
+                                <span class="hidden md:block">sale@intertooler.ru</span>
                             </div>
                         </div>
                     </a>
