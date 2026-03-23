@@ -26,12 +26,13 @@ class ProductController extends Controller
 
         return view('pages.product.show', [
             'product' => $product,
-            'meta' => $this->buildMeta($product),
+            'meta' => $this->buildMeta($product, $viewModel),
             'gallery' => $this->buildGallery($product),
             'summary' => $this->buildSummary($product),
             'tabs' => $this->buildTabs($product, $specs),
             'features' => $this->buildFeatures($product),
             'seo' => [
+                'url' => $viewModel->canonicalUrl(),
                 'description' => $viewModel->metaDescription(),
                 'image' => $viewModel->ogImage() ?: $this->primaryImageUrl($product),
                 'type' => 'product',
@@ -40,12 +41,12 @@ class ProductController extends Controller
         ]);
     }
 
-    private function buildMeta(Product $product): array
+    private function buildMeta(Product $product, ProductPageViewModel $viewModel): array
     {
         return [
-            'page_title' => $product->meta_title ?: $product->name,
+            'page_title' => $viewModel->metaTitle(),
             'heading' => $product->name,
-            'description' => $product->meta_description,
+            'description' => $viewModel->metaDescription(),
         ];
     }
 

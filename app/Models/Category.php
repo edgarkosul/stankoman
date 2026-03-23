@@ -25,6 +25,7 @@ use SolutionForest\FilamentTree\Concern\ModelTree;
  * @property bool $is_active
  * @property int $parent_id
  * @property int $order
+ * @property string|null $meta_title
  * @property string|null $meta_description
  * @property array<array-key, mixed>|null $meta_json
  * @property Carbon|null $created_at
@@ -78,6 +79,7 @@ class Category extends Model
         'img',
         'is_active',
         'order',
+        'meta_title',
         'meta_description',
         'meta_json',
     ];

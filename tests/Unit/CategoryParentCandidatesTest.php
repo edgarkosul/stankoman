@@ -1,8 +1,12 @@
 <?php
 
+use App\Filament\Resources\Categories\Pages\CreateCategory;
 use App\Filament\Resources\Categories\Schemas\CategoryForm;
 use App\Models\Category;
 use App\Models\Product;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Schema as FilamentSchema;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -116,4 +120,17 @@ test('available as parent scope keeps non leaf and leaf without products', funct
         ->and(array_key_exists($nonLeafWithProducts->id, $options))->toBeTrue()
         ->and(array_key_exists($leafWithoutProducts->id, $options))->toBeTrue()
         ->and(array_key_exists($leafWithProducts->id, $options))->toBeFalse();
+});
+
+test('category form exposes editable seo title and description fields', function (): void {
+    $page = new CreateCategory;
+    $schema = $page->form(FilamentSchema::make($page));
+
+    $metaTitleField = $schema->getComponentByStatePath('meta_title', withHidden: true);
+    $metaDescriptionField = $schema->getComponentByStatePath('meta_description', withHidden: true);
+
+    expect($metaTitleField)->toBeInstanceOf(TextInput::class)
+        ->and($metaTitleField->getLabel())->toBe('Meta title')
+        ->and($metaDescriptionField)->toBeInstanceOf(Textarea::class)
+        ->and($metaDescriptionField->getLabel())->toBe('Meta description');
 });

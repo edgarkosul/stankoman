@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Concerns\QueuesContentImageDerivatives;
+use App\Filament\Forms\Components\RichEditor\Plugins\TextSizeRichContentPlugin;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\HeroSliderBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock;
@@ -10,12 +11,13 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBloc
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YandexMapBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
-use App\Filament\Forms\Components\RichEditor\Plugins\TextSizeRichContentPlugin;
 use App\Models\Page;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\RichEditor\RichEditorTool;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page as FilamentPage;
 use Filament\Schemas\Components\Actions;
@@ -32,15 +34,16 @@ class HomePage extends FilamentPage
     use QueuesContentImageDerivatives;
 
     private const PAGE_SLUG = 'home';
+
     private const PAGE_TITLE = 'Главная';
 
     protected static ?string $title = 'Главная';
 
     protected static ?string $navigationLabel = 'Главная';
 
-    protected static string | UnitEnum | null $navigationGroup = 'Контент';
+    protected static string|UnitEnum|null $navigationGroup = 'Контент';
 
-    protected static string | BackedEnum | null $navigationIcon = Heroicon::OutlinedHome;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedHome;
 
     protected static ?int $navigationSort = 1;
 
@@ -66,6 +69,8 @@ class HomePage extends FilamentPage
 
         $this->form->fill([
             'content' => $this->page->content,
+            'meta_title' => $this->page->meta_title,
+            'meta_description' => $this->page->meta_description,
         ]);
     }
 
@@ -92,7 +97,7 @@ class HomePage extends FilamentPage
                                     ->label('Очистить')
                                     ->icon(Heroicon::Trash)
                                     ->activeStyling(false)
-                                    ->jsHandler("confirm('Очистить описание?') && ".'$getEditor'."()?.chain().focus().clearContent().run()"),
+                                    ->jsHandler("confirm('Очистить описание?') && ".'$getEditor'.'()?.chain().focus().clearContent().run()'),
                             ])
                             ->toolbarButtons([
                                 ['bold', 'italic', 'underline', 'textColor', 'textSize', 'strike', 'subscript', 'superscript', 'small', 'lead', 'link'],
@@ -121,6 +126,17 @@ class HomePage extends FilamentPage
                             ->fileAttachmentsDisk('public')
                             ->fileAttachmentsDirectory('pics')
                             ->fileAttachmentsVisibility('public'),
+                    ]),
+                Section::make('SEO')
+                    ->columns(1)
+                    ->components([
+                        TextInput::make('meta_title')
+                            ->label('Meta title')
+                            ->maxLength(200),
+                        Textarea::make('meta_description')
+                            ->label('Meta description')
+                            ->rows(3)
+                            ->maxLength(300),
                     ]),
             ]);
     }
@@ -203,6 +219,12 @@ class HomePage extends FilamentPage
 
         $payload = [
             'content' => $data['content'] ?? null,
+            'meta_title' => filled(trim((string) ($data['meta_title'] ?? '')))
+                ? trim((string) $data['meta_title'])
+                : null,
+            'meta_description' => filled(trim((string) ($data['meta_description'] ?? '')))
+                ? trim((string) $data['meta_description'])
+                : null,
             'is_published' => true,
         ];
 

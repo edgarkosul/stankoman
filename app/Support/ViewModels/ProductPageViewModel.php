@@ -22,9 +22,15 @@ class ProductPageViewModel
             return $this->product->meta_title;
         }
 
-        $price = number_format($this->product->price_final, 0, ' ', ' ');
+        $finalPrice = (int) $this->product->price_final;
 
-        return "{$this->product->name} купить по цене {$price} ₽ в InterTooler";
+        if ($finalPrice > 0) {
+            $price = number_format($finalPrice, 0, ' ', ' ');
+
+            return "Купить {$this->product->name} по цене {$price} ₽";
+        }
+
+        return "Купить {$this->product->name}";
     }
 
     public function isMobile(): bool

@@ -24,5 +24,5 @@ it('falls back to generated title instead of the legacy title field', function (
         'price_amount' => 125000,
     ]));
 
-    expect($viewModel->metaTitle())->toBe('Токарный станок купить по цене 125 000 ₽ в KratonShop');
+    expect($viewModel->metaTitle())->toBe('Купить Токарный станок по цене 125 000 ₽');
 });

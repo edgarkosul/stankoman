@@ -26,7 +26,7 @@ Route::get('/', function (SiteSeoDataBuilder $seoBuilder) {
     return view('pages.home', [
         'homePage' => $homePage,
         'seo' => [
-            'description' => $seoBuilder->descriptionFromHtml($homePage?->content),
+            'description' => $homePage?->meta_description ?: $seoBuilder->descriptionFromHtml($homePage?->content),
         ],
     ]);
 })->name('home');

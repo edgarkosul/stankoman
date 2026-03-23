@@ -481,9 +481,7 @@ class LeafCategoryPage extends Component
             return view('pages.categories.root', [
                 'category' => null,
                 'subcategories' => $subcategories,
-            ])->layout('layouts.catalog', [
-                'title' => 'Каталог',
-            ]);
+            ])->layout('layouts.catalog', $this->catalogLayoutData());
         }
 
         if ($this->category->children()->active()->exists()) {
@@ -503,9 +501,7 @@ class LeafCategoryPage extends Component
             return view('pages.categories.branch', [
                 'category' => $this->category,
                 'subcategories' => $subcategories,
-            ])->layout('layouts.catalog', [
-                'title' => $this->category->name,
-            ]);
+            ])->layout('layouts.catalog', $this->catalogLayoutData($this->category));
         }
 
         $this->category->loadMissing('attributeDefs.unit');
@@ -557,9 +553,29 @@ class LeafCategoryPage extends Component
             'category' => $this->category,
             'products' => $products,
             'schema' => $this->filtersSchema,
-        ])->layout('layouts.catalog', [
-            'title' => $this->category->name,
-        ]);
+        ])->layout('layouts.catalog', $this->catalogLayoutData($this->category));
+    }
+
+    /**
+     * @return array{title:string,seo:array{description:?string}}
+     */
+    protected function catalogLayoutData(?Category $category = null): array
+    {
+        if ($category === null) {
+            return [
+                'title' => 'Каталог',
+                'seo' => [
+                    'description' => null,
+                ],
+            ];
+        }
+
+        return [
+            'title' => $category->meta_title ?: $category->name,
+            'seo' => [
+                'description' => $category->meta_description,
+            ],
+        ];
     }
 
     protected function filterDecimals(array $f): int

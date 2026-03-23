@@ -1,4 +1,4 @@
-<x-layouts.app title="Главная" :seo="$seo">
+<x-layouts.app :title="($homePage?->meta_title ?: $homePage?->title) ?: 'Главная'" :seo="$seo">
     <div class="w-full bg-zinc-50">
         @php
             $content = blank($homePage?->content) ? '<p></p>' : $homePage->content;

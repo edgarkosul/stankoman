@@ -68,6 +68,10 @@ class CategoryForm
                         $set('slug_manually_changed', true);
                     }),
 
+                TextInput::make('meta_title')
+                    ->label('Meta title')
+                    ->maxLength(255),
+
                 Textarea::make('meta_description')
                     ->label('Meta description')
                     ->maxLength(255),
