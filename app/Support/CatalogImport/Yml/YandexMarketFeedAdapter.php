@@ -128,6 +128,8 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $typePrefix = $this->textOrNull($xml->typePrefix ?? null);
         $vendor = $this->textOrNull($xml->vendor ?? null);
         $model = $this->textOrNull($xml->model ?? null);
+        $fallbackName = $this->textOrNull($xml->name ?? null);
+        $resolvedModel = $model ?? $fallbackName;
         $categoryId = $this->textOrNull($xml->categoryId ?? null);
         $priceRaw = $this->textOrNull($xml->price ?? null);
         $currency = $this->resolveCurrency($xml->currencyId ?? null);
@@ -137,7 +139,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
             offerType: 'vendor.model',
             values: [
                 'vendor' => $vendor,
-                'model' => $model,
+                'model' => $resolvedModel,
                 'price' => $priceRaw,
                 'currencyId' => $currency,
                 'categoryId' => $categoryId,
@@ -148,16 +150,20 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
             return new RecordMappingResult(payload: null, errors: $errors);
         }
 
-        $nameParts = [];
+        $name = $fallbackName;
 
-        if ($typePrefix !== null) {
-            $nameParts[] = $typePrefix;
+        if ($model !== null) {
+            $nameParts = [];
+
+            if ($typePrefix !== null) {
+                $nameParts[] = $typePrefix;
+            }
+
+            $nameParts[] = $vendor;
+            $nameParts[] = $model;
+
+            $name = implode(' ', $nameParts);
         }
-
-        $nameParts[] = $vendor;
-        $nameParts[] = $model;
-
-        $name = implode(' ', $nameParts);
 
         $priceAmount = $this->parsePriceAmount($priceRaw);
         $pictures = $this->extractPictures($xml);

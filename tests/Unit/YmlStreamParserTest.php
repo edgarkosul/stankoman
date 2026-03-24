@@ -205,6 +205,43 @@ XML;
     }
 });
 
+it('falls back to <name> for vendor.model offers when <model> is missing', function () {
+    $xml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<yml_catalog date="2026-03-05 00:00">
+  <shop>
+    <offers>
+      <offer id="A2" type="vendor.model" available="true">
+        <typePrefix>Компрессоры</typePrefix>
+        <vendor>FoxWeld</vendor>
+        <name>Компрессор безмасляный AERO 180/0F N10</name>
+        <price>8130</price>
+        <currencyId>RUB</currencyId>
+        <categoryId>137</categoryId>
+      </offer>
+    </offers>
+  </shop>
+</yml_catalog>
+XML;
+
+    $path = tempnam(sys_get_temp_dir(), 'yml_');
+    file_put_contents($path, $xml);
+
+    try {
+        $stream = (new YmlStreamParser)->open($path);
+        $offers = iterator_to_array($stream->offers);
+
+        $result = (new YandexMarketFeedAdapter)->mapOffer($offers[0]);
+
+        expect($result->isSuccess())->toBeTrue();
+        expect($result->payload?->name)->toBe('Компрессор безмасляный AERO 180/0F N10');
+        expect($result->payload?->brand)->toBe('FoxWeld');
+        expect($result->payload?->priceAmount)->toBe(8130);
+    } finally {
+        @unlink($path);
+    }
+});
+
 it('converts relative image sources in html description to absolute urls using picture host', function () {
     $xml = <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>

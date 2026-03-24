@@ -104,6 +104,51 @@ XML;
     }
 });
 
+it('processes vendor.model offers using name fallback when model is missing', function () {
+    $xml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<yml_catalog date="2026-03-05 00:00">
+  <shop>
+    <offers>
+      <offer id="A2" type="vendor.model" available="true">
+        <typePrefix>Компрессоры</typePrefix>
+        <vendor>FoxWeld</vendor>
+        <name>Компрессор безмасляный AERO 180/0F N10</name>
+        <price>8130</price>
+        <currencyId>RUB</currencyId>
+        <categoryId>137</categoryId>
+      </offer>
+    </offers>
+  </shop>
+</yml_catalog>
+XML;
+
+    $path = tempnam(sys_get_temp_dir(), 'yandex_feed_');
+    file_put_contents($path, $xml);
+
+    try {
+        $result = app(YandexMarketFeedImportService::class)->run([
+            'source' => $path,
+            'write' => false,
+            'limit' => 0,
+            'delay_ms' => 0,
+            'show_samples' => 1,
+        ]);
+
+        expect($result['fatal_error'])->toBeNull();
+        expect($result['no_urls'])->toBeFalse();
+        expect($result['found_urls'])->toBe(1);
+        expect($result['processed'])->toBe(1);
+        expect($result['errors'])->toBe(0);
+        expect($result['success'])->toBeTrue();
+        expect($result['samples'])->toHaveCount(1);
+        expect($result['samples'][0]['name'])->toBe('Компрессор безмасляный AERO 180/0F N10');
+        expect($result['samples'][0]['offer_type'])->toBe('vendor.model');
+    } finally {
+        @unlink($path);
+    }
+});
+
 it('returns record-level error for invalid yandex market feed offer', function () {
     $xml = <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
