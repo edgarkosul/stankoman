@@ -1,6 +1,7 @@
 <section class="space-y-4 bg-white p-4 shadow-[0_0_18px_rgba(0,0,0,0.12)]">
     @php($finalPrice = (int) data_get($summary, 'price.final', 0))
     @php($hasDiscount = (bool) data_get($summary, 'price.has_discount'))
+    @php($summaryInstance = $summaryInstance ?? 'default')
 
     <div class="flex flex-col gap-3">
         <div class="flex items-end gap-3">
@@ -21,7 +22,7 @@
                 :qty="1"
                 :options="[]"
                 :variant="'product'"
-                :key="'cart-product-' . $product->id"
+                :key="'cart-product-' . $product->id . '-' . $summaryInstance"
             />
         </div>
         <dl class="grid gap-2 text-zinc-700">

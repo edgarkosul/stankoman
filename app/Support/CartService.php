@@ -246,6 +246,21 @@ class CartService
         return $query->exists();
     }
 
+    /**
+     * @param  array<string, mixed>|null  $options
+     */
+    public function quantityFor(int $productId, ?array $options = null, bool $strictOptions = true): int
+    {
+        $query = $this->cart->items()->where('product_id', $productId);
+
+        if ($strictOptions) {
+            $optionsKey = CartItem::makeOptionsKey($options ?? []);
+            $query->where('options_key', $optionsKey);
+        }
+
+        return max(0, (int) $query->sum('quantity'));
+    }
+
     public function isEmpty(): bool
     {
         return ! $this->cart->items()

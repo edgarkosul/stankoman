@@ -37,6 +37,8 @@ class Actions extends Component
             $this->extended = true;
         }
 
+        $this->qty = $this->normalizedQty();
+
         $product = Product::query()
             ->select(['id', 'in_stock', 'price_amount'])
             ->find($this->productId);
@@ -44,8 +46,7 @@ class Actions extends Component
         $this->isInStock = (bool) ($product?->in_stock ?? false);
         $this->isPrice = (bool) ($product?->price_amount ?? 0) > 0;
 
-        $this->inCart = $cart->isInCart($this->productId, options: null, strictOptions: false);
-        $this->setTooltip();
+        $this->syncCartState($cart);
     }
 
     public function add(CartService $cart): void
@@ -54,6 +55,7 @@ class Actions extends Component
             return;
         }
 
+        $this->qty = $this->normalizedQty();
         $cart->addItem($this->productId, $this->qty, $this->options);
 
         $this->inCart = true;
@@ -67,6 +69,19 @@ class Actions extends Component
         );
     }
 
+    public function openOneClickOrder(): void
+    {
+        if (! $this->isInStock || ! $this->isPrice) {
+            return;
+        }
+
+        $this->dispatch(
+            'one-click-order:open',
+            productId: $this->productId,
+            quantity: $this->normalizedQty(),
+        );
+    }
+
     public function remove(CartService $cart): void
     {
         $cart->removeItem($this->productId, $this->options);
@@ -77,22 +92,48 @@ class Actions extends Component
         $this->dispatchCartUpdated($cart);
     }
 
+    public function incrementQty(CartService $cart): void
+    {
+        $this->qty = $this->normalizedQty() + 1;
+
+        $this->syncQtyIfInCart($cart);
+    }
+
+    public function decrementQty(CartService $cart): void
+    {
+        $this->qty = max(1, $this->normalizedQty() - 1);
+
+        $this->syncQtyIfInCart($cart);
+    }
+
     public function setQty(CartService $cart): void
     {
-        $quantity = max(0, (int) $this->qty);
+        $quantity = $this->normalizedQty();
+        $this->qty = $quantity;
+
+        if (! $cart->isInCart($this->productId, $this->options)) {
+            $this->setTooltip();
+
+            return;
+        }
+
         $cart->updateQuantity($this->productId, $quantity, $this->options);
 
-        $this->inCart = $quantity > 0;
+        $this->inCart = true;
         $this->setTooltip();
 
         $this->dispatchCartUpdated($cart);
     }
 
+    public function updatedQty(): void
+    {
+        $this->qty = $this->normalizedQty();
+    }
+
     #[On('cart:updated.{productId}')]
     public function sync(CartService $cart): void
     {
-        $this->inCart = $cart->isInCart($this->productId, options: null, strictOptions: false);
-        $this->setTooltip();
+        $this->syncCartState($cart);
     }
 
     protected function dispatchCartUpdated(CartService $cart): void
@@ -106,6 +147,36 @@ class Actions extends Component
     protected function count(CartService $cart): int
     {
         return $cart->uniqueProductsCount();
+    }
+
+    protected function syncCartState(CartService $cart): void
+    {
+        $this->inCart = $cart->isInCart($this->productId, options: null, strictOptions: false);
+
+        if ($this->inCart) {
+            $this->qty = max(
+                1,
+                $cart->quantityFor($this->productId, $this->options) ?: $this->normalizedQty(),
+            );
+        } else {
+            $this->qty = $this->normalizedQty();
+        }
+
+        $this->setTooltip();
+    }
+
+    protected function syncQtyIfInCart(CartService $cart): void
+    {
+        if (! $this->inCart) {
+            return;
+        }
+
+        $this->setQty($cart);
+    }
+
+    protected function normalizedQty(): int
+    {
+        return max(1, (int) $this->qty);
     }
 
     /**

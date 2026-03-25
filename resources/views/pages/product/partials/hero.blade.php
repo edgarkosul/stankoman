@@ -2,6 +2,6 @@
     @include('pages.product.partials.gallery', ['gallery' => $gallery])
 
     <div class="lg:hidden">
-        @include('pages.product.partials.summary', ['summary' => $summary])
+        @include('pages.product.partials.summary', ['summary' => $summary, 'summaryInstance' => 'mobile'])
     </div>
 </div>

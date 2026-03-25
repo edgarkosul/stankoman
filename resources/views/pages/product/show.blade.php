@@ -17,7 +17,7 @@
 
             <aside class="space-y-4 lg:sticky lg:top-28">
                 <div class="hidden lg:block">
-                    @include('pages.product.partials.summary', ['summary' => $summary])
+                    @include('pages.product.partials.summary', ['summary' => $summary, 'summaryInstance' => 'desktop'])
                 </div>
                 @include('pages.product.partials.features', ['features' => $features])
             </aside>
@@ -34,6 +34,7 @@
         @php($productId = (int) $product->id)
         @if ($productId > 0)
             <div x-data x-init="$store.recent && $store.recent.add({{ $productId }})" class="hidden" aria-hidden="true"></div>
+            <livewire:pages.product.one-click-order :product-id="$productId" :key="'one-click-order-'.$productId" />
         @endif
     </div>
 </x-layouts.app>
