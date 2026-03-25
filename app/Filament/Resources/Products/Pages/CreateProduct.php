@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Products\Pages;
 
 use App\Filament\Resources\Products\ProductResource;
 use App\Models\Product;
+use Filament\Forms\Components\Repeater;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateProduct extends CreateRecord
@@ -68,6 +69,7 @@ class CreateProduct extends CreateRecord
         ];
 
         $this->form->fill($data);
+        $this->fillSpecsRepeater($source->specs ?? []);
     }
 
     /**
@@ -128,5 +130,25 @@ class CreateProduct extends CreateRecord
             // Если пользователь в форме убрал эту категорию — update просто не заденет ни одной строки.
             $target->setPrimaryCategory($primary->id);
         }
+    }
+
+    /**
+     * @param  array<int, array{name?: mixed, value?: mixed, source?: mixed}>  $specs
+     */
+    private function fillSpecsRepeater(array $specs): void
+    {
+        $component = $this->form->getComponentByStatePath('specs', withHidden: true);
+
+        if (! $component instanceof Repeater) {
+            return;
+        }
+
+        $items = [];
+
+        foreach (array_values($specs) as $index => $item) {
+            $items[$component->generateUuid() ?? $index] = is_array($item) ? $item : [];
+        }
+
+        $component->state($items);
     }
 }
