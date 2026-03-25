@@ -1,4 +1,4 @@
-<section class="mx-auto max-w-7xl px-4 py-6 space-y-4 bg-zinc-100/80 flex-1">
+<section class="mx-auto w-full min-w-0 max-w-7xl px-4 py-6 space-y-4 bg-zinc-100/80 flex-1">
     <h1 class="text-3xl font-bold">{{ $category->name }}</h1>
 
     <div class="flex flex-col md:flex-row gap-4">
@@ -289,7 +289,7 @@
             </div>
         </aside>
 
-        <div class="flex-1 space-y-4">
+        <div class="flex-1 min-w-0 space-y-4">
             <div class="flex flex-wrap gap-2 items-center">
                 <div class="md:hidden mb-3">
                     <button type="button" class="inline-flex items-center gap-2 rounded border px-3 py-2 bg-white"
@@ -345,7 +345,7 @@
                 <p class="text-zinc-600">Товары не найдены.</p>
             @else
                 <div class="relative">
-                    <div class="grid grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div class="grid min-w-0 grid-cols-2 gap-4 xl:grid-cols-3">
                         @foreach ($products as $product)
                             <x-product.card :product="$product" :category="$category" />
                         @endforeach

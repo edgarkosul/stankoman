@@ -552,6 +552,18 @@ select:focus[data-flux-control] {
         --swiper-pagination-bottom: 0.5rem;
     }
 
+    .product-card__swiper .swiper-wrapper {
+        @apply min-w-0;
+    }
+
+    .product-card__swiper .swiper-slide {
+        @apply min-w-0;
+    }
+
+    .product-card__swiper .swiper-slide > * {
+        @apply block h-full w-full min-w-0;
+    }
+
     .product-card__pagination {
         @apply absolute bottom-2 left-0 right-0 flex items-center justify-center gap-1;
     }

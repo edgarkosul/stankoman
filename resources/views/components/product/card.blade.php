@@ -71,9 +71,9 @@
 @endphp
 
 <div wire:key="product-card-{{ $product->id }}"
-    class="relative h-full w-full overflow-hidden bg-white flex flex-col justify-between shadow-sm ring-0 ring-transparent transition-shadow duration-200 ease-out hover:shadow-xl hover:ring-6 hover:ring-white">
+    class="relative flex h-full min-w-0 w-full flex-col justify-between overflow-hidden bg-white shadow-sm ring-0 ring-transparent transition-shadow duration-200 ease-out hover:shadow-xl hover:ring-6 hover:ring-white">
     <a href="{{ route('product.show', $product->slug) }}" rel="noopener noreferrer"
-        class="relative flex min-h-0 flex-1 flex-col" aria-label="Открыть товар">
+        class="relative flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Открыть товар">
         @if ($pct)
             <div
                 class="absolute left-0 inline-flex items-center justify-center text-lg py-2 px-3 font-medium bg-brand-red/70 text-white z-30">
@@ -151,11 +151,11 @@
             @endif
 
             @if ($cardAttributes->isNotEmpty())
-                <dl class="grid grow content-start w-full grid-cols-[max-content_max-content] justify-between px-4 py-1 text-sm text-zinc-700 mb-3">
+                <dl class="mb-3 grid grow w-full grid-cols-[minmax(0,1fr)_auto] content-start gap-x-3 px-4 py-1 text-sm text-zinc-700">
                     @foreach ($cardAttributes as $attribute)
-                        <div class="col-span-2 grid grid-cols-subgrid justify-between border-b border-zinc-200/80">
-                            <dt class="py-1 pr-2 text-zinc-500">{{ $attribute['name'] }}:</dt>
-                            <dd class="min-w-0 py-1 pr-8 text-left">{{ $attribute['value'] }}</dd>
+                        <div class="col-span-2 grid grid-cols-subgrid items-start border-b border-zinc-200/80">
+                            <dt class="min-w-0 py-1 pr-2 text-zinc-500 wrap-anywhere">{{ $attribute['name'] }}:</dt>
+                            <dd class="min-w-0 py-1 pl-3 text-right wrap-anywhere">{{ $attribute['value'] }}</dd>
                         </div>
                     @endforeach
                 </dl>
