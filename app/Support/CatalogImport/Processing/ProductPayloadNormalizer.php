@@ -26,6 +26,7 @@ class ProductPayloadNormalizer
             discountPrice: $this->normalizeNonNegativeInteger($payload->discountPrice),
             short: $this->normalizeString($payload->short, collapseWhitespace: true),
             extraDescription: $this->normalizeDescription($payload->extraDescription),
+            video: $this->normalizeRichContent($payload->video),
             promoInfo: $this->normalizeString($payload->promoInfo, collapseWhitespace: true),
             metaTitle: $this->normalizeString($payload->metaTitle, collapseWhitespace: true),
             metaDescription: $this->normalizeString($payload->metaDescription, collapseWhitespace: true),
@@ -63,6 +64,17 @@ class ProductPayloadNormalizer
         $hasHtml = str_contains($description, '<') && str_contains($description, '>');
 
         return $this->normalizeString($description, collapseWhitespace: ! $hasHtml);
+    }
+
+    private function normalizeRichContent(?string $content): ?string
+    {
+        if ($content === null) {
+            return null;
+        }
+
+        $content = trim($content);
+
+        return $content !== '' ? $content : null;
     }
 
     private function normalizeNonNegativeInteger(?int $value): ?int

@@ -43,6 +43,7 @@ it('normalizes payload and creates product with stable supplier reference', func
                 'https://example.test/b.jpg',
                 ' ',
             ],
+            video: productImportRutubeVideoBlock('c6a86f440e1437f9a65dd893d50aaabd'),
         ),
     ], [
         'supplier' => 'Yandex Market',
@@ -66,6 +67,7 @@ it('normalizes payload and creates product with stable supplier reference', func
         ->and($product?->currency)->toBe('RUB')
         ->and($product?->qty)->toBe(0)
         ->and($product?->in_stock)->toBeFalse()
+        ->and($product?->video)->toBe(productImportRutubeVideoBlock('c6a86f440e1437f9a65dd893d50aaabd'))
         ->and($product?->gallery)->toBe([
             'https://example.test/a.jpg',
             'https://example.test/b.jpg',
@@ -108,6 +110,7 @@ it('updates existing product by supplier and external id without changing catego
         'is_active' => true,
         'is_in_yml_feed' => true,
         'with_dns' => true,
+        'video' => productImportRutubeVideoBlock('old-video-id'),
     ]);
 
     $product->categories()->sync([$existingCategory->id]);
@@ -132,6 +135,7 @@ it('updates existing product by supplier and external id without changing catego
             currency: 'usd',
             inStock: true,
             qty: 8,
+            video: productImportRutubeVideoBlock('new-video-id'),
         ),
     ], [
         'supplier' => 'supplier_a',
@@ -153,7 +157,8 @@ it('updates existing product by supplier and external id without changing catego
         ->and($product->price_amount)->toBe(9900)
         ->and($product->currency)->toBe('USD')
         ->and($product->qty)->toBe(8)
-        ->and($product->in_stock)->toBeTrue();
+        ->and($product->in_stock)->toBeTrue()
+        ->and($product->video)->toBe(productImportRutubeVideoBlock('new-video-id'));
 
     $categoryIds = $product->categories()->pluck('categories.id')->all();
 
@@ -176,6 +181,55 @@ it('updates existing product by supplier and external id without changing catego
     expect($reference)->toBeInstanceOf(ProductSupplierReference::class)
         ->and($reference?->product_id)->toBe($product->id)
         ->and($reference?->last_seen_run_id)->toBe($secondRun->id);
+});
+
+it('clears existing video on update when payload video is empty', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Товар с видео',
+        'slug' => 'product-with-video-to-clear',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+        'video' => productImportRutubeVideoBlock('video-to-clear'),
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_video_clear',
+        'external_id' => 'VID-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'VID-1',
+            name: 'Товар с видео',
+            priceAmount: 100,
+            video: null,
+        ),
+    ], [
+        'supplier' => 'supplier_video_clear',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+    ]);
+
+    expect($summary['processed'])->toBe(1)
+        ->and($summary['updated'])->toBe(1)
+        ->and($summary['errors'])->toBe(0);
+
+    $product->refresh();
+
+    expect($product->video)->toBeNull();
 });
 
 it('preserves existing pricing on update when payload price is missing and option is enabled', function (): void {
@@ -979,6 +1033,7 @@ function prepareProductImportProcessorTables(): void
         $table->text('short')->nullable();
         $table->longText('description')->nullable();
         $table->text('extra_description')->nullable();
+        $table->longText('video')->nullable();
         $table->json('specs')->nullable();
         $table->string('promo_info')->nullable();
         $table->string('image')->nullable();
@@ -1046,4 +1101,11 @@ function prepareProductImportProcessorTables(): void
         $table->foreign('run_id')->references('id')->on('import_runs')->nullOnDelete();
         $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
     });
+}
+
+function productImportRutubeVideoBlock(string $rutubeId): string
+{
+    return '<div data-type="customBlock" data-config="{&quot;rutube_id&quot;:&quot;'
+        .$rutubeId
+        .'&quot;,&quot;width&quot;:640,&quot;alignment&quot;:&quot;center&quot;}" data-id="rutube-video"></div>';
 }

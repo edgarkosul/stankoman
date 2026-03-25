@@ -659,6 +659,7 @@ function prepareProductImportMediaPipelineSchemas(): void
         $table->text('short')->nullable();
         $table->longText('description')->nullable();
         $table->text('extra_description')->nullable();
+        $table->longText('video')->nullable();
         $table->json('specs')->nullable();
         $table->string('promo_info')->nullable();
         $table->string('image')->nullable();

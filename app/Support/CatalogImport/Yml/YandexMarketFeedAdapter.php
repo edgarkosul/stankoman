@@ -11,6 +11,12 @@ use SimpleXMLElement;
 
 final class YandexMarketFeedAdapter implements SupplierAdapterInterface
 {
+    private const RUTUBE_VIDEO_BLOCK_ID = 'rutube-video';
+
+    private const RUTUBE_VIDEO_BLOCK_WIDTH = 640;
+
+    private const RUTUBE_VIDEO_BLOCK_ALIGNMENT = 'center';
+
     public function __construct(
         private readonly YandexMarketFeedProfile $profile = new YandexMarketFeedProfile,
     ) {}
@@ -92,6 +98,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $vendor = $this->textOrNull($xml->vendor ?? null);
         $pictures = $this->extractPictures($xml);
         $description = $this->extractDescription($xml, $pictures);
+        $video = $this->extractVideo($xml);
         $params = $this->extractParams($xml);
         $resolvedSku = $this->resolveSku($externalId, $name, $xml);
 
@@ -107,6 +114,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 images: $pictures,
                 attributes: $params,
                 sku: $resolvedSku['sku'],
+                video: $video,
                 source: [
                     'supplier' => $this->profile->supplierKey(),
                     'profile' => $this->profile->profileName(),
@@ -168,6 +176,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $priceAmount = $this->parsePriceAmount($priceRaw);
         $pictures = $this->extractPictures($xml);
         $description = $this->extractDescription($xml, $pictures);
+        $video = $this->extractVideo($xml);
         $params = $this->extractParams($xml);
         $resolvedSku = $this->resolveSku($externalId, $name, $xml);
 
@@ -183,6 +192,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 images: $pictures,
                 attributes: $params,
                 sku: $resolvedSku['sku'],
+                video: $video,
                 source: [
                     'supplier' => $this->profile->supplierKey(),
                     'profile' => $this->profile->profileName(),
@@ -301,6 +311,92 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         }
 
         return $this->textOrNull($this->profile->defaults()['currency'] ?? null);
+    }
+
+    private function extractVideo(SimpleXMLElement $xml): ?string
+    {
+        $videoBlocks = [];
+        $seen = [];
+
+        foreach ($xml->video as $videoNode) {
+            $value = $this->textOrNull($videoNode);
+
+            if ($value === null) {
+                continue;
+            }
+
+            foreach ($this->extractRutubeIds($value) as $rutubeId) {
+                $key = mb_strtolower($rutubeId);
+
+                if (isset($seen[$key])) {
+                    continue;
+                }
+
+                $seen[$key] = true;
+                $videoBlocks[] = $this->buildRutubeVideoBlock($rutubeId);
+            }
+        }
+
+        if ($videoBlocks === []) {
+            return null;
+        }
+
+        return implode('', $videoBlocks);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractRutubeIds(string $value): array
+    {
+        $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE, 'UTF-8');
+
+        $matched = preg_match_all(
+            '~https?://(?:www\.)?rutube\.ru/(?:video|play/embed)/([A-Za-z0-9]+)(?:[/?#][^\s<>"\']*)?~iu',
+            $value,
+            $matches,
+        );
+
+        if (! is_int($matched) || $matched < 1) {
+            return [];
+        }
+
+        $ids = [];
+
+        foreach ($matches[1] ?? [] as $rutubeId) {
+            if (! is_string($rutubeId)) {
+                continue;
+            }
+
+            $rutubeId = trim($rutubeId);
+
+            if ($rutubeId === '') {
+                continue;
+            }
+
+            $ids[] = $rutubeId;
+        }
+
+        return $ids;
+    }
+
+    private function buildRutubeVideoBlock(string $rutubeId): string
+    {
+        $config = json_encode([
+            'rutube_id' => $rutubeId,
+            'width' => self::RUTUBE_VIDEO_BLOCK_WIDTH,
+            'alignment' => self::RUTUBE_VIDEO_BLOCK_ALIGNMENT,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        if (! is_string($config) || $config === '') {
+            return '';
+        }
+
+        return sprintf(
+            '<div data-type="customBlock" data-config="%s" data-id="%s"></div>',
+            htmlspecialchars($config, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            self::RUTUBE_VIDEO_BLOCK_ID,
+        );
     }
 
     /**

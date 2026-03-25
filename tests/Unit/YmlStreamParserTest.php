@@ -279,6 +279,49 @@ XML;
     }
 });
 
+it('maps rutube video links into native rich-content custom blocks', function () {
+    $xml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<yml_catalog date="2026-03-05 00:00">
+  <shop>
+    <offers>
+      <offer id="A1" available="true">
+        <name>Simple Product</name>
+        <price>123</price>
+        <currencyId>RUB</currencyId>
+        <video>
+          Видеообзор:
+          https://rutube.ru/video/8fb51708251cc2c2fa776f4778a4f1ef/?r=wd
+          https://www.youtube.com/watch?v=ignored
+          https://rutube.ru/video/8fb51708251cc2c2fa776f4778a4f1ef/
+        </video>
+        <video><![CDATA[См. также https://rutube.ru/video/c6a86f440e1437f9a65dd893d50aaabd/ и https://rutube.ru/play/embed/c6a86f440e1437f9a65dd893d50aaabd]]></video>
+        <categoryId>1</categoryId>
+      </offer>
+    </offers>
+  </shop>
+</yml_catalog>
+XML;
+
+    $path = tempnam(sys_get_temp_dir(), 'yml_');
+    file_put_contents($path, $xml);
+
+    try {
+        $stream = (new YmlStreamParser)->open($path);
+        $offers = iterator_to_array($stream->offers);
+
+        $result = (new YandexMarketFeedAdapter)->mapOffer($offers[0]);
+
+        expect($result->isSuccess())->toBeTrue();
+        expect($result->payload?->video)->toBe(
+            yandexRutubeVideoBlock('8fb51708251cc2c2fa776f4778a4f1ef')
+            .yandexRutubeVideoBlock('c6a86f440e1437f9a65dd893d50aaabd')
+        );
+    } finally {
+        @unlink($path);
+    }
+});
+
 it('skips vendor.model offers when required fields are missing', function () {
     $xml = <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -432,3 +475,10 @@ XML;
         @unlink($path);
     }
 });
+
+function yandexRutubeVideoBlock(string $rutubeId): string
+{
+    return '<div data-type="customBlock" data-config="{&quot;rutube_id&quot;:&quot;'
+        .$rutubeId
+        .'&quot;,&quot;width&quot;:640,&quot;alignment&quot;:&quot;center&quot;}" data-id="rutube-video"></div>';
+}
