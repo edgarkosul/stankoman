@@ -19,7 +19,7 @@ class LeafCategoryPage extends Component
     public array $filters = [];
 
     #[Url(as: 'sort')]
-    public string $sort = 'popular';
+    public string $sort = 'price_asc';
 
     public ?Category $category = null;
 
