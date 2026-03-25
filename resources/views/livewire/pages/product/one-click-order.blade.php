@@ -155,7 +155,7 @@
                                     </div>
 
                                     <div>
-                                        <label class="mb-1 block text-sm font-medium text-zinc-900">Регион *</label>
+                                        <label class="mb-1 block text-sm font-medium text-zinc-900">Регион</label>
                                         <input
                                             type="text"
                                             wire:model.blur="shippingRegion"

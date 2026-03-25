@@ -35,7 +35,7 @@ it('creates guest one click order without touching cart contents', function (): 
         ->set('customerPhone', '+79990001122')
         ->set('customerEmail', 'guest@example.test')
         ->set('shippingCountry', 'Россия')
-        ->set('shippingRegion', 'Краснодарский край')
+        ->set('shippingRegion', '')
         ->set('shippingComment', 'Позвоните утром')
         ->set('acceptTerms', true)
         ->call('submit')
@@ -49,7 +49,7 @@ it('creates guest one click order without touching cart contents', function (): 
         ->and($order->customer_phone)->toBe('+79990001122')
         ->and($order->customer_email)->toBe('guest@example.test')
         ->and($order->shipping_country)->toBe('Россия')
-        ->and($order->shipping_region)->toBe('Краснодарский край')
+        ->and($order->shipping_region)->toBeNull()
         ->and($order->shipping_comment)->toBe('Позвоните утром')
         ->and($order->payment_method)->toBeNull()
         ->and($item->product_id)->toBe($oneClickProduct->id)
@@ -109,7 +109,6 @@ it('validates required one click fields', function (): void {
             'customerName',
             'customerPhone',
             'shippingCountry',
-            'shippingRegion',
             'acceptTerms',
         ]);
 });

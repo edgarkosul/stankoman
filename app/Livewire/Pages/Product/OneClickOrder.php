@@ -122,7 +122,7 @@ class OneClickOrder extends Component
             'customerPhone' => ['required', 'string', 'max:32', new ValidPhone],
             'customerEmail' => ['nullable', 'string', 'max:190', 'email:rfc'],
             'shippingCountry' => ['required', 'string', 'max:64'],
-            'shippingRegion' => ['required', 'string', 'max:128'],
+            'shippingRegion' => ['nullable', 'string', 'max:128'],
             'shippingComment' => ['nullable', 'string', 'max:1000'],
             'acceptTerms' => ['accepted'],
         ];
@@ -138,7 +138,6 @@ class OneClickOrder extends Component
             'customerPhone.required' => 'Укажите телефон.',
             'customerEmail.email' => 'Укажите корректный email.',
             'shippingCountry.required' => 'Укажите страну.',
-            'shippingRegion.required' => 'Укажите регион.',
             'acceptTerms.accepted' => 'Необходимо принять условия соглашения.',
         ];
     }
