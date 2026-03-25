@@ -8,6 +8,7 @@ use App\Models\ProductSupplierReference;
 use App\Support\CatalogImport\Contracts\SourceResolverInterface;
 use App\Support\CatalogImport\DTO\ResolvedSource;
 use App\Support\CatalogImport\Sources\SourceResolver;
+use App\Support\Products\ProductSearchSync;
 use Illuminate\Database\Eloquent\Builder;
 use RuntimeException;
 use Throwable;
@@ -17,6 +18,7 @@ class YandexMarketFeedDeactivationService
     public function __construct(
         private readonly YmlStreamParser $recordParser,
         private readonly SourceResolverInterface $sourceResolver = new SourceResolver,
+        private readonly ProductSearchSync $searchSync = new ProductSearchSync,
     ) {}
 
     /**
@@ -175,6 +177,10 @@ class YandexMarketFeedDeactivationService
                     'qty' => 0,
                     'updated_at' => now(),
                 ]);
+
+            if ($deactivated > 0) {
+                $this->searchSync->removeIds(array_keys($candidateProductIds));
+            }
         }
 
         $this->emitProgress($progress, [

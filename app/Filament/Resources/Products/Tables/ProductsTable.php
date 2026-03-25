@@ -12,6 +12,7 @@ use App\Models\ImportRun;
 use App\Models\Product;
 use App\Models\ProductAttributeValue;
 use App\Models\Unit;
+use App\Support\Products\ProductSearchSync;
 use App\Support\Products\SpecsMatchService;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
@@ -114,6 +115,7 @@ class ProductsTable
                         if ($missing->isNotEmpty()) {
                             // Откатываем запись в БД без повторного эмита событий
                             $record->updateQuietly(['is_active' => false]);
+                            app(ProductSearchSync::class)->removeIds([$record->id]);
 
                             Notification::make()
                                 ->danger()
@@ -891,6 +893,8 @@ class ProductsTable
                             return;
                         }
 
+                        $shouldSyncSearch = $data['mode'] === 'fields';
+
                         DB::transaction(function () use ($data, $ids) {
 
                             if ($data['mode'] === 'fields') {
@@ -1058,6 +1062,10 @@ class ProductsTable
                                 return;
                             }
                         });
+
+                        if ($shouldSyncSearch) {
+                            app(ProductSearchSync::class)->syncIds($ids);
+                        }
                     })
                     ->requiresConfirmation(),
             ]);

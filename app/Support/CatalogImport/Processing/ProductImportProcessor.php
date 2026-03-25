@@ -14,6 +14,7 @@ use App\Support\CatalogImport\Enums\ImportErrorLevel;
 use App\Support\CatalogImport\Media\ProductImportMediaService;
 use App\Support\CatalogImport\Runs\ImportRunEventData;
 use App\Support\CatalogImport\Suppliers\SupplierEntityResolver;
+use App\Support\Products\ProductSearchSync;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -74,6 +75,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
         private readonly ProductPayloadNormalizer $normalizer = new ProductPayloadNormalizer,
         private readonly ProductImportMediaService $mediaService = new ProductImportMediaService,
         private readonly SupplierEntityResolver $supplierResolver = new SupplierEntityResolver,
+        private readonly ProductSearchSync $searchSync = new ProductSearchSync,
     ) {}
 
     public function process(ProductPayload $payload, array $options = []): ImportProcessResult
@@ -260,6 +262,10 @@ final class ProductImportProcessor implements ImportProcessorInterface
                 'qty' => 0,
                 'updated_at' => now(),
             ]);
+
+        if ($deactivated > 0) {
+            $this->searchSync->removeIds($productIds->all());
+        }
 
         if ($deactivated > 0) {
             $events = $productIds

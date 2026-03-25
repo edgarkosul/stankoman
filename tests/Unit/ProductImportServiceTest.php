@@ -4,6 +4,7 @@ use App\Models\ImportRun;
 use App\Models\Product;
 use App\Support\NameNormalizer;
 use App\Support\Products\ProductImportService;
+use App\Support\Products\ProductSearchSync;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -232,6 +233,44 @@ it('applies rename and field update by name_normalized key', function () {
     expect($product->brand)->toBe('New Brand');
     expect($product->name_normalized)->toBe(NameNormalizer::normalize('New Product Name'));
     expect($run->fresh()->status)->toBe('applied');
+
+    unlink($path);
+});
+
+it('syncs updated products to search index after apply', function () {
+    $product = Product::query()->create([
+        'name' => 'Search Sync Product',
+        'sku' => 'SYNC-1',
+        'brand' => 'Old Brand',
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'brand', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        'Updated Brand',
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $searchSync = Mockery::mock(ProductSearchSync::class);
+    $searchSync->shouldReceive('syncIds')
+        ->once()
+        ->with([$product->id])
+        ->andReturn([
+            'synced' => 1,
+            'removed' => 0,
+        ]);
+
+    $service = new ProductImportService($searchSync);
+    $service->dryRunFromXlsx($run, $path);
+    $result = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($result['updated'])->toBe(1);
+    expect($product->fresh()->brand)->toBe('Updated Brand');
 
     unlink($path);
 });

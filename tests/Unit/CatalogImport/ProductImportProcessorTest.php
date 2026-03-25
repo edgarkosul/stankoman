@@ -10,6 +10,7 @@ use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
 use App\Support\CatalogImport\Processing\ProductPayloadNormalizer;
 use App\Support\CatalogImport\Runs\DatabaseImportRunEventLogger;
+use App\Support\Products\ProductSearchSync;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
@@ -759,6 +760,47 @@ it('finalizes missing only in full sync authoritative mode', function (): void {
         ->value('product_id');
 
     expect(Product::query()->whereKey((int) $seenProductId)->value('is_active'))->toBeTrue();
+});
+
+it('removes deactivated products from search index during finalize missing', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+    $searchSync = Mockery::mock(ProductSearchSync::class);
+    $searchSync->shouldReceive('removeIds')
+        ->once()
+        ->withArgs(function (array $ids): bool {
+            expect($ids)->toHaveCount(1);
+
+            return true;
+        })
+        ->andReturn(1);
+
+    $processor = new ProductImportProcessor(
+        normalizer: new ProductPayloadNormalizer,
+        searchSync: $searchSync,
+    );
+
+    $processor->processBatch([
+        new ProductPayload(externalId: 'SYNC-KEEP', name: 'Остается в поиске', inStock: true, qty: 5),
+        new ProductPayload(externalId: 'SYNC-REMOVE', name: 'Пропадает из поиска', inStock: true, qty: 2),
+    ], [
+        'supplier' => 'search_finalize_feed',
+        'run_id' => $firstRun->id,
+    ]);
+
+    $processor->processBatch([
+        new ProductPayload(externalId: 'SYNC-KEEP', name: 'Остается в поиске', inStock: true, qty: 4),
+    ], [
+        'supplier' => 'search_finalize_feed',
+        'run_id' => $secondRun->id,
+    ]);
+
+    $result = $processor->finalizeMissing('search_finalize_feed', $secondRun->id, [
+        'mode' => 'full_sync_authoritative',
+        'finalize_missing' => true,
+    ]);
+
+    expect($result['deactivated'])->toBe(1);
 });
 
 it('logs finalize deactivation events when finalize missing is applied', function (): void {

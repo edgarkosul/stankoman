@@ -11,10 +11,14 @@ use App\Models\Product;
 use App\Models\Unit;
 use App\Models\User;
 use App\Support\NameNormalizer;
+use App\Support\Products\ProductSearchSync;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Text as SchemaText;
+use Filament\Tables\Columns\Column;
+use Filament\Tables\Columns\ToggleColumn;
+use Filament\Tables\Table;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -646,6 +650,102 @@ it('uses nullable warranty select in mass edit fields mode', function () {
     expect($product->fresh()->warranty)->toBeNull();
 });
 
+it('syncs search index after bulk field updates', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $stagingCategory = Category::query()->create([
+        'name' => 'Staging',
+        'slug' => 'staging',
+        'parent_id' => -1,
+        'order' => 271,
+        'is_active' => true,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Bulk Brand Product',
+        'slug' => 'bulk-brand-product',
+        'brand' => 'Old Brand',
+        'price_amount' => 14500,
+    ]);
+    $product->categories()->attach($stagingCategory->id, ['is_primary' => true]);
+
+    $searchSync = Mockery::mock(ProductSearchSync::class);
+    $searchSync->shouldReceive('syncIds')
+        ->once()
+        ->with([$product->id])
+        ->andReturn([
+            'synced' => 1,
+            'removed' => 0,
+        ]);
+
+    app()->instance(ProductSearchSync::class, $searchSync);
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$product])
+        ->callTableBulkAction('massEdit', [$product], [
+            'mode' => 'fields',
+            'field' => 'brand',
+            'brand_value' => 'Updated Brand',
+        ]);
+
+    expect($product->fresh()->brand)->toBe('Updated Brand');
+});
+
+it('removes product from search when publish toggle is rolled back quietly', function () {
+    $category = Category::query()->create([
+        'name' => 'Требовательная категория',
+        'slug' => 'strict-category',
+        'parent_id' => -1,
+        'order' => 270,
+        'is_active' => true,
+    ]);
+
+    $attribute = Attribute::query()->create([
+        'name' => 'Обязательный атрибут',
+        'slug' => 'required-attribute',
+        'data_type' => 'text',
+        'input_type' => 'select',
+        'is_filterable' => true,
+    ]);
+
+    DB::table('category_attribute')->insert([
+        'category_id' => $category->id,
+        'attribute_id' => $attribute->id,
+        'is_required' => true,
+        'filter_order' => 0,
+        'compare_order' => 0,
+        'visible_in_specs' => true,
+        'visible_in_compare' => true,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Rollback Product',
+        'slug' => 'rollback-product',
+        'price_amount' => 20000,
+        'is_active' => false,
+    ]);
+    $product->categories()->attach($category->id, ['is_primary' => true]);
+
+    $searchSync = Mockery::mock(ProductSearchSync::class);
+    $searchSync->shouldReceive('removeIds')
+        ->once()
+        ->with([$product->id])
+        ->andReturn(1);
+
+    app()->instance(ProductSearchSync::class, $searchSync);
+
+    $column = configuredProductsTableColumn('is_active');
+
+    expect($column)->toBeInstanceOf(ToggleColumn::class);
+
+    $column->record($product)->updateState(true);
+
+    expect($product->fresh()->is_active)->toBeFalse();
+});
+
 it('normalizes warranty values for bulk update payload', function () {
     $method = new ReflectionMethod(ProductsTable::class, 'normalizeWarrantyForBulkUpdate');
     $method->setAccessible(true);
@@ -968,6 +1068,28 @@ function rebuildProductsTableSpecsMatchSchemas(): void
         $table->primary(['category_id', 'attribute_id']);
     });
 
+    Schema::create('product_attribute_values', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('product_id');
+        $table->unsignedBigInteger('attribute_id');
+        $table->string('value_text')->nullable();
+        $table->float('value_number')->nullable();
+        $table->float('value_si')->nullable();
+        $table->float('value_min_si')->nullable();
+        $table->float('value_max_si')->nullable();
+        $table->float('value_min')->nullable();
+        $table->float('value_max')->nullable();
+        $table->boolean('value_boolean')->nullable();
+        $table->timestamps();
+    });
+
+    Schema::create('product_attribute_option', function (Blueprint $table): void {
+        $table->unsignedBigInteger('product_id');
+        $table->unsignedBigInteger('attribute_id');
+        $table->unsignedBigInteger('attribute_option_id');
+        $table->timestamps();
+    });
+
     Schema::create('import_runs', function (Blueprint $table): void {
         $table->id();
         $table->string('type')->default('products');
@@ -998,6 +1120,8 @@ function dropProductsTableSpecsMatchSchemas(): void
 {
     Schema::dropIfExists('import_issues');
     Schema::dropIfExists('import_runs');
+    Schema::dropIfExists('product_attribute_option');
+    Schema::dropIfExists('product_attribute_values');
     Schema::dropIfExists('category_attribute');
     Schema::dropIfExists('attribute_unit');
     Schema::dropIfExists('units');
@@ -1008,4 +1132,11 @@ function dropProductsTableSpecsMatchSchemas(): void
     Schema::dropIfExists('users');
 
     DB::disconnect();
+}
+
+function configuredProductsTableColumn(string $name): ?Column
+{
+    $table = ProductsTable::configure(Table::make(app(ListProducts::class)));
+
+    return $table->getColumn($name);
 }

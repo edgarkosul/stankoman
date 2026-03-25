@@ -15,6 +15,10 @@ Schedule::command('images:webp-backfill', ['--limit' => 500])
     ->dailyAt('03:30')
     ->withoutOverlapping();
 
+Schedule::command('products:search-reindex')
+    ->dailyAt('06:30')
+    ->withoutOverlapping(180);
+
 $catalogImportSchedule = config('catalog-import.schedule', []);
 $catalogScheduleEnabled = (bool) ($catalogImportSchedule['enabled'] ?? false);
 $catalogScheduleTimezone = (string) ($catalogImportSchedule['timezone'] ?? 'Europe/Moscow');

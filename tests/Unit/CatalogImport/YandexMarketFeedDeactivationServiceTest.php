@@ -8,6 +8,7 @@ use App\Support\CatalogImport\Contracts\SourceResolverInterface;
 use App\Support\CatalogImport\DTO\ResolvedSource;
 use App\Support\CatalogImport\Yml\YandexMarketFeedDeactivationService;
 use App\Support\CatalogImport\Yml\YmlStreamParser;
+use App\Support\Products\ProductSearchSync;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -130,7 +131,12 @@ it('deactivates only missing supplier products inside selected site category sco
     );
 
     $path = createDeactivationFeedPath(['KEEP-1']);
-    $service = makeYandexMarketFeedDeactivationService($path);
+    $searchSync = Mockery::mock(ProductSearchSync::class);
+    $searchSync->shouldReceive('removeIds')
+        ->once()
+        ->with([$candidateProduct->id])
+        ->andReturn(1);
+    $service = makeYandexMarketFeedDeactivationService($path, $searchSync);
 
     try {
         $result = $service->run([
@@ -351,7 +357,7 @@ XML;
     return $path;
 }
 
-function makeYandexMarketFeedDeactivationService(string $path): YandexMarketFeedDeactivationService
+function makeYandexMarketFeedDeactivationService(string $path, ?ProductSearchSync $searchSync = null): YandexMarketFeedDeactivationService
 {
     return new YandexMarketFeedDeactivationService(
         new YmlStreamParser,
@@ -364,5 +370,6 @@ function makeYandexMarketFeedDeactivationService(string $path): YandexMarketFeed
                 return new ResolvedSource($source, $this->path);
             }
         },
+        $searchSync ?? new ProductSearchSync,
     );
 }

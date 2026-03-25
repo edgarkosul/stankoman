@@ -18,6 +18,10 @@ use UnitEnum;
 
 class ProductImportService
 {
+    public function __construct(
+        private readonly ProductSearchSync $searchSync = new ProductSearchSync,
+    ) {}
+
     public function whitelist(): array
     {
         return config('catalog-export.fields');
@@ -889,6 +893,7 @@ class ProductImportService
 
         // 3) Проходим строки
         $totals = ['created' => 0, 'updated' => 0, 'same' => 0, 'conflict' => 0, 'error' => 0, 'scanned' => 0];
+        $updatedProductIds = [];
 
         DB::beginTransaction();
         try {
@@ -1060,6 +1065,7 @@ class ProductImportService
                     } else {
                         if ($write) {
                             Product::query()->whereKey($product->id)->update($payload);
+                            $updatedProductIds[] = (int) $product->id;
                         }
                         $totals['updated']++;
                     }
@@ -1095,6 +1101,10 @@ class ProductImportService
             }
 
             DB::commit();
+
+            if ($write && $updatedProductIds !== []) {
+                $this->searchSync->syncIds($updatedProductIds);
+            }
         } catch (\Throwable $e) {
             DB::rollBack();
             $totals['error']++;
