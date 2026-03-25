@@ -14,10 +14,12 @@ use App\Support\CatalogImport\Suppliers\Metaltec\MetaltecSupplierProfile;
 use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
 use App\Support\CatalogImport\Yml\YandexMarketFeedSourceHistoryService;
 use App\Support\Metaltec\MetaltecProductImportService;
+use Filament\Forms\Components\Field;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Text;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
@@ -72,6 +74,9 @@ test('supplier import form has supplier, source and driver controls', function (
     $modeField = $schema->getComponent(
         fn ($component) => $component instanceof Select && $component->getName() === 'runtime.mode',
     );
+    $forceMediaRecheckField = $schema->getComponent(
+        fn ($component) => $component instanceof Toggle && $component->getName() === 'runtime.force_media_recheck',
+    );
     $finalizeMissingField = $schema->getComponent(
         fn ($component) => $component instanceof Toggle && $component->getName() === 'runtime.finalize_missing',
     );
@@ -83,6 +88,12 @@ test('supplier import form has supplier, source and driver controls', function (
     expect($sortField)->toBeNull();
     expect($profileField)->toBeNull();
     expect($modeField)->toBeNull();
+    expect($forceMediaRecheckField)->toBeInstanceOf(Toggle::class)
+        ->and($forceMediaRecheckField->getLabel())->toBe('Обновлять картинки, даже если ссылка не изменилась')
+        ->and($forceMediaRecheckField->getChildComponents(Field::BELOW_CONTENT_SCHEMA_KEY))->toHaveCount(1)
+        ->and($forceMediaRecheckField->getChildComponents(Field::BELOW_CONTENT_SCHEMA_KEY)[0])->toBeInstanceOf(Text::class)
+        ->and($forceMediaRecheckField->getChildComponents(Field::BELOW_CONTENT_SCHEMA_KEY)[0]->getContent())
+        ->toBe('Используйте это, если поставщик может заменить изображение по старой ссылке. Может немного замедлить импорт.');
     expect($finalizeMissingField)->toBeNull();
 });
 

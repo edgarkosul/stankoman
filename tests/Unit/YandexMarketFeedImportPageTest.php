@@ -7,10 +7,12 @@ use App\Models\ImportRun;
 use App\Models\Supplier;
 use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
 use App\Support\CatalogImport\Yml\YandexMarketFeedSourceHistoryService;
+use Filament\Forms\Components\Field;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Text;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Queue;
@@ -58,6 +60,9 @@ test('yandex market feed import form has source, category and run controls', fun
     $downloadImagesField = $schema->getComponent(
         fn ($component) => $component instanceof Toggle && $component->getName() === 'download_images',
     );
+    $forceMediaRecheckField = $schema->getComponent(
+        fn ($component) => $component instanceof Toggle && $component->getName() === 'force_media_recheck',
+    );
 
     expect($supplierField)->not->toBeNull();
     expect($sourceModeField)->not->toBeNull();
@@ -65,6 +70,12 @@ test('yandex market feed import form has source, category and run controls', fun
     expect($categoryField)->not->toBeNull();
     expect($syncScenarioField)->not->toBeNull();
     expect($downloadImagesField)->not->toBeNull();
+    expect($forceMediaRecheckField)->toBeInstanceOf(Toggle::class)
+        ->and($forceMediaRecheckField->getLabel())->toBe('Обновлять картинки, даже если ссылка не изменилась')
+        ->and($forceMediaRecheckField->getChildComponents(Field::BELOW_CONTENT_SCHEMA_KEY))->toHaveCount(1)
+        ->and($forceMediaRecheckField->getChildComponents(Field::BELOW_CONTENT_SCHEMA_KEY)[0])->toBeInstanceOf(Text::class)
+        ->and($forceMediaRecheckField->getChildComponents(Field::BELOW_CONTENT_SCHEMA_KEY)[0]->getContent())
+        ->toBe('Используйте это, если поставщик может заменить изображение по старой ссылке. Может немного замедлить импорт.');
 
     $page->data = array_merge($page->data ?? [], [
         'source_mode' => 'upload',

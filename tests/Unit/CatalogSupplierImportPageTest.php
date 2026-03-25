@@ -6,8 +6,10 @@ use App\Jobs\RunMetalmasterProductImportJob;
 use App\Jobs\RunVactoolProductImportJob;
 use App\Models\ImportRun;
 use App\Support\Filament\HelpCenter;
+use Filament\Forms\Components\Field;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Text;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
@@ -50,6 +52,9 @@ test('catalog supplier import form has source and run controls', function () {
     $scopeField = $schema->getComponent(
         fn ($component) => $component instanceof Select && $component->getName() === 'scope',
     );
+    $forceMediaRecheckField = $schema->getComponent(
+        fn ($component) => $component instanceof Toggle && $component->getName() === 'force_media_recheck',
+    );
     $skipExistingField = $schema->getComponent(
         fn ($component) => $component instanceof Toggle && $component->getName() === 'skip_existing',
     );
@@ -58,6 +63,12 @@ test('catalog supplier import form has source and run controls', function () {
     expect($modeField)->not->toBeNull();
     expect($syncScenarioField)->not->toBeNull();
     expect($scopeField)->not->toBeNull();
+    expect($forceMediaRecheckField)->toBeInstanceOf(Toggle::class)
+        ->and($forceMediaRecheckField->getLabel())->toBe('Обновлять картинки, даже если ссылка не изменилась')
+        ->and($forceMediaRecheckField->getChildComponents(Field::BELOW_CONTENT_SCHEMA_KEY))->toHaveCount(1)
+        ->and($forceMediaRecheckField->getChildComponents(Field::BELOW_CONTENT_SCHEMA_KEY)[0])->toBeInstanceOf(Text::class)
+        ->and($forceMediaRecheckField->getChildComponents(Field::BELOW_CONTENT_SCHEMA_KEY)[0]->getContent())
+        ->toBe('Используйте это, если поставщик может заменить изображение по старой ссылке. Может немного замедлить импорт.');
     expect($skipExistingField)->not->toBeNull();
 });
 

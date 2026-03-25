@@ -1388,7 +1388,8 @@ class SupplierImport extends Page implements HasForms
             Toggle::make('runtime.publish')
                 ->label('Публиковать импортированные товары'),
             Toggle::make('runtime.force_media_recheck')
-                ->label('Принудительно перепроверять медиа у донора'),
+                ->label('Обновлять картинки, даже если ссылка не изменилась')
+                ->helperText('Используйте это, если поставщик может заменить изображение по старой ссылке. Может немного замедлить импорт.'),
             Toggle::make('runtime.skip_existing')
                 ->label('Пропускать существующие товары')
                 ->live()
