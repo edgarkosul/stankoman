@@ -611,9 +611,14 @@ class VactoolProductImportService
             return;
         }
 
+        $externalIds = array_map(
+            static fn (int|string $externalId): string => (string) $externalId,
+            array_keys($prefilteredExternalIds),
+        );
+
         ProductSupplierReference::query()
             ->where('supplier', $this->profile->supplierKey())
-            ->whereIn('external_id', array_keys($prefilteredExternalIds))
+            ->whereIn('external_id', $externalIds)
             ->update([
                 'last_seen_run_id' => $runId,
                 'last_seen_at' => now(),

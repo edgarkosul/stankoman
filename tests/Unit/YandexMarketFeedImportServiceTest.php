@@ -1,8 +1,13 @@
 <?php
 
+use App\Models\ImportRun;
+use App\Models\ProductSupplierReference;
+use App\Models\Supplier;
 use App\Support\CatalogImport\Processing\ExistingProductUpdateSelection;
 use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 uses(TestCase::class);
@@ -274,6 +279,83 @@ it('maps download_images flag into processor download_media option', function ()
     ]);
 });
 
+it('touches numeric prefiltered external ids as strings for yandex feed imports', function () {
+    prepareYandexMarketFeedImportServiceReferenceTables();
+
+    $supplier = Supplier::factory()->create([
+        'name' => 'Yandex Mixed IDs Supplier',
+    ]);
+    $run = ImportRun::query()->create([
+        'type' => 'yandex_market_feed_products',
+        'status' => 'running',
+        'supplier_id' => $supplier->id,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'yandex_market_feed',
+        'supplier_id' => $supplier->id,
+        'external_id' => '595',
+        'product_id' => null,
+        'last_seen_run_id' => null,
+        'last_seen_at' => null,
+    ]);
+    ProductSupplierReference::query()->create([
+        'supplier' => 'yandex_market_feed',
+        'supplier_id' => $supplier->id,
+        'external_id' => 'product-111',
+        'product_id' => null,
+        'last_seen_run_id' => null,
+        'last_seen_at' => null,
+    ]);
+
+    $xml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<yml_catalog date="2026-03-26 13:33">
+  <shop>
+    <offers>
+      <offer id="595" available="true">
+        <name>Numeric external id</name>
+        <price>123</price>
+        <currencyId>RUB</currencyId>
+        <categoryId>1</categoryId>
+      </offer>
+    </offers>
+  </shop>
+</yml_catalog>
+XML;
+
+    $path = tempnam(sys_get_temp_dir(), 'yandex_feed_');
+    file_put_contents($path, $xml);
+
+    try {
+        $result = app(YandexMarketFeedImportService::class)->run([
+            'source' => $path,
+            'write' => true,
+            'skip_existing' => true,
+            'supplier_id' => $supplier->id,
+            'run_id' => $run->id,
+            'delay_ms' => 0,
+            'show_samples' => 1,
+        ]);
+
+        expect($result['fatal_error'])->toBeNull();
+        expect(
+            ProductSupplierReference::query()
+                ->where('supplier_id', $supplier->id)
+                ->where('external_id', '595')
+                ->value('last_seen_run_id')
+        )->toBe($run->id);
+        expect(
+            ProductSupplierReference::query()
+                ->where('supplier_id', $supplier->id)
+                ->where('external_id', 'product-111')
+                ->value('last_seen_run_id')
+        )->toBeNull();
+    } finally {
+        @unlink($path);
+    }
+});
+
 it('reads categories from yandex market feed', function () {
     $xml = <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -318,6 +400,53 @@ XML;
         @unlink($path);
     }
 });
+
+function prepareYandexMarketFeedImportServiceReferenceTables(): void
+{
+    if (! Schema::hasTable('suppliers')) {
+        Schema::create('suppliers', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+    }
+
+    if (! Schema::hasTable('import_runs')) {
+        Schema::create('import_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->string('type');
+            $table->string('status');
+            $table->json('columns')->nullable();
+            $table->json('totals')->nullable();
+            $table->string('source_filename')->nullable();
+            $table->string('stored_path')->nullable();
+            $table->unsignedBigInteger('supplier_id')->nullable();
+            $table->unsignedBigInteger('supplier_import_source_id')->nullable();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->timestamp('started_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    if (! Schema::hasTable('product_supplier_references')) {
+        Schema::create('product_supplier_references', function (Blueprint $table): void {
+            $table->id();
+            $table->string('supplier');
+            $table->unsignedBigInteger('supplier_id')->nullable();
+            $table->string('external_id');
+            $table->unsignedBigInteger('source_category_id')->nullable();
+            $table->unsignedBigInteger('product_id')->nullable();
+            $table->unsignedBigInteger('first_seen_run_id')->nullable();
+            $table->unsignedBigInteger('last_seen_run_id')->nullable();
+            $table->timestamp('last_seen_at')->nullable();
+            $table->timestamps();
+            $table->unique(['supplier_id', 'external_id']);
+        });
+    }
+}
 
 it('filters yandex market feed import by selected category including descendants', function () {
     $xml = <<<'XML'

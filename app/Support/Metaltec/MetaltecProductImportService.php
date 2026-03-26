@@ -557,7 +557,12 @@ class MetaltecProductImportService
         $prefiltered = [];
         $useSupplierEntityReference = $this->supportsSupplierEntityReference() && $normalized['supplier_id'] !== null;
 
-        foreach (array_chunk(array_keys($candidateExternalIds), 1000) as $chunk) {
+        $candidateExternalIdList = array_map(
+            static fn (int|string $externalId): string => (string) $externalId,
+            array_keys($candidateExternalIds),
+        );
+
+        foreach (array_chunk($candidateExternalIdList, 1000) as $chunk) {
             $query = ProductSupplierReference::query()
                 ->whereIn('external_id', $chunk);
 
@@ -635,8 +640,13 @@ class MetaltecProductImportService
             return;
         }
 
+        $externalIds = array_map(
+            static fn (int|string $externalId): string => (string) $externalId,
+            array_keys($prefilteredExternalIds),
+        );
+
         $query = ProductSupplierReference::query()
-            ->whereIn('external_id', array_keys($prefilteredExternalIds));
+            ->whereIn('external_id', $externalIds);
 
         if ($this->supportsSupplierEntityReference() && $supplierId !== null) {
             $query->where('supplier_id', $supplierId);
