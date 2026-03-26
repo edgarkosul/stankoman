@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock;
 use App\Filament\Resources\Pages\Schemas\PageForm;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -49,5 +50,6 @@ it('adds clear content tool to page form rich editor', function () {
 
     expect($richEditor)->not->toBeNull();
     expect($richEditor->getTools())->toHaveKey('clearContent');
-    expect($richEditor->hasToolbarButton('clearContent'))->toBeTrue();
+    expect($richEditor->hasToolbarButton('clearContent'))->toBeTrue()
+        ->and($richEditor->getCustomBlocks())->toContain(PdfLinkBlock::class);
 });

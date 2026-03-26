@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Products\Schemas;
 use App\Enums\ProductWarranty;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
@@ -282,6 +283,7 @@ class ProductForm
             ->customBlocks([
                 ImageBlock::class,
                 ImageGalleryBlock::class,
+                PdfLinkBlock::class,
                 RutubeVideoBlock::class,
                 YoutubeVideoBlock::class,
                 RawHtmlBlock::class,

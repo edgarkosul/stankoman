@@ -2,14 +2,15 @@
 
 namespace App\Filament\Resources\Pages\Schemas;
 
+use App\Filament\Forms\Components\RichEditor\Plugins\TextSizeRichContentPlugin;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\HeroSliderBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
-use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\HeroSliderBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YandexMapBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
-use App\Filament\Forms\Components\RichEditor\Plugins\TextSizeRichContentPlugin;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\RichEditor;
@@ -90,6 +91,7 @@ class PageForm
                     ->customBlocks([
                         ImageBlock::class,
                         ImageGalleryBlock::class,
+                        PdfLinkBlock::class,
                         RutubeVideoBlock::class,
                         YoutubeVideoBlock::class,
                         HeroSliderBlock::class,

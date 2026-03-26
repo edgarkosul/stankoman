@@ -333,6 +333,7 @@
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock::class,
+                App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock::class,
             ])->toUnsafeHtml() !!}

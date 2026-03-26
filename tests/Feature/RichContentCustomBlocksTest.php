@@ -3,10 +3,12 @@
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\HeroSliderBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
 use App\Models\Slider;
+use App\Support\Filament\PdfLinkBlockConfigNormalizer;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
@@ -104,6 +106,37 @@ it('renders raw html custom block without modification', function () {
     ], []);
 
     expect($html)->toBe('<div data-test="raw">OK</div>');
+});
+
+it('renders pdf link custom block using public storage url', function () {
+    config(['filesystems.disks.public.url' => '/storage']);
+
+    $html = PdfLinkBlock::toHtml([
+        'source_type' => PdfLinkBlockConfigNormalizer::SOURCE_UPLOAD,
+        'file' => 'documents/rich-content/catalog.pdf',
+        'link_text' => 'Скачать каталог',
+        'target' => PdfLinkBlockConfigNormalizer::TARGET_NEW_TAB,
+    ], []);
+
+    expect($html)->toContain('/storage/documents/rich-content/catalog.pdf')
+        ->and($html)->toContain('Скачать каталог')
+        ->and($html)->toContain('motion-safe:transition-[scale]')
+        ->and($html)->toContain('hover:scale-[1.015]')
+        ->and($html)->toContain('target="_blank"')
+        ->and($html)->toContain('rel="noopener noreferrer"');
+});
+
+it('renders pdf link custom block using direct external url', function () {
+    $html = PdfLinkBlock::toHtml([
+        'source_type' => PdfLinkBlockConfigNormalizer::SOURCE_DIRECT_URL,
+        'url' => 'https://cdn.example.test/files/price-list.pdf',
+        'link_text' => 'Прайс-лист',
+        'target' => PdfLinkBlockConfigNormalizer::TARGET_SAME_TAB,
+    ], []);
+
+    expect($html)->toContain('href="https://cdn.example.test/files/price-list.pdf"')
+        ->and($html)->toContain('Прайс-лист')
+        ->and($html)->not->toContain('target="_blank"');
 });
 
 it('renders rutube video with optional width cap', function () {

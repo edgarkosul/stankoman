@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ProductWarranty;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock;
 use App\Filament\Resources\Products\Pages\CreateProduct;
 use App\Filament\Resources\Products\Schemas\ProductForm;
 use Filament\Forms\Components\Repeater;
@@ -109,5 +110,7 @@ it('configures instructions and video as separate rich editors', function (): vo
     /** @var RichEditor $instructionsField */
     /** @var RichEditor $videoField */
     expect($instructionsField->isLabelHidden())->toBeTrue()
-        ->and($videoField->isLabelHidden())->toBeTrue();
+        ->and($videoField->isLabelHidden())->toBeTrue()
+        ->and($instructionsField->getCustomBlocks())->toContain(PdfLinkBlock::class)
+        ->and($videoField->getCustomBlocks())->toContain(PdfLinkBlock::class);
 });
