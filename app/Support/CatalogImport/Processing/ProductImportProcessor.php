@@ -403,6 +403,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
                     $product = $this->resolveLegacyProduct($payload, $options);
                 }
 
+                $matchedExistingProduct = $product instanceof Product;
                 $operation = 'skipped';
                 $errors = [];
                 $skipCode = null;
@@ -422,6 +423,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
                         $attributes = $this->sanitizeExistingProductUpdateAttributes(
                             attributes: $attributes,
                             payload: $payload,
+                            options: $options,
                             queueMedia: $queueMedia,
                             hasPayloadImages: $payload->images !== [],
                             preserveMissingPrice: ($options['preserve_missing_price_on_update'] ?? false) === true,
@@ -481,7 +483,13 @@ final class ProductImportProcessor implements ImportProcessorInterface
                 $resolvedSourceCategoryId = null;
 
                 if ($product instanceof Product) {
-                    if ($queueMedia && $payload->images !== []) {
+                    if ($this->shouldQueueProductMedia(
+                        queueMedia: $queueMedia,
+                        hasPayloadImages: $payload->images !== [],
+                        isExistingProduct: $matchedExistingProduct,
+                        canUpdateExisting: $canUpdate,
+                        options: $options,
+                    )) {
                         $mediaQueueResult = $this->mediaService->enqueueProductMedia(
                             product: $product,
                             sourceUrls: $payload->images,
@@ -1257,19 +1265,107 @@ final class ProductImportProcessor implements ImportProcessorInterface
     private function sanitizeExistingProductUpdateAttributes(
         array $attributes,
         ProductPayload $payload,
+        array $options,
         bool $queueMedia,
         bool $hasPayloadImages,
         bool $preserveMissingPrice,
     ): array {
+        $attributes = $this->filterExistingProductUpdateAttributes($attributes, $options);
+
         if ($preserveMissingPrice && $payload->priceAmount === null && $payload->discountPrice === null) {
             $attributes = array_diff_key($attributes, array_flip(['price_amount', 'discount_price', 'currency']));
         }
 
-        if (! $queueMedia || ! $hasPayloadImages) {
+        if (! $this->shouldDeferExistingProductMediaAttributes($queueMedia, $hasPayloadImages, $options)) {
             return $attributes;
         }
 
         return array_diff_key($attributes, array_flip(self::DEFERRED_MEDIA_EVENT_FIELDS));
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @param  array<string, mixed>  $options
+     * @return array<string, mixed>
+     */
+    private function filterExistingProductUpdateAttributes(array $attributes, array $options): array
+    {
+        if ($this->existingProductUpdateMode($options) !== ExistingProductUpdateSelection::MODE_SELECTED) {
+            return $attributes;
+        }
+
+        $attributeKeys = ExistingProductUpdateSelection::resolveAttributeKeys(
+            ExistingProductUpdateSelection::MODE_SELECTED,
+            $this->existingProductUpdateFields($options),
+        );
+
+        if ($attributeKeys === []) {
+            return [];
+        }
+
+        return array_intersect_key($attributes, array_flip($attributeKeys));
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     * @return array<int, string>
+     */
+    private function existingProductUpdateFields(array $options): array
+    {
+        return ExistingProductUpdateSelection::normalizeFields($options['update_existing_fields'] ?? null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function existingProductUpdateMode(array $options): string
+    {
+        return ExistingProductUpdateSelection::normalizeMode($options['update_existing_mode'] ?? null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function shouldUpdateExistingImages(array $options): bool
+    {
+        return ExistingProductUpdateSelection::updatesImages(
+            $this->existingProductUpdateMode($options),
+            $this->existingProductUpdateFields($options),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function shouldDeferExistingProductMediaAttributes(
+        bool $queueMedia,
+        bool $hasPayloadImages,
+        array $options,
+    ): bool {
+        return $queueMedia
+            && $hasPayloadImages
+            && $this->shouldUpdateExistingImages($options);
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     */
+    private function shouldQueueProductMedia(
+        bool $queueMedia,
+        bool $hasPayloadImages,
+        bool $isExistingProduct,
+        bool $canUpdateExisting,
+        array $options,
+    ): bool {
+        if (! $queueMedia || ! $hasPayloadImages) {
+            return false;
+        }
+
+        if (! $isExistingProduct) {
+            return true;
+        }
+
+        return $canUpdateExisting && $this->shouldUpdateExistingImages($options);
     }
 
     /**

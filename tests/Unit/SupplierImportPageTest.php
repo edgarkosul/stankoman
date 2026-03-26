@@ -19,6 +19,7 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Forms\Components\ToggleButtons;
 use Filament\Schemas\Components\Text;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Schema\Blueprint;
@@ -74,6 +75,9 @@ test('supplier import form has supplier, source and driver controls', function (
     $modeField = $schema->getComponent(
         fn ($component) => $component instanceof Select && $component->getName() === 'runtime.mode',
     );
+    $updateExistingModeField = $schema->getComponent(
+        fn ($component) => $component instanceof ToggleButtons && $component->getName() === 'runtime.update_existing_mode',
+    );
     $forceMediaRecheckField = $schema->getComponent(
         fn ($component) => $component instanceof Toggle && $component->getName() === 'runtime.force_media_recheck',
     );
@@ -88,6 +92,7 @@ test('supplier import form has supplier, source and driver controls', function (
     expect($sortField)->toBeNull();
     expect($profileField)->toBeNull();
     expect($modeField)->toBeNull();
+    expect($updateExistingModeField)->toBeInstanceOf(ToggleButtons::class);
     expect($forceMediaRecheckField)->toBeInstanceOf(Toggle::class)
         ->and($forceMediaRecheckField->getLabel())->toBe('Обновлять картинки, даже если ссылка не изменилась')
         ->and($forceMediaRecheckField->getChildComponents(Field::BELOW_CONTENT_SCHEMA_KEY))->toHaveCount(1)
@@ -95,6 +100,68 @@ test('supplier import form has supplier, source and driver controls', function (
         ->and($forceMediaRecheckField->getChildComponents(Field::BELOW_CONTENT_SCHEMA_KEY)[0]->getContent())
         ->toBe('Используйте это, если поставщик может заменить изображение по старой ссылке. Может немного замедлить импорт.');
     expect($finalizeMissingField)->toBeNull();
+});
+
+test('supplier import page hides selective update controls when they are not applicable', function () {
+    prepareSupplierImportPageTables();
+
+    Livewire::test(SupplierImport::class)
+        ->assertDontSee('Пропускать существующие товары')
+        ->assertSee('Как обновлять существующие товары')
+        ->assertSee('Обновлять картинки, даже если ссылка не изменилась')
+        ->assertDontSee('Обновлять только эти поля')
+        ->set('data.runtime.update_existing_mode', 'selected')
+        ->assertSee('Обновлять только эти поля')
+        ->set('data.runtime.update_existing_fields', ['price'])
+        ->assertDontSee('Обновлять картинки, даже если ссылка не изменилась')
+        ->set('data.runtime.update_existing_fields', ['images'])
+        ->assertSee('Обновлять картинки, даже если ссылка не изменилась')
+        ->set('data.source_settings.download_images', false)
+        ->assertDontSee('Обновлять картинки, даже если ссылка не изменилась')
+        ->set('data.runtime.update_existing', false)
+        ->assertSee('Пропускать существующие товары')
+        ->assertDontSee('Как обновлять существующие товары')
+        ->assertDontSee('Обновлять только эти поля');
+});
+
+test('supplier import page normalizes toggle combinations into coherent scenarios', function () {
+    prepareSupplierImportPageTables();
+
+    $page = new SupplierImport;
+    $page->mount();
+
+    data_set($page->data, 'runtime.create_missing', false);
+    data_set($page->data, 'runtime.update_existing', true);
+    data_set($page->data, 'runtime.skip_existing', false);
+
+    \Livewire\invade($page)->updateSyncScenarioFromFlags();
+
+    expect(data_get($page->data, 'runtime.sync_scenario'))->toBe('update_only')
+        ->and(data_get($page->data, 'runtime.create_missing'))->toBeFalse()
+        ->and(data_get($page->data, 'runtime.update_existing'))->toBeTrue()
+        ->and(data_get($page->data, 'runtime.skip_existing'))->toBeFalse();
+
+    data_set($page->data, 'runtime.create_missing', false);
+    data_set($page->data, 'runtime.update_existing', false);
+    data_set($page->data, 'runtime.skip_existing', true);
+
+    \Livewire\invade($page)->updateSyncScenarioFromFlags();
+
+    expect(data_get($page->data, 'runtime.sync_scenario'))->toBe('new_only')
+        ->and(data_get($page->data, 'runtime.create_missing'))->toBeTrue()
+        ->and(data_get($page->data, 'runtime.update_existing'))->toBeFalse()
+        ->and(data_get($page->data, 'runtime.skip_existing'))->toBeTrue();
+
+    data_set($page->data, 'runtime.create_missing', false);
+    data_set($page->data, 'runtime.update_existing', false);
+    data_set($page->data, 'runtime.skip_existing', false);
+
+    \Livewire\invade($page)->updateSyncScenarioFromFlags();
+
+    expect(data_get($page->data, 'runtime.sync_scenario'))->toBe('update_only')
+        ->and(data_get($page->data, 'runtime.create_missing'))->toBeFalse()
+        ->and(data_get($page->data, 'runtime.update_existing'))->toBeTrue()
+        ->and(data_get($page->data, 'runtime.skip_existing'))->toBeFalse();
 });
 
 test('supplier import page hides internal driver fields and exposes metaltec url field', function () {
@@ -757,6 +824,38 @@ test('supplier import page saves source and dispatches vactool dry run', functio
             && ($job->options['finalize_missing'] ?? null) === false
             && ($job->options['profile'] ?? null) === 'vactool_html';
     });
+});
+
+test('supplier import page does not start write import when selected update fields are empty', function () {
+    prepareSupplierImportPageTables();
+    Queue::fake();
+
+    $supplier = Supplier::query()->create([
+        'name' => 'Vactool',
+        'slug' => 'vactool',
+        'is_active' => true,
+    ]);
+
+    $page = new SupplierImport;
+    $page->mount();
+    $page->data['supplier_id'] = $supplier->id;
+    $page->data['supplier_import_source_id'] = null;
+    $page->data['source_name'] = 'Основной HTML';
+    $page->data['driver_key'] = 'vactool_html';
+    $page->data['source_is_active'] = true;
+    $page->data['source_settings'] = [
+        'sitemap' => 'https://vactool.ru/sitemap.xml',
+        'match' => '/catalog/product-',
+        'delay_ms' => 250,
+        'download_images' => true,
+    ];
+    data_set($page->data, 'runtime.update_existing_mode', 'selected');
+    data_set($page->data, 'runtime.update_existing_fields', []);
+
+    $page->doImport();
+
+    expect(ImportRun::query()->count())->toBe(0);
+    Queue::assertNothingPushed();
 });
 
 test('supplier import page filters drivers by supplier and defaults to compatible driver', function () {

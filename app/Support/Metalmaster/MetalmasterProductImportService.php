@@ -5,7 +5,10 @@ namespace App\Support\Metalmaster;
 use App\Models\ProductSupplierReference;
 use App\Support\CatalogImport\Contracts\ImportRunEventLoggerInterface;
 use App\Support\CatalogImport\Contracts\SourceResolverInterface;
+use App\Support\CatalogImport\DTO\ImportError;
+use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\Html\HtmlDocumentParser;
+use App\Support\CatalogImport\Processing\ExistingProductUpdateSelection;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
 use App\Support\CatalogImport\Runs\DatabaseImportRunEventLogger;
 use App\Support\CatalogImport\Runs\ImportRunEventData;
@@ -467,6 +470,12 @@ class MetalmasterProductImportService
                 $options['update_existing'] ?? $options['update-existing'] ?? null,
                 ! $skipExisting,
             ),
+            'update_existing_mode' => ExistingProductUpdateSelection::normalizeMode(
+                $options['update_existing_mode'] ?? $options['update-existing-mode'] ?? null,
+            ),
+            'update_existing_fields' => ExistingProductUpdateSelection::normalizeFields(
+                $options['update_existing_fields'] ?? $options['update-existing-fields'] ?? null,
+            ),
         ];
     }
 
@@ -547,7 +556,7 @@ class MetalmasterProductImportService
     /**
      * @param  array<string, mixed>  $normalized
      * @return array{
-     *     payload:\App\Support\CatalogImport\DTO\ProductPayload|null,
+     *     payload:ProductPayload|null,
      *     errors_count:int,
      *     first_error:string|null,
      *     errors:array<int, array{code:string, message:string}>
@@ -620,6 +629,8 @@ class MetalmasterProductImportService
             'publish_updated' => $normalized['publish'],
             'download_media' => $normalized['download_images'],
             'force_media_recheck' => $normalized['force_media_recheck'],
+            'update_existing_mode' => $normalized['update_existing_mode'],
+            'update_existing_fields' => $normalized['update_existing_fields'],
             'legacy_match' => $this->profile->defaults()['legacy_match'] ?? null,
             'use_source_slug' => true,
             'mode' => $normalized['mode'],
@@ -770,7 +781,7 @@ class MetalmasterProductImportService
     }
 
     /**
-     * @param  array<int, \App\Support\CatalogImport\DTO\ImportError>  $errors
+     * @param  array<int, ImportError>  $errors
      */
     private function countMediaErrors(array $errors): int
     {
@@ -782,7 +793,7 @@ class MetalmasterProductImportService
     /**
      * @return array{url: string, bucket: string, title: string, price: string, brand: string, images: string, specs: string}
      */
-    private function sampleRow(\App\Support\CatalogImport\DTO\ProductPayload $payload, string $url, string $bucket): array
+    private function sampleRow(ProductPayload $payload, string $url, string $bucket): array
     {
         return [
             'url' => $url,

@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @import "../../vendor/filament/support/resources/css/index.css";
 @import "../../vendor/livewire/flux/dist/flux.css";
 @import "tippy.js/dist/tippy.css";
@@ -38,6 +38,8 @@
 }
 
 @source '../views';
+@source '../../app/Livewire/**/*.php';
+@source '../../app/View/**/*.php';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../vendor/livewire/flux-pro/stubs/**/*.blade.php';
 @source '../../vendor/livewire/flux/stubs/**/*.blade.php';

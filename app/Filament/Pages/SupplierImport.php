@@ -11,14 +11,17 @@ use App\Support\CatalogImport\Drivers\DriverAvailability;
 use App\Support\CatalogImport\Drivers\ImportDriverRegistry;
 use App\Support\CatalogImport\Drivers\MetaltecXmlDriver;
 use App\Support\CatalogImport\Drivers\YandexMarketFeedDriver;
+use App\Support\CatalogImport\Processing\ExistingProductUpdateSelection;
 use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
 use App\Support\CatalogImport\Yml\YandexMarketFeedSourceHistoryService;
 use App\Support\Metalmaster\MetalmasterBucketCatalog;
 use BackedEnum;
 use Filament\Actions\Action as FormAction;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Forms\Components\ToggleButtons;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Notifications\Notification;
@@ -111,7 +114,7 @@ class SupplierImport extends Page implements HasForms
             return;
         }
 
-        $this->form->fill($this->data);
+        $this->updateSyncScenarioFromFlags();
         $this->refreshLastSavedRun();
     }
 
@@ -313,7 +316,7 @@ class SupplierImport extends Page implements HasForms
     {
         $this->data = array_merge($this->data ?? [], $this->freshSourceState());
         $this->resetFeedCategoriesIfSourceChanged();
-        $this->form->fill($this->data);
+        $this->updateSyncScenarioFromFlags();
         $this->refreshLastSavedRun();
     }
 
@@ -671,7 +674,7 @@ class SupplierImport extends Page implements HasForms
             $this->data = array_merge($this->data ?? [], [
                 'supplier_id' => null,
             ], $this->freshSourceState());
-            $this->form->fill($this->data);
+            $this->updateSyncScenarioFromFlags();
             $this->refreshLastSavedRun();
 
             return;
@@ -698,7 +701,7 @@ class SupplierImport extends Page implements HasForms
 
         if (! $source instanceof SupplierImportSource) {
             $this->data = array_merge($this->data ?? [], $this->freshSourceState());
-            $this->form->fill($this->data);
+            $this->updateSyncScenarioFromFlags();
             $this->refreshLastSavedRun();
 
             return;
@@ -720,7 +723,7 @@ class SupplierImport extends Page implements HasForms
         ]);
 
         $this->resetFeedCategoriesIfSourceChanged();
-        $this->form->fill($this->data);
+        $this->updateSyncScenarioFromFlags();
         $this->refreshLastSavedRun();
     }
 
@@ -742,7 +745,7 @@ class SupplierImport extends Page implements HasForms
         }
 
         $this->resetFeedCategoriesIfSourceChanged();
-        $this->form->fill($this->data);
+        $this->updateSyncScenarioFromFlags();
     }
 
     private function dispatchImport(bool $write): void
@@ -756,6 +759,10 @@ class SupplierImport extends Page implements HasForms
 
             if ($write && ! $runtime['create_missing'] && ! $runtime['update_existing']) {
                 throw new RuntimeException('Одновременно отключены создание новых и обновление существующих товаров.');
+            }
+
+            if ($write && $this->requiresSelectedUpdateFields($runtime) && $runtime['update_existing_fields'] === []) {
+                throw new RuntimeException('Выберите хотя бы одно поле для выборочного обновления существующих товаров.');
             }
 
             if ($this->hasActiveRunForType($driver->importRunType(), $source)) {
@@ -1113,11 +1120,11 @@ class SupplierImport extends Page implements HasForms
         };
 
         if (! $sourceIsSelected) {
-            return 'Сначала укажите URL фида, загрузите XML/YML файл или выберите источник из истории, затем загрузите категории <category>.';
+            return 'Сначала укажите URL фида, загрузите XML/YML файл или выберите источник из истории, затем загрузите категории.';
         }
 
         if ($this->yandexParsedCategoryTree === []) {
-            return 'Нажмите "Загрузить категории <category>", затем выберите категорию. Оставьте пустым для импорта всего feed.';
+            return 'Нажмите "Загрузить категории", затем выберите категорию. Оставьте пустым для импорта всего feed.';
         }
 
         if ($sourceKey !== $this->yandexCategoriesLoadedSourceKey) {
@@ -1342,6 +1349,8 @@ class SupplierImport extends Page implements HasForms
             'sync_scenario' => 'standard',
             'create_missing' => true,
             'update_existing' => true,
+            'update_existing_mode' => ExistingProductUpdateSelection::MODE_ALL,
+            'update_existing_fields' => ExistingProductUpdateSelection::defaultFields(),
             'error_threshold_count' => null,
             'error_threshold_percent' => null,
             'scope' => '',
@@ -1387,28 +1396,57 @@ class SupplierImport extends Page implements HasForms
                 }),
             Toggle::make('runtime.publish')
                 ->label('Публиковать импортированные товары'),
-            Toggle::make('runtime.force_media_recheck')
-                ->label('Обновлять картинки, даже если ссылка не изменилась')
-                ->helperText('Используйте это, если поставщик может заменить изображение по старой ссылке. Может немного замедлить импорт.'),
             Toggle::make('runtime.skip_existing')
                 ->label('Пропускать существующие товары')
+                ->visible(fn (Get $get): bool => $this->shouldShowSkipExistingToggle($get))
                 ->live()
-                ->afterStateUpdated(function (): void {
+                ->afterStateUpdated(function ($state): void {
+                    if ($state === true && is_array($this->data)) {
+                        data_set($this->data, 'runtime.update_existing', false);
+                    }
+
                     $this->updateSyncScenarioFromFlags();
                 }),
             Toggle::make('runtime.create_missing')
                 ->label('Создавать новые товары')
+                ->disabled(fn (Get $get): bool => ! (bool) $get('runtime.update_existing'))
                 ->live()
                 ->afterStateUpdated(function (): void {
                     $this->updateSyncScenarioFromFlags();
                 }),
             Toggle::make('runtime.update_existing')
                 ->label('Обновлять существующие товары')
-                ->disabled(fn (Get $get): bool => (bool) $get('runtime.skip_existing'))
+                ->disabled(fn (Get $get): bool => ! (bool) $get('runtime.create_missing'))
                 ->live()
+                ->afterStateUpdated(function ($state): void {
+                    if ($state === true && is_array($this->data)) {
+                        data_set($this->data, 'runtime.skip_existing', false);
+                    }
+
+                    $this->updateSyncScenarioFromFlags();
+                }),
+            ToggleButtons::make('runtime.update_existing_mode')
+                ->label('Как обновлять существующие товары')
+                ->options(fn (): array => $this->updateExistingModeOptions())
+                ->grouped()
+                ->live()
+                ->visible(fn (Get $get): bool => $this->shouldShowExistingUpdateControls($get))
+                ->helperText('Ограничение действует только для существующих товаров. Новые товары создаются полностью.')
                 ->afterStateUpdated(function (): void {
                     $this->updateSyncScenarioFromFlags();
                 }),
+            CheckboxList::make('runtime.update_existing_fields')
+                ->label('Обновлять только эти поля')
+                ->options(fn (): array => $this->updateExistingFieldOptions())
+                ->columns(2)
+                ->columnSpanFull()
+                ->live()
+                ->visible(fn (Get $get): bool => $this->shouldShowSelectedUpdateFields($get))
+                ->helperText('Цена обновляет только основную цену. Наличие обновляет только признак наличия. Новые товары создаются полностью.'),
+            Toggle::make('runtime.force_media_recheck')
+                ->label('Обновлять картинки, даже если ссылка не изменилась')
+                ->helperText('Используйте это, если поставщик может заменить изображение по старой ссылке. Может немного замедлить импорт.')
+                ->visible(fn (Get $get): bool => $this->shouldShowForceMediaRecheck($get)),
             // TextInput::make('runtime.error_threshold_count')
             //     ->label('Порог ошибок (count)')
             //     ->numeric()
@@ -1730,8 +1768,11 @@ class SupplierImport extends Page implements HasForms
     private function normalizedRuntime(): array
     {
         $runtime = is_array(data_get($this->data, 'runtime')) ? data_get($this->data, 'runtime') : [];
+        $runtime = $this->normalizeRuntimeToggleState($runtime);
         $categoryId = $this->normalizeNullableInt($runtime['category_id'] ?? null);
         $categoryName = null;
+        $updateExistingMode = ExistingProductUpdateSelection::normalizeMode($runtime['update_existing_mode'] ?? null);
+        $updateExistingFields = ExistingProductUpdateSelection::normalizeFields($runtime['update_existing_fields'] ?? null);
 
         if ($this->currentDriver() instanceof YandexMarketFeedDriver && ! $this->hasLoadedYandexFeedCategories()) {
             $categoryId = null;
@@ -1745,7 +1786,7 @@ class SupplierImport extends Page implements HasForms
             }
         }
 
-        return [
+        $normalized = [
             'limit' => max(0, (int) ($runtime['limit'] ?? 0)),
             'show_samples' => max(0, (int) ($runtime['show_samples'] ?? 3)),
             'publish' => (bool) ($runtime['publish'] ?? false),
@@ -1754,12 +1795,20 @@ class SupplierImport extends Page implements HasForms
             'sync_scenario' => (string) ($runtime['sync_scenario'] ?? 'standard'),
             'create_missing' => (bool) ($runtime['create_missing'] ?? true),
             'update_existing' => (bool) ($runtime['update_existing'] ?? true),
+            'update_existing_mode' => $updateExistingMode,
+            'update_existing_fields' => $updateExistingFields,
             'error_threshold_count' => $this->normalizeNullableInt($runtime['error_threshold_count'] ?? null),
             'error_threshold_percent' => $this->normalizeNullableFloat($runtime['error_threshold_percent'] ?? null),
             'scope' => trim((string) ($runtime['scope'] ?? '')),
             'category_id' => $categoryId,
             'category_name' => $categoryName,
         ];
+
+        if (! $this->canForceMediaRecheckForRuntime($normalized)) {
+            $normalized['force_media_recheck'] = false;
+        }
+
+        return $normalized;
     }
 
     private function resetFeedCategoriesIfSourceChanged(): void
@@ -1998,6 +2047,7 @@ class SupplierImport extends Page implements HasForms
         return [
             'standard' => 'Стандартный (создавать + обновлять)',
             'new_only' => 'Только новые товары',
+            'update_only' => 'Только обновление существующих',
             'custom' => 'Пользовательский',
         ];
     }
@@ -2006,6 +2056,7 @@ class SupplierImport extends Page implements HasForms
     {
         return match ($scenario) {
             'new_only' => 'Создает только новые товары, существующие не обновляет.',
+            'update_only' => 'Обновляет существующие товары, новые не создает.',
             'custom' => 'Используются ручные флаги создания и обновления ниже.',
             default => 'Создает новые и обновляет существующие товары без деактивации отсутствующих.',
         };
@@ -2025,10 +2076,19 @@ class SupplierImport extends Page implements HasForms
             $runtime['create_missing'] = true;
             $runtime['update_existing'] = false;
             $runtime['skip_existing'] = true;
+        } elseif ($scenario === 'update_only') {
+            $runtime['create_missing'] = false;
+            $runtime['update_existing'] = true;
+            $runtime['skip_existing'] = false;
         } elseif ($scenario === 'standard') {
             $runtime['create_missing'] = true;
             $runtime['update_existing'] = true;
             $runtime['skip_existing'] = false;
+        }
+
+        if (in_array($scenario, ['new_only', 'update_only', 'standard'], true)) {
+            $runtime['update_existing_mode'] = ExistingProductUpdateSelection::MODE_ALL;
+            $runtime['update_existing_fields'] = ExistingProductUpdateSelection::defaultFields();
         }
 
         $runtime['sync_scenario'] = $scenario;
@@ -2044,6 +2104,11 @@ class SupplierImport extends Page implements HasForms
             return;
         }
 
+        $runtime = $this->normalizeRuntimeToggleState(
+            is_array($this->data['runtime'] ?? null) ? $this->data['runtime'] : $this->defaultRuntime(),
+        );
+        $this->data['runtime'] = $runtime;
+
         $runtime = $this->normalizedRuntime();
         $scenario = 'custom';
 
@@ -2051,6 +2116,7 @@ class SupplierImport extends Page implements HasForms
             $runtime['create_missing']
             && $runtime['update_existing']
             && ! $runtime['skip_existing']
+            && $runtime['update_existing_mode'] === ExistingProductUpdateSelection::MODE_ALL
         ) {
             $scenario = 'standard';
         } elseif (
@@ -2059,10 +2125,156 @@ class SupplierImport extends Page implements HasForms
             && $runtime['skip_existing']
         ) {
             $scenario = 'new_only';
+        } elseif (
+            ! $runtime['create_missing']
+            && $runtime['update_existing']
+            && ! $runtime['skip_existing']
+            && $runtime['update_existing_mode'] === ExistingProductUpdateSelection::MODE_ALL
+        ) {
+            $scenario = 'update_only';
         }
 
         $this->data['runtime']['sync_scenario'] = $scenario;
         $this->form->fill($this->data);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function updateExistingModeOptions(): array
+    {
+        return [
+            ExistingProductUpdateSelection::MODE_ALL => 'Все импортируемые поля',
+            ExistingProductUpdateSelection::MODE_SELECTED => 'Только выбранные поля',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function updateExistingFieldOptions(): array
+    {
+        return [
+            ExistingProductUpdateSelection::FIELD_PRICE => 'Цена',
+            ExistingProductUpdateSelection::FIELD_AVAILABILITY => 'Наличие',
+            ExistingProductUpdateSelection::FIELD_VIDEO => 'Видео',
+            ExistingProductUpdateSelection::FIELD_IMAGES => 'Изображения',
+        ];
+    }
+
+    private function shouldShowSkipExistingToggle(Get $get): bool
+    {
+        return ! (bool) $get('runtime.update_existing');
+    }
+
+    private function shouldShowExistingUpdateControls(Get $get): bool
+    {
+        return $this->updatesExistingProductsFromState($get);
+    }
+
+    private function shouldShowSelectedUpdateFields(Get $get): bool
+    {
+        if (! $this->updatesExistingProductsFromState($get)) {
+            return false;
+        }
+
+        return ExistingProductUpdateSelection::normalizeMode($get('runtime.update_existing_mode'))
+            === ExistingProductUpdateSelection::MODE_SELECTED;
+    }
+
+    private function shouldShowForceMediaRecheck(Get $get): bool
+    {
+        if (! $this->updatesExistingProductsFromState($get)) {
+            return false;
+        }
+
+        if (! $this->currentSourceDownloadsImagesForState($get)) {
+            return false;
+        }
+
+        return ExistingProductUpdateSelection::updatesImages(
+            ExistingProductUpdateSelection::normalizeMode($get('runtime.update_existing_mode')),
+            ExistingProductUpdateSelection::normalizeFields($get('runtime.update_existing_fields')),
+        );
+    }
+
+    private function updatesExistingProductsFromState(Get $get): bool
+    {
+        return (bool) $get('runtime.update_existing') && ! (bool) $get('runtime.skip_existing');
+    }
+
+    private function currentSourceDownloadsImagesForState(Get $get): bool
+    {
+        $driver = $this->resolveSelectableDriver(is_string($get('driver_key')) ? $get('driver_key') : null);
+        $settings = is_array($get('source_settings')) ? $get('source_settings') : [];
+        $normalizedSettings = $driver->normalizeSettings($settings);
+
+        if (! array_key_exists('download_images', $normalizedSettings)) {
+            return true;
+        }
+
+        return (bool) $normalizedSettings['download_images'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $runtime
+     */
+    private function canForceMediaRecheckForRuntime(array $runtime): bool
+    {
+        if (! (($runtime['update_existing'] ?? false) === true) || (($runtime['skip_existing'] ?? false) === true)) {
+            return false;
+        }
+
+        if (! ExistingProductUpdateSelection::updatesImages(
+            ExistingProductUpdateSelection::normalizeMode($runtime['update_existing_mode'] ?? null),
+            ExistingProductUpdateSelection::normalizeFields($runtime['update_existing_fields'] ?? null),
+        )) {
+            return false;
+        }
+
+        $sourceSettings = $this->currentSourceSettings();
+
+        if (! array_key_exists('download_images', $sourceSettings)) {
+            return true;
+        }
+
+        return (bool) $sourceSettings['download_images'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $runtime
+     */
+    private function requiresSelectedUpdateFields(array $runtime): bool
+    {
+        return (($runtime['update_existing'] ?? false) === true)
+            && (($runtime['skip_existing'] ?? false) !== true)
+            && ExistingProductUpdateSelection::normalizeMode($runtime['update_existing_mode'] ?? null)
+                === ExistingProductUpdateSelection::MODE_SELECTED;
+    }
+
+    /**
+     * @param  array<string, mixed>  $runtime
+     * @return array<string, mixed>
+     */
+    private function normalizeRuntimeToggleState(array $runtime): array
+    {
+        $runtime['create_missing'] = (bool) ($runtime['create_missing'] ?? true);
+        $runtime['update_existing'] = (bool) ($runtime['update_existing'] ?? true);
+        $runtime['skip_existing'] = (bool) ($runtime['skip_existing'] ?? false);
+
+        if ($runtime['skip_existing']) {
+            $runtime['update_existing'] = false;
+        }
+
+        if (! $runtime['create_missing'] && ! $runtime['update_existing']) {
+            if ($runtime['skip_existing']) {
+                $runtime['create_missing'] = true;
+            } else {
+                $runtime['update_existing'] = true;
+            }
+        }
+
+        return $runtime;
     }
 
     private function typeLabel(string $type): string

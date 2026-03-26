@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\DownloadProductImportMediaJob;
 use App\Models\Category;
 use App\Models\ImportRun;
 use App\Models\ImportRunEvent;
@@ -7,6 +8,7 @@ use App\Models\Product;
 use App\Models\ProductImportMedia;
 use App\Models\ProductSupplierReference;
 use App\Support\CatalogImport\DTO\ProductPayload;
+use App\Support\CatalogImport\Processing\ExistingProductUpdateSelection;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
 use App\Support\CatalogImport\Processing\ProductPayloadNormalizer;
 use App\Support\CatalogImport\Runs\DatabaseImportRunEventLogger;
@@ -221,6 +223,8 @@ it('clears existing video on update when payload video is empty', function (): v
         'supplier' => 'supplier_video_clear',
         'run_id' => $secondRun->id,
         'update_existing' => true,
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+        'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_VIDEO],
     ]);
 
     expect($summary['processed'])->toBe(1)
@@ -230,6 +234,124 @@ it('clears existing video on update when payload video is empty', function (): v
     $product->refresh();
 
     expect($product->video)->toBeNull();
+});
+
+it('updates only selected price field for existing products', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Исходный товар',
+        'slug' => 'selective-price-product',
+        'price_amount' => 100,
+        'discount_price' => 90,
+        'currency' => 'USD',
+        'in_stock' => false,
+        'qty' => 5,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+        'video' => productImportRutubeVideoBlock('old-price-video'),
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'selective_price_supplier',
+        'external_id' => 'PRICE-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'PRICE-1',
+            name: 'Новое имя',
+            priceAmount: 350,
+            discountPrice: 320,
+            currency: 'EUR',
+            inStock: true,
+            qty: 12,
+            video: productImportRutubeVideoBlock('new-price-video'),
+        ),
+    ], [
+        'supplier' => 'selective_price_supplier',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+        'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_PRICE],
+    ]);
+
+    expect($summary['processed'])->toBe(1)
+        ->and($summary['updated'])->toBe(1)
+        ->and($summary['errors'])->toBe(0);
+
+    $product->refresh();
+
+    expect($product->name)->toBe('Исходный товар')
+        ->and($product->price_amount)->toBe(350)
+        ->and($product->discount_price)->toBe(90)
+        ->and($product->currency)->toBe('USD')
+        ->and($product->in_stock)->toBeFalse()
+        ->and($product->qty)->toBe(5)
+        ->and($product->video)->toBe(productImportRutubeVideoBlock('old-price-video'));
+});
+
+it('updates only selected availability field for existing products', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Исходный товар',
+        'slug' => 'selective-availability-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => false,
+        'qty' => 7,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'selective_availability_supplier',
+        'external_id' => 'STOCK-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'STOCK-1',
+            name: 'Новое имя',
+            priceAmount: 250,
+            inStock: true,
+            qty: 0,
+        ),
+    ], [
+        'supplier' => 'selective_availability_supplier',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+        'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_AVAILABILITY],
+    ]);
+
+    expect($summary['processed'])->toBe(1)
+        ->and($summary['updated'])->toBe(1)
+        ->and($summary['errors'])->toBe(0);
+
+    $product->refresh();
+
+    expect($product->name)->toBe('Исходный товар')
+        ->and($product->price_amount)->toBe(100)
+        ->and($product->in_stock)->toBeTrue()
+        ->and($product->qty)->toBe(7);
 });
 
 it('preserves existing pricing on update when payload price is missing and option is enabled', function (): void {
@@ -640,6 +762,8 @@ it('does not mark product as updated when only media fields differ and media dow
         'run_id' => $secondRun->id,
         'update_existing' => true,
         'download_media' => true,
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+        'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_IMAGES],
         'event_logger' => $logger,
     ]);
 
@@ -659,6 +783,115 @@ it('does not mark product as updated when only media fields differ and media dow
         ->and($event?->context['changes']['thumb'] ?? null)->toBeNull()
         ->and($event?->context['changes']['gallery'] ?? null)->toBeNull()
         ->and($event?->context['deferred_changes'] ?? null)->toBeNull();
+});
+
+it('does not queue media for existing products when images are not selected', function (): void {
+    Queue::fake();
+
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Товар без обновления картинок',
+        'slug' => 'selective-media-skip-product',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+        'image' => '/storage/281/SP502.jpg',
+        'thumb' => '/storage/281/SP502.jpg',
+        'gallery' => ['/storage/281/SP502.jpg'],
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'selective_media_skip_feed',
+        'external_id' => 'MEDIA-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'MEDIA-1',
+            name: 'Товар без обновления картинок',
+            priceAmount: 250,
+            images: ['https://vactool.ru/storage/281/SP502.jpg'],
+        ),
+    ], [
+        'supplier' => 'selective_media_skip_feed',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'download_media' => true,
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+        'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_PRICE],
+    ]);
+
+    expect($summary['processed'])->toBe(1)
+        ->and($summary['updated'])->toBe(1)
+        ->and($summary['results'][0]->meta['media_queued'] ?? null)->toBe(0)
+        ->and(ProductImportMedia::query()->count())->toBe(0);
+
+    Queue::assertNotPushed(DownloadProductImportMediaJob::class);
+
+    $product->refresh();
+
+    expect($product->price_amount)->toBe(250)
+        ->and($product->image)->toBe('/storage/281/SP502.jpg')
+        ->and($product->gallery)->toBe(['/storage/281/SP502.jpg']);
+});
+
+it('creates new products with full payload when selective existing update mode is configured', function (): void {
+    $run = createImportRun('catalog_import_yml');
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'NEW-SELECTIVE-1',
+            name: 'Новый товар',
+            brand: 'Новый бренд',
+            priceAmount: 12345,
+            currency: 'EUR',
+            inStock: true,
+            qty: 3,
+            video: productImportRutubeVideoBlock('new-product-video'),
+            images: [
+                'https://example.test/new-1.jpg',
+                'https://example.test/new-2.jpg',
+            ],
+        ),
+    ], [
+        'supplier' => 'new_selective_supplier',
+        'run_id' => $run->id,
+        'create_missing' => true,
+        'update_existing' => true,
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+        'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_PRICE],
+    ]);
+
+    expect($summary['processed'])->toBe(1)
+        ->and($summary['created'])->toBe(1)
+        ->and($summary['errors'])->toBe(0);
+
+    $product = Product::query()->where('name', 'Новый товар')->first();
+
+    expect($product)->toBeInstanceOf(Product::class)
+        ->and($product?->brand)->toBe('Новый бренд')
+        ->and($product?->price_amount)->toBe(12345)
+        ->and($product?->currency)->toBe('EUR')
+        ->and($product?->in_stock)->toBeTrue()
+        ->and($product?->qty)->toBe(3)
+        ->and($product?->video)->toBe(productImportRutubeVideoBlock('new-product-video'))
+        ->and($product?->gallery)->toBe([
+            'https://example.test/new-1.jpg',
+            'https://example.test/new-2.jpg',
+        ]);
 });
 
 it('marks product as unchanged when media is fully reused on repeated import', function (): void {

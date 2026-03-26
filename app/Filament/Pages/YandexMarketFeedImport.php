@@ -215,7 +215,7 @@ class YandexMarketFeedImport extends Page implements HasForms
                             ->getOptionLabelUsing(fn ($value): ?string => app(YandexMarketFeedSourceHistoryService::class)->historyOptionLabel($value)),
                         Actions::make([
                             FormAction::make('load_categories')
-                                ->label('Загрузить категории <category>')
+                                ->label('Загрузить категории')
                                 ->icon('heroicon-o-list-bullet')
                                 ->color('gray')
                                 ->action('loadFeedCategories'),
@@ -230,7 +230,7 @@ class YandexMarketFeedImport extends Page implements HasForms
                             ->getOptionLabelUsing(fn ($value): ?string => $this->categoryOptionLabel($value))
                             ->hintIcon(
                                 Heroicon::InformationCircle,
-                                'Сначала нажмите "Загрузить категории <category>", затем выберите категорию. Для родительской категории будут импортированы товары из всех дочерних. Оставьте пустым для импорта всего фида.',
+                                'Сначала нажмите "Загрузить категории", затем выберите категорию. Для родительской категории будут импортированы товары из всех дочерних. Оставьте пустым для импорта всего фида.',
                             ),
                     ]),
                 Section::make('Параметры run')

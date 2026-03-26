@@ -168,6 +168,8 @@ final class MetaltecXmlDriver implements SupplierImportDriver
             'finalize_missing' => false,
             'create_missing' => $this->toBool($runtime['create_missing'] ?? true),
             'update_existing' => $this->toBool($runtime['update_existing'] ?? true),
+            'update_existing_mode' => (string) ($runtime['update_existing_mode'] ?? 'all'),
+            'update_existing_fields' => is_array($runtime['update_existing_fields'] ?? null) ? $runtime['update_existing_fields'] : [],
             'error_threshold_count' => $this->nullableInt($runtime['error_threshold_count'] ?? null),
             'error_threshold_percent' => $this->nullableFloat($runtime['error_threshold_percent'] ?? null),
         ];

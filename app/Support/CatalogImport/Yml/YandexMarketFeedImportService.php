@@ -8,6 +8,7 @@ use App\Support\CatalogImport\Contracts\SourceResolverInterface;
 use App\Support\CatalogImport\DTO\ImportError;
 use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\DTO\ResolvedSource;
+use App\Support\CatalogImport\Processing\ExistingProductUpdateSelection;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
 use App\Support\CatalogImport\Runs\DatabaseImportRunEventLogger;
 use App\Support\CatalogImport\Runs\ImportRunEventData;
@@ -543,6 +544,12 @@ class YandexMarketFeedImportService
                 $options['update_existing'] ?? $options['update-existing'] ?? null,
                 ! $skipExisting,
             ),
+            'update_existing_mode' => ExistingProductUpdateSelection::normalizeMode(
+                $options['update_existing_mode'] ?? $options['update-existing-mode'] ?? null,
+            ),
+            'update_existing_fields' => ExistingProductUpdateSelection::normalizeFields(
+                $options['update_existing_fields'] ?? $options['update-existing-fields'] ?? null,
+            ),
         ];
     }
 
@@ -637,6 +644,8 @@ class YandexMarketFeedImportService
             'publish_updated' => $normalized['publish'],
             'download_media' => $normalized['download_images'],
             'force_media_recheck' => $normalized['force_media_recheck'],
+            'update_existing_mode' => $normalized['update_existing_mode'],
+            'update_existing_fields' => $normalized['update_existing_fields'],
             'use_source_slug' => false,
             'mode' => $normalized['mode'],
             'event_logger' => $eventLogger,

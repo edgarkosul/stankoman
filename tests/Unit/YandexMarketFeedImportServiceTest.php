@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\CatalogImport\Processing\ExistingProductUpdateSelection;
 use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
 use Tests\TestCase;
 
@@ -205,11 +206,21 @@ it('maps download_images flag into processor download_media option', function ()
         'source' => 'https://example.test/yml.xml',
         'download_images' => true,
         'run_id' => 77,
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+        'update_existing_fields' => [
+            ExistingProductUpdateSelection::FIELD_PRICE,
+            ExistingProductUpdateSelection::FIELD_IMAGES,
+        ],
     ]);
     $options = $processorOptions->invoke($service, $normalized);
 
     expect($options['download_media'] ?? null)->toBeTrue();
     expect($options['run_id'] ?? null)->toBe(77);
+    expect($options['update_existing_mode'] ?? null)->toBe(ExistingProductUpdateSelection::MODE_SELECTED);
+    expect($options['update_existing_fields'] ?? null)->toBe([
+        ExistingProductUpdateSelection::FIELD_PRICE,
+        ExistingProductUpdateSelection::FIELD_IMAGES,
+    ]);
 });
 
 it('reads categories from yandex market feed', function () {
