@@ -132,6 +132,8 @@ final class PdfLinkBlockConfigNormalizer
             ]);
         }
 
+        $url = $this->normalizeUrlEncoding($url);
+
         if (! filter_var($url, FILTER_VALIDATE_URL)) {
             throw ValidationException::withMessages([
                 'url' => 'Укажите корректный URL.',
@@ -147,6 +149,85 @@ final class PdfLinkBlockConfigNormalizer
         }
 
         return $url;
+    }
+
+    private function normalizeUrlEncoding(string $url): string
+    {
+        $parts = parse_url($url);
+
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            return $url;
+        }
+
+        $normalized = strtolower((string) $parts['scheme']).'://';
+
+        if (isset($parts['user']) && is_string($parts['user']) && $parts['user'] !== '') {
+            $normalized .= rawurlencode(rawurldecode($parts['user']));
+
+            if (isset($parts['pass']) && is_string($parts['pass']) && $parts['pass'] !== '') {
+                $normalized .= ':'.rawurlencode(rawurldecode($parts['pass']));
+            }
+
+            $normalized .= '@';
+        }
+
+        $normalized .= (string) $parts['host'];
+
+        if (isset($parts['port']) && is_int($parts['port'])) {
+            $normalized .= ':'.$parts['port'];
+        }
+
+        $normalized .= $this->normalizeUrlPath($parts['path'] ?? null);
+
+        if (isset($parts['query']) && is_string($parts['query']) && $parts['query'] !== '') {
+            $normalized .= '?'.$this->normalizeUrlQuery($parts['query']);
+        }
+
+        if (isset($parts['fragment']) && is_string($parts['fragment']) && $parts['fragment'] !== '') {
+            $normalized .= '#'.rawurlencode(rawurldecode($parts['fragment']));
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeUrlPath(mixed $path): string
+    {
+        if (! is_string($path) || $path === '') {
+            return '';
+        }
+
+        $segments = explode('/', $path);
+        $normalizedSegments = array_map(
+            static fn (string $segment): string => rawurlencode(rawurldecode($segment)),
+            $segments,
+        );
+
+        return implode('/', $normalizedSegments);
+    }
+
+    private function normalizeUrlQuery(string $query): string
+    {
+        $pairs = explode('&', $query);
+        $normalizedPairs = [];
+
+        foreach ($pairs as $pair) {
+            if ($pair === '') {
+                continue;
+            }
+
+            [$key, $value] = array_pad(explode('=', $pair, 2), 2, null);
+            $normalizedKey = rawurlencode(rawurldecode((string) $key));
+
+            if ($value === null) {
+                $normalizedPairs[] = $normalizedKey;
+
+                continue;
+            }
+
+            $normalizedPairs[] = $normalizedKey.'='.rawurlencode(rawurldecode($value));
+        }
+
+        return implode('&', $normalizedPairs);
     }
 
     /**

@@ -12,6 +12,8 @@ final class ExistingProductUpdateSelection
 
     public const FIELD_AVAILABILITY = 'availability';
 
+    public const FIELD_INSTRUCTIONS = 'instructions';
+
     public const FIELD_VIDEO = 'video';
 
     public const FIELD_IMAGES = 'images';
@@ -22,6 +24,7 @@ final class ExistingProductUpdateSelection
     private const ATTRIBUTE_MAP = [
         self::FIELD_PRICE => ['price_amount'],
         self::FIELD_AVAILABILITY => ['in_stock'],
+        self::FIELD_INSTRUCTIONS => ['instructions'],
         self::FIELD_VIDEO => ['video'],
         self::FIELD_IMAGES => ['image', 'thumb', 'gallery'],
     ];
@@ -34,6 +37,7 @@ final class ExistingProductUpdateSelection
         return [
             self::FIELD_PRICE,
             self::FIELD_AVAILABILITY,
+            self::FIELD_INSTRUCTIONS,
             self::FIELD_VIDEO,
             self::FIELD_IMAGES,
         ];

@@ -643,6 +643,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
             'short' => $this->limit($payload->short, 1000),
             'description' => $description,
             'extra_description' => $this->normalizeDescription($payload->extraDescription),
+            'instructions' => $this->normalizeDescription($payload->instructions),
             'video' => $this->normalizeDescription($payload->video),
             'specs' => $this->normalizeSpecs($payload->attributes),
             'promo_info' => $this->limit($payload->promoInfo, 255),

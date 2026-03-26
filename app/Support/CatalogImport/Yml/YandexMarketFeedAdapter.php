@@ -7,10 +7,14 @@ use App\Support\CatalogImport\DTO\ImportError;
 use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\DTO\RecordMappingResult;
 use App\Support\CatalogImport\Enums\ImportErrorLevel;
+use App\Support\Filament\PdfLinkBlockConfigNormalizer;
+use Illuminate\Validation\ValidationException;
 use SimpleXMLElement;
 
 final class YandexMarketFeedAdapter implements SupplierAdapterInterface
 {
+    private const PDF_LINK_BLOCK_ID = 'pdf-link';
+
     private const RUTUBE_VIDEO_BLOCK_ID = 'rutube-video';
 
     private const RUTUBE_VIDEO_BLOCK_WIDTH = 640;
@@ -98,8 +102,9 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $vendor = $this->textOrNull($xml->vendor ?? null);
         $pictures = $this->extractPictures($xml);
         $description = $this->extractDescription($xml, $pictures);
+        $offerContent = $this->extractOfferContent($xml);
         $video = $this->extractVideo($xml);
-        $params = $this->extractParams($xml);
+        $errors = [...$errors, ...$offerContent['errors']];
         $resolvedSku = $this->resolveSku($externalId, $name, $xml);
 
         return new RecordMappingResult(
@@ -112,8 +117,9 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 currency: $currency,
                 inStock: $offer->available,
                 images: $pictures,
-                attributes: $params,
+                attributes: $offerContent['params'],
                 sku: $resolvedSku['sku'],
+                instructions: $offerContent['instructions'],
                 video: $video,
                 source: [
                     'supplier' => $this->profile->supplierKey(),
@@ -176,8 +182,9 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         $priceAmount = $this->parsePriceAmount($priceRaw);
         $pictures = $this->extractPictures($xml);
         $description = $this->extractDescription($xml, $pictures);
+        $offerContent = $this->extractOfferContent($xml);
         $video = $this->extractVideo($xml);
-        $params = $this->extractParams($xml);
+        $errors = [...$errors, ...$offerContent['errors']];
         $resolvedSku = $this->resolveSku($externalId, $name, $xml);
 
         return new RecordMappingResult(
@@ -190,8 +197,9 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 currency: $currency,
                 inStock: $offer->available,
                 images: $pictures,
-                attributes: $params,
+                attributes: $offerContent['params'],
                 sku: $resolvedSku['sku'],
+                instructions: $offerContent['instructions'],
                 video: $video,
                 source: [
                     'supplier' => $this->profile->supplierKey(),
@@ -382,11 +390,19 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
 
     private function buildRutubeVideoBlock(string $rutubeId): string
     {
-        $config = json_encode([
+        return $this->buildCustomBlock(self::RUTUBE_VIDEO_BLOCK_ID, [
             'rutube_id' => $rutubeId,
             'width' => self::RUTUBE_VIDEO_BLOCK_WIDTH,
             'alignment' => self::RUTUBE_VIDEO_BLOCK_ALIGNMENT,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    private function buildCustomBlock(string $blockId, array $config): string
+    {
+        $config = json_encode($config, JSON_UNESCAPED_UNICODE);
 
         if (! is_string($config) || $config === '') {
             return '';
@@ -395,7 +411,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
         return sprintf(
             '<div data-type="customBlock" data-config="%s" data-id="%s"></div>',
             htmlspecialchars($config, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
-            self::RUTUBE_VIDEO_BLOCK_ID,
+            $blockId,
         );
     }
 
@@ -639,12 +655,14 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
     }
 
     /**
-     * @return array<int, array{name:string,value:string,source:string}>
+     * @return array{params: array<int, array{name:string,value:string,source:string}>, instructions: ?string, errors: array<int, ImportError>}
      */
-    private function extractParams(SimpleXMLElement $xml): array
+    private function extractOfferContent(SimpleXMLElement $xml): array
     {
         $params = [];
-        $seen = [];
+        $seenParams = [];
+        $documents = [];
+        $seenDocuments = [];
 
         foreach ($xml->param as $paramNode) {
             $name = $this->textOrNull((string) ($paramNode['name'] ?? ''));
@@ -660,13 +678,26 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
                 $value .= ' '.$unit;
             }
 
-            $key = mb_strtolower($name.'::'.$value);
+            $pdfUrls = $this->extractPdfUrls($name."\n".$value);
 
-            if (isset($seen[$key])) {
+            if ($pdfUrls !== []) {
+                $this->collectPdfDocuments(
+                    documents: $documents,
+                    seenDocuments: $seenDocuments,
+                    urls: $pdfUrls,
+                    linkText: count($pdfUrls) === 1 ? $name : null,
+                );
+
                 continue;
             }
 
-            $seen[$key] = true;
+            $key = mb_strtolower($name.'::'.$value);
+
+            if (isset($seenParams[$key])) {
+                continue;
+            }
+
+            $seenParams[$key] = true;
             $params[] = [
                 'name' => $name,
                 'value' => $value,
@@ -674,6 +705,189 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
             ];
         }
 
-        return $params;
+        $this->collectPdfDocuments(
+            documents: $documents,
+            seenDocuments: $seenDocuments,
+            urls: $this->extractPdfUrls((string) $xml->asXML()),
+        );
+
+        $errors = [];
+        $instructions = $this->buildPdfInstructionBlocks($documents, $errors);
+
+        return [
+            'params' => $params,
+            'instructions' => $instructions,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * @param  array<int, array{url:string, link_text:?string}>  $documents
+     * @param  array<string, bool>  $seenDocuments
+     * @param  array<int, string>  $urls
+     */
+    private function collectPdfDocuments(
+        array &$documents,
+        array &$seenDocuments,
+        array $urls,
+        ?string $linkText = null,
+    ): void {
+        $normalizedLinkText = $this->normalizePdfLinkText($linkText);
+
+        foreach ($urls as $url) {
+            $key = mb_strtolower($url);
+
+            if (isset($seenDocuments[$key])) {
+                continue;
+            }
+
+            $seenDocuments[$key] = true;
+            $documents[] = [
+                'url' => $url,
+                'link_text' => $normalizedLinkText,
+            ];
+        }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractPdfUrls(string $value): array
+    {
+        $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE, 'UTF-8');
+
+        $matched = preg_match_all(
+            '~https?://[^\r\n<>"\']+?\.pdf(?:\?[^\r\n<>"\']*)?(?:#[^\r\n<>"\']*)?~iu',
+            $value,
+            $matches,
+        );
+
+        if (! is_int($matched) || $matched < 1) {
+            return [];
+        }
+
+        $urls = [];
+        $seen = [];
+
+        foreach ($matches[0] ?? [] as $url) {
+            if (! is_string($url)) {
+                continue;
+            }
+
+            $url = trim($url);
+
+            if ($url === '') {
+                continue;
+            }
+
+            $key = mb_strtolower($url);
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $urls[] = $url;
+        }
+
+        return $urls;
+    }
+
+    /**
+     * @param  array<int, array{url:string, link_text:?string}>  $documents
+     * @param  array<int, ImportError>  $errors
+     */
+    private function buildPdfInstructionBlocks(array $documents, array &$errors): ?string
+    {
+        if ($documents === []) {
+            return null;
+        }
+
+        $blocks = [];
+
+        foreach ($documents as $document) {
+            $block = $this->buildPdfInstructionBlock(
+                url: $document['url'],
+                linkText: $document['link_text'],
+                errors: $errors,
+            );
+
+            if ($block === null) {
+                continue;
+            }
+
+            $blocks[] = $block;
+        }
+
+        return $blocks === [] ? null : implode('', $blocks);
+    }
+
+    /**
+     * @param  array<int, ImportError>  $errors
+     */
+    private function buildPdfInstructionBlock(string $url, ?string $linkText, array &$errors): ?string
+    {
+        try {
+            $config = app(PdfLinkBlockConfigNormalizer::class)->normalize([
+                'source_type' => PdfLinkBlockConfigNormalizer::SOURCE_DOWNLOAD_URL,
+                'target' => PdfLinkBlockConfigNormalizer::TARGET_NEW_TAB,
+                'url' => $url,
+                'link_text' => $linkText,
+            ]);
+        } catch (ValidationException $exception) {
+            $errors[] = new ImportError(
+                code: 'pdf_instruction_import_failed',
+                message: 'Не удалось подготовить PDF-документ для инструкции: '.$this->validationExceptionMessage($exception),
+                context: ['url' => $url],
+            );
+
+            return null;
+        } catch (\Throwable) {
+            $errors[] = new ImportError(
+                code: 'pdf_instruction_import_failed',
+                message: 'Не удалось подготовить PDF-документ для инструкции.',
+                context: ['url' => $url],
+            );
+
+            return null;
+        }
+
+        $block = $this->buildCustomBlock(self::PDF_LINK_BLOCK_ID, $config);
+
+        if ($block !== '') {
+            return $block;
+        }
+
+        $errors[] = new ImportError(
+            code: 'pdf_instruction_block_build_failed',
+            message: 'Не удалось собрать rich-content блок PDF-документа.',
+            context: ['url' => $url],
+        );
+
+        return null;
+    }
+
+    private function normalizePdfLinkText(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return $this->textOrNull(
+            html_entity_decode($value, ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE, 'UTF-8'),
+        );
+    }
+
+    private function validationExceptionMessage(ValidationException $exception): string
+    {
+        foreach ($exception->errors() as $messages) {
+            foreach ($messages as $message) {
+                if (is_string($message) && $message !== '') {
+                    return $message;
+                }
+            }
+        }
+
+        return $exception->getMessage() !== '' ? $exception->getMessage() : 'Некорректный PDF URL.';
     }
 }

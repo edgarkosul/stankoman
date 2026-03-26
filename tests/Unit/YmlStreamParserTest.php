@@ -2,6 +2,12 @@
 
 use App\Support\CatalogImport\Yml\YandexMarketFeedAdapter;
 use App\Support\CatalogImport\Yml\YmlStreamParser;
+use App\Support\Filament\PdfLinkBlockConfigNormalizer;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use Tests\TestCase;
+
+uses(TestCase::class);
 
 it('streams categories and offers from yml feed', function () {
     $xml = <<<'XML'
@@ -476,9 +482,133 @@ XML;
     }
 });
 
+it('maps pdf links into instructions blocks and skips pdf params from specs', function () {
+    Storage::fake('public');
+
+    Http::fake([
+        'https://example.test/files/%D0%9A%D0%B0%D1%82%D0%B0%D0%BB%D0%BE%D0%B3_WARRIOR.pdf' => Http::response(
+            "%PDF-1.4\ncatalog",
+            200,
+            [
+                'Content-Disposition' => 'attachment; filename="Каталог_WARRIOR.pdf"',
+                'Content-Type' => 'application/pdf',
+            ],
+        ),
+        'https://example.test/files/W0204%20%2820.07.2021%29.pdf' => Http::response(
+            "%PDF-1.4\nmanual",
+            200,
+            [
+                'Content-Disposition' => 'attachment; filename="W0204 (20.07.2021).pdf"',
+                'Content-Type' => 'application/pdf',
+            ],
+        ),
+    ]);
+
+    $xml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<yml_catalog date="2026-03-05 00:00">
+  <shop>
+    <offers>
+      <offer id="A1" available="true">
+        <name>Simple Product</name>
+        <price>123</price>
+        <currencyId>RUB</currencyId>
+        <param name="Каталог_WARRIOR.pdf">
+          https://example.test/files/Каталог_WARRIOR.pdf
+        </param>
+        <param name="Мощность">5 кВт</param>
+        <documentation><![CDATA[
+          Скачать руководство: https://example.test/files/W0204 (20.07.2021).pdf
+          И ещё раз каталог: https://example.test/files/Каталог_WARRIOR.pdf
+        ]]></documentation>
+        <categoryId>1</categoryId>
+      </offer>
+    </offers>
+  </shop>
+</yml_catalog>
+XML;
+
+    $path = tempnam(sys_get_temp_dir(), 'yml_');
+    file_put_contents($path, $xml);
+
+    try {
+        $stream = (new YmlStreamParser)->open($path);
+        $offers = iterator_to_array($stream->offers);
+
+        $result = (new YandexMarketFeedAdapter)->mapOffer($offers[0]);
+
+        expect($result->isSuccess())->toBeTrue()
+            ->and($result->errors)->toBe([])
+            ->and($result->payload?->attributes)->toBe([
+                [
+                    'name' => 'Мощность',
+                    'value' => '5 кВт',
+                    'source' => 'yml',
+                ],
+            ]);
+
+        $configs = yandexCustomBlockConfigs($result->payload?->instructions, 'pdf-link');
+
+        expect($configs)->toHaveCount(2)
+            ->and($configs[0]['source_type'] ?? null)->toBe(PdfLinkBlockConfigNormalizer::SOURCE_DOWNLOAD_URL)
+            ->and($configs[0]['target'] ?? null)->toBe(PdfLinkBlockConfigNormalizer::TARGET_NEW_TAB)
+            ->and($configs[0]['link_text'] ?? null)->toBe('Каталог_WARRIOR.pdf')
+            ->and($configs[0]['url'] ?? null)->toBe('https://example.test/files/%D0%9A%D0%B0%D1%82%D0%B0%D0%BB%D0%BE%D0%B3_WARRIOR.pdf')
+            ->and($configs[0]['file'] ?? null)->toStartWith(PdfLinkBlockConfigNormalizer::DIRECTORY.'/')
+            ->and($configs[1]['link_text'] ?? null)->toBe('W0204 (20.07.2021).pdf')
+            ->and($configs[1]['url'] ?? null)->toBe('https://example.test/files/W0204%20%2820.07.2021%29.pdf')
+            ->and($configs[1]['file'] ?? null)->toStartWith(PdfLinkBlockConfigNormalizer::DIRECTORY.'/');
+
+        Storage::disk('public')->assertExists($configs[0]['file']);
+        Storage::disk('public')->assertExists($configs[1]['file']);
+        Http::assertSentCount(2);
+    } finally {
+        @unlink($path);
+    }
+});
+
 function yandexRutubeVideoBlock(string $rutubeId): string
 {
     return '<div data-type="customBlock" data-config="{&quot;rutube_id&quot;:&quot;'
         .$rutubeId
         .'&quot;,&quot;width&quot;:640,&quot;alignment&quot;:&quot;center&quot;}" data-id="rutube-video"></div>';
+}
+
+/**
+ * @return array<int, array<string, mixed>>
+ */
+function yandexCustomBlockConfigs(?string $content, string $blockId): array
+{
+    if (! is_string($content) || $content === '') {
+        return [];
+    }
+
+    $matched = preg_match_all(
+        '/<div data-type="customBlock" data-config="([^"]+)" data-id="'.preg_quote($blockId, '/').'"><\/div>/',
+        $content,
+        $matches,
+    );
+
+    if (! is_int($matched) || $matched < 1) {
+        return [];
+    }
+
+    $configs = [];
+
+    foreach ($matches[1] ?? [] as $encodedConfig) {
+        if (! is_string($encodedConfig)) {
+            continue;
+        }
+
+        $config = json_decode(
+            html_entity_decode($encodedConfig, ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE, 'UTF-8'),
+            true,
+        );
+
+        if (is_array($config)) {
+            $configs[] = $config;
+        }
+    }
+
+    return $configs;
 }

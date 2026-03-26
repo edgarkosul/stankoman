@@ -27,6 +27,7 @@ final readonly class ProductPayload
         public ?int $discountPrice = null,
         public ?string $short = null,
         public ?string $extraDescription = null,
+        public ?string $instructions = null,
         public ?string $video = null,
         public ?string $promoInfo = null,
         public ?string $metaTitle = null,

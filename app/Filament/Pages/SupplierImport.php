@@ -2157,6 +2157,7 @@ class SupplierImport extends Page implements HasForms
         return [
             ExistingProductUpdateSelection::FIELD_PRICE => 'Цена',
             ExistingProductUpdateSelection::FIELD_AVAILABILITY => 'Наличие',
+            ExistingProductUpdateSelection::FIELD_INSTRUCTIONS => 'Инструкции',
             ExistingProductUpdateSelection::FIELD_VIDEO => 'Видео',
             ExistingProductUpdateSelection::FIELD_IMAGES => 'Изображения',
         ];

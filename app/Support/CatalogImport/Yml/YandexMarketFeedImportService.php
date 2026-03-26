@@ -321,6 +321,24 @@ class YandexMarketFeedImportService
 
                         $errors += count($mapping->errors);
 
+                        foreach ($mapping->errors as $mappingError) {
+                            $urlErrors[] = [
+                                'url' => $errorRow,
+                                'message' => $mappingError->message,
+                            ];
+
+                            $this->logRunEvent(
+                                logger: $eventLogger,
+                                runId: $normalized['run_id'],
+                                stage: 'mapping',
+                                result: 'warning',
+                                sourceRef: $errorRow,
+                                externalId: $externalId !== '' ? $externalId : null,
+                                code: $mappingError->code,
+                                message: $mappingError->message,
+                            );
+                        }
+
                         if ($normalized['write']) {
                             $processResult = $this->processor->process(
                                 $mapping->payload,

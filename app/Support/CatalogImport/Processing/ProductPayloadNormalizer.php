@@ -26,6 +26,7 @@ class ProductPayloadNormalizer
             discountPrice: $this->normalizeNonNegativeInteger($payload->discountPrice),
             short: $this->normalizeString($payload->short, collapseWhitespace: true),
             extraDescription: $this->normalizeDescription($payload->extraDescription),
+            instructions: $this->normalizeRichContent($payload->instructions),
             video: $this->normalizeRichContent($payload->video),
             promoInfo: $this->normalizeString($payload->promoInfo, collapseWhitespace: true),
             metaTitle: $this->normalizeString($payload->metaTitle, collapseWhitespace: true),

@@ -42,6 +42,7 @@ final class YandexMarketFeedProfile
             'name(vendor.model)' => 'typePrefix? + vendor + model',
             'brand' => 'vendor',
             'description' => 'description',
+            'instructions' => 'pdf urls from offer/params -> pdf-link rich-content blocks',
             'video' => 'video[] -> rutube-video rich-content blocks',
             'price' => 'price',
             'currency' => 'currencyId',

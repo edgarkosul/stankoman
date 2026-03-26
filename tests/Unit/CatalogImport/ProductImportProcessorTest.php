@@ -46,6 +46,11 @@ it('normalizes payload and creates product with stable supplier reference', func
                 ' ',
             ],
             video: productImportRutubeVideoBlock('c6a86f440e1437f9a65dd893d50aaabd'),
+            instructions: productImportPdfLinkBlock(
+                linkText: 'catalog.pdf',
+                file: 'documents/rich-content/2026/03/catalog.pdf',
+                url: 'https://example.test/files/catalog.pdf',
+            ),
         ),
     ], [
         'supplier' => 'Yandex Market',
@@ -69,6 +74,11 @@ it('normalizes payload and creates product with stable supplier reference', func
         ->and($product?->currency)->toBe('RUB')
         ->and($product?->qty)->toBe(0)
         ->and($product?->in_stock)->toBeFalse()
+        ->and($product?->instructions)->toBe(productImportPdfLinkBlock(
+            linkText: 'catalog.pdf',
+            file: 'documents/rich-content/2026/03/catalog.pdf',
+            url: 'https://example.test/files/catalog.pdf',
+        ))
         ->and($product?->video)->toBe(productImportRutubeVideoBlock('c6a86f440e1437f9a65dd893d50aaabd'))
         ->and($product?->gallery)->toBe([
             'https://example.test/a.jpg',
@@ -112,6 +122,11 @@ it('updates existing product by supplier and external id without changing catego
         'is_active' => true,
         'is_in_yml_feed' => true,
         'with_dns' => true,
+        'instructions' => productImportPdfLinkBlock(
+            linkText: 'old-manual.pdf',
+            file: 'documents/rich-content/2026/03/old-manual.pdf',
+            url: 'https://example.test/files/old-manual.pdf',
+        ),
         'video' => productImportRutubeVideoBlock('old-video-id'),
     ]);
 
@@ -137,6 +152,11 @@ it('updates existing product by supplier and external id without changing catego
             currency: 'usd',
             inStock: true,
             qty: 8,
+            instructions: productImportPdfLinkBlock(
+                linkText: 'new-manual.pdf',
+                file: 'documents/rich-content/2026/03/new-manual.pdf',
+                url: 'https://example.test/files/new-manual.pdf',
+            ),
             video: productImportRutubeVideoBlock('new-video-id'),
         ),
     ], [
@@ -160,6 +180,11 @@ it('updates existing product by supplier and external id without changing catego
         ->and($product->currency)->toBe('USD')
         ->and($product->qty)->toBe(8)
         ->and($product->in_stock)->toBeTrue()
+        ->and($product->instructions)->toBe(productImportPdfLinkBlock(
+            linkText: 'new-manual.pdf',
+            file: 'documents/rich-content/2026/03/new-manual.pdf',
+            url: 'https://example.test/files/new-manual.pdf',
+        ))
         ->and($product->video)->toBe(productImportRutubeVideoBlock('new-video-id'));
 
     $categoryIds = $product->categories()->pluck('categories.id')->all();
@@ -236,6 +261,61 @@ it('clears existing video on update when payload video is empty', function (): v
     expect($product->video)->toBeNull();
 });
 
+it('clears existing instructions on update when payload instructions is empty', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Товар с инструкцией',
+        'slug' => 'product-with-instructions-to-clear',
+        'price_amount' => 100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+        'instructions' => productImportPdfLinkBlock(
+            linkText: 'manual.pdf',
+            file: 'documents/rich-content/2026/03/manual.pdf',
+            url: 'https://example.test/files/manual.pdf',
+        ),
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_instruction_clear',
+        'external_id' => 'DOC-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'DOC-1',
+            name: 'Товар с инструкцией',
+            priceAmount: 100,
+            instructions: null,
+        ),
+    ], [
+        'supplier' => 'supplier_instruction_clear',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+        'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_INSTRUCTIONS],
+    ]);
+
+    expect($summary['processed'])->toBe(1)
+        ->and($summary['updated'])->toBe(1)
+        ->and($summary['errors'])->toBe(0);
+
+    $product->refresh();
+
+    expect($product->instructions)->toBeNull();
+});
+
 it('updates only selected price field for existing products', function (): void {
     $firstRun = createImportRun('catalog_import_yml');
     $secondRun = createImportRun('catalog_import_yml');
@@ -251,6 +331,11 @@ it('updates only selected price field for existing products', function (): void 
         'is_active' => true,
         'is_in_yml_feed' => true,
         'with_dns' => true,
+        'instructions' => productImportPdfLinkBlock(
+            linkText: 'old-price-manual.pdf',
+            file: 'documents/rich-content/2026/03/old-price-manual.pdf',
+            url: 'https://example.test/files/old-price-manual.pdf',
+        ),
         'video' => productImportRutubeVideoBlock('old-price-video'),
     ]);
 
@@ -274,6 +359,11 @@ it('updates only selected price field for existing products', function (): void 
             currency: 'EUR',
             inStock: true,
             qty: 12,
+            instructions: productImportPdfLinkBlock(
+                linkText: 'new-price-manual.pdf',
+                file: 'documents/rich-content/2026/03/new-price-manual.pdf',
+                url: 'https://example.test/files/new-price-manual.pdf',
+            ),
             video: productImportRutubeVideoBlock('new-price-video'),
         ),
     ], [
@@ -296,6 +386,11 @@ it('updates only selected price field for existing products', function (): void 
         ->and($product->currency)->toBe('USD')
         ->and($product->in_stock)->toBeFalse()
         ->and($product->qty)->toBe(5)
+        ->and($product->instructions)->toBe(productImportPdfLinkBlock(
+            linkText: 'old-price-manual.pdf',
+            file: 'documents/rich-content/2026/03/old-price-manual.pdf',
+            url: 'https://example.test/files/old-price-manual.pdf',
+        ))
         ->and($product->video)->toBe(productImportRutubeVideoBlock('old-price-video'));
 });
 
@@ -860,6 +955,11 @@ it('creates new products with full payload when selective existing update mode i
             currency: 'EUR',
             inStock: true,
             qty: 3,
+            instructions: productImportPdfLinkBlock(
+                linkText: 'new-product-manual.pdf',
+                file: 'documents/rich-content/2026/03/new-product-manual.pdf',
+                url: 'https://example.test/files/new-product-manual.pdf',
+            ),
             video: productImportRutubeVideoBlock('new-product-video'),
             images: [
                 'https://example.test/new-1.jpg',
@@ -887,6 +987,11 @@ it('creates new products with full payload when selective existing update mode i
         ->and($product?->currency)->toBe('EUR')
         ->and($product?->in_stock)->toBeTrue()
         ->and($product?->qty)->toBe(3)
+        ->and($product?->instructions)->toBe(productImportPdfLinkBlock(
+            linkText: 'new-product-manual.pdf',
+            file: 'documents/rich-content/2026/03/new-product-manual.pdf',
+            url: 'https://example.test/files/new-product-manual.pdf',
+        ))
         ->and($product?->video)->toBe(productImportRutubeVideoBlock('new-product-video'))
         ->and($product?->gallery)->toBe([
             'https://example.test/new-1.jpg',
@@ -1266,6 +1371,7 @@ function prepareProductImportProcessorTables(): void
         $table->text('short')->nullable();
         $table->longText('description')->nullable();
         $table->text('extra_description')->nullable();
+        $table->longText('instructions')->nullable();
         $table->longText('video')->nullable();
         $table->json('specs')->nullable();
         $table->string('promo_info')->nullable();
@@ -1341,4 +1447,18 @@ function productImportRutubeVideoBlock(string $rutubeId): string
     return '<div data-type="customBlock" data-config="{&quot;rutube_id&quot;:&quot;'
         .$rutubeId
         .'&quot;,&quot;width&quot;:640,&quot;alignment&quot;:&quot;center&quot;}" data-id="rutube-video"></div>';
+}
+
+function productImportPdfLinkBlock(
+    string $linkText,
+    string $file,
+    string $url,
+): string {
+    return '<div data-type="customBlock" data-config="{&quot;source_type&quot;:&quot;download_url&quot;,&quot;target&quot;:&quot;_blank&quot;,&quot;link_text&quot;:&quot;'
+        .htmlspecialchars($linkText, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+        .'&quot;,&quot;file&quot;:&quot;'
+        .str_replace('/', '\\/', htmlspecialchars($file, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'))
+        .'&quot;,&quot;url&quot;:&quot;'
+        .str_replace('/', '\\/', htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'))
+        .'&quot;}" data-id="pdf-link"></div>';
 }

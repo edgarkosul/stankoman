@@ -2,6 +2,7 @@
 
 use App\Support\CatalogImport\Processing\ExistingProductUpdateSelection;
 use App\Support\CatalogImport\Yml\YandexMarketFeedImportService;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 uses(TestCase::class);
@@ -189,6 +190,56 @@ XML;
         expect($result['url_errors'])->toHaveCount(1);
         expect($result['url_errors'][0]['url'])->toBe('offer:A2');
         expect($result['url_errors'][0]['message'])->toContain('обязательное поле');
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('returns non-fatal pdf mapping warnings in url_errors', function () {
+    Http::fake([
+        'https://example.test/files/invalid.pdf' => Http::response(
+            'not found',
+            404,
+            ['Content-Type' => 'text/plain'],
+        ),
+    ]);
+
+    $xml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<yml_catalog date="2026-03-05 00:00">
+  <shop>
+    <offers>
+      <offer id="A1" available="true">
+        <name>Simple Product</name>
+        <price>123</price>
+        <currencyId>RUB</currencyId>
+        <param name="Инструкция.pdf">https://example.test/files/invalid.pdf</param>
+        <categoryId>1</categoryId>
+      </offer>
+    </offers>
+  </shop>
+</yml_catalog>
+XML;
+
+    $path = tempnam(sys_get_temp_dir(), 'yandex_feed_');
+    file_put_contents($path, $xml);
+
+    try {
+        $result = app(YandexMarketFeedImportService::class)->run([
+            'source' => $path,
+            'write' => false,
+            'limit' => 0,
+            'delay_ms' => 0,
+            'show_samples' => 1,
+        ]);
+
+        expect($result['fatal_error'])->toBeNull();
+        expect($result['processed'])->toBe(1);
+        expect($result['errors'])->toBe(1);
+        expect($result['success'])->toBeTrue();
+        expect($result['url_errors'])->toHaveCount(1);
+        expect($result['url_errors'][0]['url'])->toBe('offer:A1');
+        expect($result['url_errors'][0]['message'])->toContain('HTTP 404');
     } finally {
         @unlink($path);
     }
