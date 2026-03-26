@@ -12,8 +12,10 @@ use App\Support\CatalogImport\Processing\ExistingProductUpdateSelection;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
 use App\Support\CatalogImport\Processing\ProductPayloadNormalizer;
 use App\Support\CatalogImport\Runs\DatabaseImportRunEventLogger;
+use App\Support\Filament\PdfLinkBlockConfigNormalizer;
 use App\Support\Products\ProductSearchSync;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -623,6 +625,96 @@ it('marks existing product as unchanged when payload has no effective changes', 
             ->where('external_id', 'SAME-1')
             ->value('last_seen_run_id')
     )->toBe($secondRun->id);
+});
+
+it('marks existing product as unchanged when imported instructions reuse the same downloaded pdf', function (): void {
+    Storage::fake('public');
+
+    Http::fake([
+        'https://example.test/files/catalog.pdf' => Http::response(
+            "%PDF-1.4\nstable-pdf-content",
+            200,
+            [
+                'Content-Disposition' => 'attachment; filename="catalog.pdf"',
+                'Content-Type' => 'application/pdf',
+            ],
+        ),
+    ]);
+
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+    $normalizer = app(PdfLinkBlockConfigNormalizer::class);
+
+    $firstConfig = $normalizer->normalize([
+        'source_type' => PdfLinkBlockConfigNormalizer::SOURCE_DOWNLOAD_URL,
+        'target' => PdfLinkBlockConfigNormalizer::TARGET_NEW_TAB,
+        'url' => 'https://example.test/files/catalog.pdf',
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'PDF без изменений',
+        'slug' => 'unchanged-pdf-instructions-product',
+        'price_amount' => 0,
+        'currency' => 'RUB',
+        'in_stock' => false,
+        'is_active' => true,
+        'is_in_yml_feed' => true,
+        'with_dns' => true,
+        'description' => '<p></p>',
+        'extra_description' => '<p></p>',
+        'meta_title' => 'PDF без изменений',
+        'instructions' => productImportPdfLinkBlock(
+            linkText: (string) $firstConfig['link_text'],
+            file: (string) $firstConfig['file'],
+            url: (string) $firstConfig['url'],
+        ),
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_same_pdf',
+        'external_id' => 'PDF-SAME-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $secondConfig = $normalizer->normalize([
+        'source_type' => PdfLinkBlockConfigNormalizer::SOURCE_DOWNLOAD_URL,
+        'target' => PdfLinkBlockConfigNormalizer::TARGET_NEW_TAB,
+        'url' => 'https://example.test/files/catalog.pdf',
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $summary = $processor->processBatch([
+        new ProductPayload(
+            externalId: 'PDF-SAME-1',
+            name: 'PDF без изменений',
+            instructions: productImportPdfLinkBlock(
+                linkText: (string) $secondConfig['link_text'],
+                file: (string) $secondConfig['file'],
+                url: (string) $secondConfig['url'],
+            ),
+        ),
+    ], [
+        'supplier' => 'supplier_same_pdf',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+    ]);
+
+    $product->refresh();
+
+    expect($secondConfig)->toBe($firstConfig)
+        ->and($summary['updated'])->toBe(0)
+        ->and($summary['skipped'])->toBe(1)
+        ->and($summary['results'][0]->operation ?? null)->toBe('unchanged')
+        ->and($product->instructions)->toBe(productImportPdfLinkBlock(
+            linkText: (string) $firstConfig['link_text'],
+            file: (string) $firstConfig['file'],
+            url: (string) $firstConfig['url'],
+        ))
+        ->and(Storage::disk('public')->allFiles(PdfLinkBlockConfigNormalizer::DIRECTORY))->toHaveCount(1);
 });
 
 it('processes payloads in batches', function (): void {

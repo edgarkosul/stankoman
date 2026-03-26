@@ -276,9 +276,10 @@ final class PdfLinkBlockConfigNormalizer
         }
 
         $remoteFileName = $this->extractDownloadFileName($url, $response->header('Content-Disposition'));
-        $path = $this->buildStoragePath($remoteFileName);
+        $path = $this->buildStoragePath($remoteFileName, $body);
+        $disk = Storage::disk(self::DISK);
 
-        if (! Storage::disk(self::DISK)->put($path, $body)) {
+        if (! $disk->exists($path) && ! $disk->put($path, $body)) {
             throw ValidationException::withMessages([
                 'url' => 'Не удалось сохранить скачанный PDF в локальное хранилище.',
             ]);
@@ -330,7 +331,35 @@ final class PdfLinkBlockConfigNormalizer
         return null;
     }
 
-    private function buildStoragePath(?string $remoteFileName): string
+    private function buildStoragePath(?string $remoteFileName, string $body): string
+    {
+        $contentHash = hash('sha256', $body);
+        $directory = self::DIRECTORY.'/'.substr($contentHash, 0, 2).'/'.$contentHash;
+        $existingPath = $this->findExistingStoragePath($directory);
+
+        if ($existingPath !== null) {
+            return $existingPath;
+        }
+
+        return $directory.'/'.$this->buildStorageFileName($remoteFileName);
+    }
+
+    private function findExistingStoragePath(string $directory): ?string
+    {
+        $files = Storage::disk(self::DISK)->files($directory);
+
+        sort($files);
+
+        foreach ($files as $file) {
+            if (Str::endsWith(Str::lower($file), '.pdf')) {
+                return $file;
+            }
+        }
+
+        return null;
+    }
+
+    private function buildStorageFileName(?string $remoteFileName): string
     {
         $baseName = $remoteFileName !== null
             ? pathinfo($remoteFileName, PATHINFO_FILENAME)
@@ -341,7 +370,7 @@ final class PdfLinkBlockConfigNormalizer
             $slug = 'pdf-document';
         }
 
-        return self::DIRECTORY.'/'.now()->format('Y/m').'/'.$slug.'-'.Str::lower(Str::random(8)).'.pdf';
+        return $slug.'.pdf';
     }
 
     private function resolveFallbackLinkText(?string $preferred, ?string $fallback): string

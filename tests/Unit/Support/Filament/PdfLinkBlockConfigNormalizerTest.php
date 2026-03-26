@@ -70,3 +70,39 @@ it('normalizes utf8 and spaced pdf urls before downloading', function (): void {
         return $request->url() === $normalizedUrl;
     });
 });
+
+it('reuses the same stored file path for repeated downloads of the same pdf', function (): void {
+    Storage::fake('public');
+
+    Http::fake([
+        'https://example.test/files/catalog.pdf' => Http::response(
+            "%PDF-1.4\nstable-pdf-content",
+            200,
+            [
+                'Content-Disposition' => 'attachment; filename="catalog.pdf"',
+                'Content-Type' => 'application/pdf',
+            ],
+        ),
+    ]);
+
+    $normalizer = app(PdfLinkBlockConfigNormalizer::class);
+
+    $first = $normalizer->normalize([
+        'source_type' => PdfLinkBlockConfigNormalizer::SOURCE_DOWNLOAD_URL,
+        'target' => PdfLinkBlockConfigNormalizer::TARGET_NEW_TAB,
+        'url' => 'https://example.test/files/catalog.pdf',
+    ]);
+
+    $second = $normalizer->normalize([
+        'source_type' => PdfLinkBlockConfigNormalizer::SOURCE_DOWNLOAD_URL,
+        'target' => PdfLinkBlockConfigNormalizer::TARGET_NEW_TAB,
+        'url' => 'https://example.test/files/catalog.pdf',
+    ]);
+
+    expect($second)->toBe($first)
+        ->and($first['file'])->toStartWith(PdfLinkBlockConfigNormalizer::DIRECTORY.'/')
+        ->and(Storage::disk('public')->allFiles(PdfLinkBlockConfigNormalizer::DIRECTORY))->toHaveCount(1);
+
+    Storage::disk('public')->assertExists($first['file']);
+    Http::assertSentCount(2);
+});
