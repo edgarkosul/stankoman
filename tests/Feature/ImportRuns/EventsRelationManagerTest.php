@@ -59,3 +59,34 @@ test('import run events relation manager uses russian labels and product edit li
             $event
         );
 });
+
+test('import run events relation manager does not generate a broken product link for missing products', function (): void {
+    $this->actingAs(User::factory()->create());
+
+    $run = ImportRun::query()->create([
+        'type' => 'catalog_import_yml',
+        'status' => 'done',
+    ]);
+
+    $event = ImportRunEvent::query()->create([
+        'run_id' => $run->id,
+        'stage' => 'processing',
+        'result' => 'updated',
+        'external_id' => 'ext-missing',
+        'product_id' => 999999,
+        'source_ref' => 'source-missing',
+        'message' => 'Товар уже удален',
+    ]);
+
+    Livewire::test(EventsRelationManager::class, [
+        'ownerRecord' => $run,
+        'pageClass' => ViewImportRun::class,
+    ])
+        ->assertCanSeeTableRecords([$event])
+        ->assertTableColumnExists(
+            'product_id',
+            fn (TextColumn $column): bool => $column->getLabel() === 'ID товара'
+                && $column->getUrl() === null,
+            $event
+        );
+});

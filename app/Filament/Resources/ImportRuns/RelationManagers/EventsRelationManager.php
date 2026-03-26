@@ -61,13 +61,21 @@ class EventsRelationManager extends RelationManager
                     ->searchable(),
                 TextColumn::make('product_id')
                     ->label('ID товара')
-                    ->url(
-                        fn (ImportRunEvent $record): ?string => filled($record->product_id)
-                            ? ProductResource::getUrl('edit', [
-                                'record' => Product::query()->whereKey($record->product_id)->value('slug'),
-                            ])
-                            : null
-                    )
+                    ->url(function (ImportRunEvent $record): ?string {
+                        if (! filled($record->product_id)) {
+                            return null;
+                        }
+
+                        $product = Product::query()->find($record->product_id);
+
+                        if (! $product instanceof Product) {
+                            return null;
+                        }
+
+                        return ProductResource::getUrl('edit', [
+                            'record' => $product,
+                        ]);
+                    })
                     ->openUrlInNewTab()
                     ->toggleable()
                     ->sortable()

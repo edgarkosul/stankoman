@@ -721,6 +721,92 @@ test('supplier import page restores selected source and run from session on moun
     expect($page->lastSavedRun['processed'])->toBe(4);
 });
 
+test('supplier import page does not pin a completed run from session when a newer run exists', function () {
+    prepareSupplierImportPageTables();
+
+    $supplier = Supplier::query()->create([
+        'name' => 'Pinned Supplier',
+        'is_active' => true,
+    ]);
+    $source = SupplierImportSource::query()->create([
+        'supplier_id' => $supplier->id,
+        'name' => 'Старый вариант',
+        'driver_key' => 'vactool_html',
+        'profile_key' => 'vactool_html',
+        'settings' => [
+            'sitemap' => 'https://example.test/old-sitemap.xml',
+            'delay_ms' => 250,
+            'download_images' => true,
+        ],
+        'is_active' => true,
+        'sort' => 10,
+    ]);
+    $completedRun = ImportRun::query()->create([
+        'type' => 'vactool_products',
+        'status' => 'completed',
+        'supplier_id' => $supplier->id,
+        'supplier_import_source_id' => $source->id,
+        'columns' => [
+            'source_label' => 'https://example.test/old-sitemap.xml',
+            'supplier_import_source_name' => 'Старый вариант',
+        ],
+        'totals' => [
+            'create' => 1,
+            'update' => 0,
+            'same' => 0,
+            'error' => 0,
+            'scanned' => 1,
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => false,
+                'found_urls' => 1,
+                'no_urls' => false,
+            ],
+        ],
+    ]);
+
+    $latestRun = ImportRun::query()->create([
+        'type' => 'yandex_market_feed_products',
+        'status' => 'completed',
+        'supplier_id' => null,
+        'supplier_import_source_id' => null,
+        'columns' => [
+            'supplier_name' => 'Latest Supplier',
+            'supplier_import_source_name' => 'Latest Source',
+            'source_label' => 'https://example.test/latest-feed.xml',
+        ],
+        'totals' => [
+            'create' => 2,
+            'update' => 0,
+            'same' => 0,
+            'error' => 0,
+            'scanned' => 2,
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => false,
+                'found_urls' => 2,
+                'no_urls' => false,
+            ],
+        ],
+    ]);
+
+    session()->put('filament.supplier-import.page-state', [
+        'supplier_id' => $supplier->id,
+        'supplier_import_source_id' => $source->id,
+        'last_run_id' => $completedRun->id,
+    ]);
+
+    $page = new SupplierImport;
+    $page->mount();
+
+    expect((int) data_get($page->data, 'supplier_id'))->toBe($supplier->id);
+    expect((int) data_get($page->data, 'supplier_import_source_id'))->toBe($source->id);
+    expect($page->lastRunId)->toBe($latestRun->id);
+    expect($page->lastSavedRun['id'])->toBe($latestRun->id);
+    expect($page->lastSavedRun['supplier_label'])->toBe('Latest Supplier');
+    expect($page->lastSavedRun['import_source_label'])->toBe('Latest Source');
+});
+
 test('supplier import page falls back to latest active run when reopened without session state', function () {
     prepareSupplierImportPageTables();
 
@@ -776,6 +862,89 @@ test('supplier import page falls back to latest active run when reopened without
     expect($page->lastRunId)->toBe($run->id);
     expect($page->lastSavedRun['id'])->toBe($run->id);
     expect($page->lastSavedRun['found_urls'])->toBe(5);
+});
+
+test('supplier import page shows the latest global run even when another supplier is selected', function () {
+    prepareSupplierImportPageTables();
+
+    $selectedSupplier = Supplier::query()->create([
+        'name' => 'Selected Supplier',
+        'is_active' => true,
+    ]);
+    $selectedSource = SupplierImportSource::query()->create([
+        'supplier_id' => $selectedSupplier->id,
+        'name' => 'Selected Source',
+        'driver_key' => 'vactool_html',
+        'profile_key' => 'vactool_html',
+        'settings' => [
+            'sitemap' => 'https://example.test/selected.xml',
+            'delay_ms' => 250,
+            'download_images' => true,
+        ],
+        'is_active' => true,
+        'sort' => 10,
+    ]);
+
+    ImportRun::query()->create([
+        'type' => 'vactool_products',
+        'status' => 'completed',
+        'supplier_id' => $selectedSupplier->id,
+        'supplier_import_source_id' => $selectedSource->id,
+        'columns' => [
+            'source_label' => 'https://example.test/selected.xml',
+            'supplier_import_source_name' => 'Selected Source',
+        ],
+        'totals' => [
+            'create' => 1,
+            'update' => 0,
+            'same' => 0,
+            'error' => 0,
+            'scanned' => 1,
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => false,
+                'found_urls' => 1,
+                'no_urls' => false,
+            ],
+        ],
+    ]);
+
+    $latestRun = ImportRun::query()->create([
+        'type' => 'yandex_market_feed_products',
+        'status' => 'completed',
+        'supplier_id' => null,
+        'supplier_import_source_id' => null,
+        'columns' => [
+            'supplier_name' => 'Global Latest Supplier',
+            'supplier_import_source_name' => 'Global Latest Source',
+            'source_label' => 'https://example.test/global-latest.xml',
+        ],
+        'totals' => [
+            'create' => 4,
+            'update' => 0,
+            'same' => 0,
+            'error' => 0,
+            'scanned' => 4,
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => false,
+                'found_urls' => 4,
+                'no_urls' => false,
+            ],
+        ],
+    ]);
+
+    $page = new SupplierImport;
+    $page->mount();
+    $page->data['supplier_id'] = $selectedSupplier->id;
+    $page->data['supplier_import_source_id'] = $selectedSource->id;
+    $page->lastRunId = null;
+
+    $page->refreshLastSavedRun();
+
+    expect($page->lastSavedRun['id'])->toBe($latestRun->id);
+    expect($page->lastSavedRun['supplier_label'])->toBe('Global Latest Supplier');
+    expect($page->lastSavedRun['import_source_label'])->toBe('Global Latest Source');
 });
 
 test('supplier import page restores the latest completed run even when an older run is still active', function () {

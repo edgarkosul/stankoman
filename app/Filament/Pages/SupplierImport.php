@@ -569,6 +569,7 @@ class SupplierImport extends Page implements HasForms
     public function refreshLastSavedRun(): void
     {
         if (! DatabaseSchema::hasTable('import_runs')) {
+            $this->lastRunId = null;
             $this->lastSavedRun = null;
             $this->lastSavedIssues = [];
             $this->lastSavedSamples = [];
@@ -577,31 +578,10 @@ class SupplierImport extends Page implements HasForms
             return;
         }
 
-        $runQuery = ImportRun::query()->with(['supplier', 'supplierImportSource']);
-
-        if ($this->lastRunId !== null) {
-            $runQuery->whereKey($this->lastRunId);
-        } else {
-            $sourceId = $this->normalizeNullableInt(data_get($this->data, 'supplier_import_source_id'));
-            $supplierId = $this->normalizeNullableInt(data_get($this->data, 'supplier_id'));
-
-            if ($sourceId !== null) {
-                $runQuery->where('supplier_import_source_id', $sourceId);
-            } elseif ($supplierId !== null) {
-                $runQuery->where('supplier_id', $supplierId);
-            } else {
-                $this->lastSavedRun = null;
-                $this->lastSavedIssues = [];
-                $this->lastSavedSamples = [];
-                $this->rememberPageState();
-
-                return;
-            }
-        }
-
-        $run = $runQuery->latest('id')->first();
+        $run = $this->resolveRunForSummary();
 
         if (! $run instanceof ImportRun) {
+            $this->lastRunId = null;
             $this->lastSavedRun = null;
             $this->lastSavedIssues = [];
             $this->lastSavedSamples = [];
@@ -609,6 +589,8 @@ class SupplierImport extends Page implements HasForms
 
             return;
         }
+
+        $this->lastRunId = $run->id;
 
         $totals = is_array($run->totals) ? $run->totals : [];
         $meta = is_array(data_get($totals, '_meta')) ? data_get($totals, '_meta') : [];
@@ -662,6 +644,37 @@ class SupplierImport extends Page implements HasForms
         ));
 
         $this->rememberPageState();
+    }
+
+    private function resolveRunForSummary(): ?ImportRun
+    {
+        $trackedRun = $this->resolveTrackedRun();
+
+        if ($trackedRun instanceof ImportRun && $this->shouldPinRunSummary($trackedRun)) {
+            return $trackedRun;
+        }
+
+        return ImportRun::query()
+            ->with(['supplier', 'supplierImportSource'])
+            ->whereIn('type', $this->runSummaryTypes())
+            ->latest('id')
+            ->first();
+    }
+
+    private function resolveTrackedRun(): ?ImportRun
+    {
+        if ($this->lastRunId === null) {
+            return null;
+        }
+
+        return ImportRun::query()
+            ->with(['supplier', 'supplierImportSource'])
+            ->find($this->lastRunId);
+    }
+
+    private function shouldPinRunSummary(ImportRun $run): bool
+    {
+        return in_array((string) $run->status, ['pending', 'running'], true);
     }
 
     private function handleSupplierChanged(): void
