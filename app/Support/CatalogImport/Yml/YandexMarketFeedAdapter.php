@@ -23,6 +23,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
 
     public function __construct(
         private readonly YandexMarketFeedProfile $profile = new YandexMarketFeedProfile,
+        private readonly VendorModelOfferNameResolver $vendorModelOfferNameResolver = new VendorModelOfferNameResolver,
     ) {}
 
     public function mapRecord(mixed $record): RecordMappingResult
@@ -164,20 +165,12 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
             return new RecordMappingResult(payload: null, errors: $errors);
         }
 
-        $name = $fallbackName;
-
-        if ($model !== null) {
-            $nameParts = [];
-
-            if ($typePrefix !== null) {
-                $nameParts[] = $typePrefix;
-            }
-
-            $nameParts[] = $vendor;
-            $nameParts[] = $model;
-
-            $name = implode(' ', $nameParts);
-        }
+        $name = $this->vendorModelOfferNameResolver->resolveName(
+            typePrefix: $typePrefix,
+            vendor: $vendor,
+            model: $model,
+            fallbackName: $fallbackName,
+        );
 
         $priceAmount = $this->parsePriceAmount($priceRaw);
         $pictures = $this->extractPictures($xml);

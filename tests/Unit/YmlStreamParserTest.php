@@ -248,6 +248,42 @@ XML;
     }
 });
 
+it('does not prepend vendor twice when vendor.model already includes it in model', function () {
+    $xml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<yml_catalog date="2026-03-26 00:00">
+  <shop>
+    <offers>
+      <offer id="7094" type="vendor.model" available="true">
+        <vendor>JIB</vendor>
+        <model>JIB MBS 350 Ленточнопильный станок</model>
+        <name>JIB MBS 350 Ленточнопильный станок</name>
+        <price>249900</price>
+        <currencyId>RUR</currencyId>
+        <categoryId>17</categoryId>
+      </offer>
+    </offers>
+  </shop>
+</yml_catalog>
+XML;
+
+    $path = tempnam(sys_get_temp_dir(), 'yml_');
+    file_put_contents($path, $xml);
+
+    try {
+        $stream = (new YmlStreamParser)->open($path);
+        $offers = iterator_to_array($stream->offers);
+
+        $result = (new YandexMarketFeedAdapter)->mapOffer($offers[0]);
+
+        expect($result->isSuccess())->toBeTrue();
+        expect($result->payload?->name)->toBe('JIB MBS 350 Ленточнопильный станок');
+        expect($result->payload?->brand)->toBe('JIB');
+    } finally {
+        @unlink($path);
+    }
+});
+
 it('converts relative image sources in html description to absolute urls using picture host', function () {
     $xml = <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
