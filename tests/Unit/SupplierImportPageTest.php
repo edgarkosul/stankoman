@@ -778,6 +778,148 @@ test('supplier import page falls back to latest active run when reopened without
     expect($page->lastSavedRun['found_urls'])->toBe(5);
 });
 
+test('supplier import page restores the latest completed run even when an older run is still active', function () {
+    prepareSupplierImportPageTables();
+
+    session()->forget('filament.supplier-import.page-state');
+
+    $olderSupplier = Supplier::query()->create([
+        'name' => 'Older Active Supplier',
+        'is_active' => true,
+    ]);
+    $olderSource = SupplierImportSource::query()->create([
+        'supplier_id' => $olderSupplier->id,
+        'name' => 'Старый активный источник',
+        'driver_key' => 'yandex_market_feed',
+        'profile_key' => 'yandex_market_feed_yml',
+        'settings' => [
+            'source_mode' => 'url',
+            'source_url' => 'https://example.test/old-feed.xml',
+            'timeout' => 25,
+            'delay_ms' => 0,
+            'download_images' => true,
+        ],
+        'is_active' => true,
+        'sort' => 10,
+    ]);
+
+    ImportRun::query()->create([
+        'type' => 'yandex_market_feed_products',
+        'status' => 'running',
+        'supplier_id' => $olderSupplier->id,
+        'supplier_import_source_id' => $olderSource->id,
+        'columns' => [
+            'source_label' => 'https://example.test/old-feed.xml',
+        ],
+        'totals' => [
+            'create' => 0,
+            'update' => 1,
+            'same' => 0,
+            'error' => 0,
+            'scanned' => 1,
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => true,
+                'found_urls' => 4,
+                'no_urls' => false,
+            ],
+        ],
+    ]);
+
+    $latestSupplier = Supplier::query()->create([
+        'name' => 'Latest Completed Supplier',
+        'is_active' => true,
+    ]);
+    $latestSource = SupplierImportSource::query()->create([
+        'supplier_id' => $latestSupplier->id,
+        'name' => 'Последний источник',
+        'driver_key' => 'yandex_market_feed',
+        'profile_key' => 'yandex_market_feed_yml',
+        'settings' => [
+            'source_mode' => 'url',
+            'source_url' => 'https://example.test/latest-feed.xml',
+            'timeout' => 25,
+            'delay_ms' => 0,
+            'download_images' => true,
+        ],
+        'is_active' => true,
+        'sort' => 10,
+    ]);
+    $latestRun = ImportRun::query()->create([
+        'type' => 'yandex_market_feed_products',
+        'status' => 'completed',
+        'supplier_id' => $latestSupplier->id,
+        'supplier_import_source_id' => $latestSource->id,
+        'columns' => [
+            'source_label' => 'https://example.test/latest-feed.xml',
+        ],
+        'totals' => [
+            'create' => 2,
+            'update' => 0,
+            'same' => 0,
+            'error' => 0,
+            'scanned' => 2,
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => false,
+                'found_urls' => 2,
+                'no_urls' => false,
+            ],
+        ],
+    ]);
+
+    $page = new SupplierImport;
+    $page->mount();
+
+    expect((int) data_get($page->data, 'supplier_id'))->toBe($latestSupplier->id);
+    expect((int) data_get($page->data, 'supplier_import_source_id'))->toBe($latestSource->id);
+    expect($page->lastRunId)->toBe($latestRun->id);
+    expect($page->lastSavedRun['id'])->toBe($latestRun->id);
+    expect($page->lastSavedRun['is_running'])->toBeFalse();
+    expect($page->lastSavedRun['found_urls'])->toBe(2);
+});
+
+test('supplier import page still shows the latest run summary when its source was removed', function () {
+    prepareSupplierImportPageTables();
+
+    session()->forget('filament.supplier-import.page-state');
+
+    $run = ImportRun::query()->create([
+        'type' => 'yandex_market_feed_products',
+        'status' => 'completed',
+        'supplier_id' => null,
+        'supplier_import_source_id' => null,
+        'columns' => [
+            'supplier_name' => 'Archived Supplier',
+            'supplier_import_source_name' => 'Удалённый источник',
+            'source_label' => 'https://example.test/archived-feed.xml',
+        ],
+        'totals' => [
+            'create' => 3,
+            'update' => 1,
+            'same' => 0,
+            'error' => 0,
+            'scanned' => 4,
+            '_meta' => [
+                'mode' => 'write',
+                'is_running' => false,
+                'found_urls' => 4,
+                'no_urls' => false,
+            ],
+        ],
+    ]);
+
+    $page = new SupplierImport;
+    $page->mount();
+
+    expect(data_get($page->data, 'supplier_id'))->toBeNull();
+    expect(data_get($page->data, 'supplier_import_source_id'))->toBeNull();
+    expect($page->lastRunId)->toBe($run->id);
+    expect($page->lastSavedRun['id'])->toBe($run->id);
+    expect($page->lastSavedRun['supplier_label'])->toBe('Archived Supplier');
+    expect($page->lastSavedRun['import_source_label'])->toBe('Удалённый источник');
+});
+
 test('supplier import page saves source and dispatches vactool dry run', function () {
     prepareSupplierImportPageTables();
     Queue::fake();

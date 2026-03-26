@@ -1169,7 +1169,7 @@ class SupplierImport extends Page implements HasForms
             return;
         }
 
-        $this->restoreContextFromActiveRun();
+        $this->restoreContextFromLatestRun();
     }
 
     private function currentSource(): ?SupplierImportSource
@@ -1253,20 +1253,19 @@ class SupplierImport extends Page implements HasForms
         }
     }
 
-    private function restoreContextFromActiveRun(): void
+    private function restoreContextFromLatestRun(): void
     {
         if (! DatabaseSchema::hasTable('import_runs')) {
             return;
         }
 
         $run = ImportRun::query()
-            ->whereIn('status', ['pending', 'running'])
-            ->whereNotNull('supplier_id')
-            ->whereNotNull('supplier_import_source_id')
+            ->whereIn('type', $this->runSummaryTypes())
             ->latest('id')
             ->first();
 
         if ($run instanceof ImportRun) {
+            $this->lastRunId = $run->id;
             $this->restoreContextFromRun($run);
         }
     }
@@ -2288,6 +2287,20 @@ class SupplierImport extends Page implements HasForms
             'yandex_market_feed_deactivation' => 'Деактивация Yandex Feed',
             default => $type !== '' ? $type : 'unknown',
         };
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function runSummaryTypes(): array
+    {
+        return [
+            'vactool_products',
+            'metalmaster_products',
+            'metaltec_products',
+            'yandex_market_feed_products',
+            'yandex_market_feed_deactivation',
+        ];
     }
 
     private function normalizeNullableInt(mixed $value): ?int
