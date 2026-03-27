@@ -106,9 +106,9 @@ img {
 
 .header-shell {
     background: linear-gradient(180deg, #ffffff 0%, #fbfbfa 100%);
-    border: 1px solid #e8e5e2;
+    /* border: 1px solid #e8e5e2; */
     border-bottom: 0;
-    border-radius: 24px 24px 0 0;
+    /* border-radius: 24px 24px 0 0; */
     box-shadow: 0 18px 44px rgba(23, 23, 23, 0.08);
     margin: 0 auto;
     width: 640px;
