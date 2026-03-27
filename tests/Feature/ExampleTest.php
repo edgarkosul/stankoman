@@ -21,9 +21,9 @@ test('home page renders configured public company email in layout', function ():
     $this->get(route('home'))
         ->assertOk()
         ->assertSee('Test Brand')
-        ->assertSee('ООО Тестовая компания')
         ->assertSee('settings.example.com')
-        ->assertSee('г. Краснодар, ул. Тестовая, 10')
+        ->assertDontSee('ООО Тестовая компания')
+        ->assertDontSee('г. Краснодар, ул. Тестовая, 10')
         ->assertSee('mailto:public@example.com', false)
         ->assertSee('public@example.com');
 });

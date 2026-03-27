@@ -1,12 +1,10 @@
 @php
     $companyBrandLine = trim((string) config('company.brand_line'));
-    $companyLegalName = trim((string) config('company.legal_name'));
     $companySiteUrl = trim((string) config('company.site_url', url('/')));
     $companySiteHost = trim((string) config('company.site_host')) ?: preg_replace('#^https?://#', '', $companySiteUrl);
     $companyPhone = trim((string) config('company.phone'));
     $companyPhoneHref = preg_replace('/\D+/', '', $companyPhone) ?? '';
     $companyPublicEmail = trim((string) config('company.public_email', config('mail.from.address')));
-    $companyLegalAddress = trim((string) config('company.legal_addr'));
 @endphp
 
 <footer class="bg-zinc-700 text-white">
@@ -20,9 +18,6 @@
             </a>
             @if (filled($companyBrandLine))
                 <span class="text-lg font-medium">{{ $companyBrandLine }}</span>
-            @endif
-            @if (filled($companyLegalName))
-                <span class="max-w-sm text-sm text-zinc-300">{{ $companyLegalName }}</span>
             @endif
             @if (filled($companySiteHost))
                 <a href="{{ $companySiteUrl }}" class="text-sm underline-offset-4 hover:underline">{{ $companySiteHost }}</a>
@@ -38,9 +33,6 @@
         <div class="md:justify-self-end">
             <div class="flex flex-col gap-8">
                 <div class="flex flex-col gap-4 items-start md:items-end">
-                    @if (filled($companyLegalAddress))
-                        <div class="max-w-sm text-sm text-zinc-300 md:text-right">{{ $companyLegalAddress }}</div>
-                    @endif
                     <a href="https://max.ru/" target="_blank" class="flex items-center gap-2">
                         <x-icon name="max"
                             class="w-5 h-5 [&_.icon-base]:text-white [&_.icon-accent]:text-brand-red" /> Max
@@ -74,9 +66,6 @@
             © {{ now()->year }}
             <a href="{{ $companySiteUrl !== '' ? $companySiteUrl : url('/') }}"
                 class="hover:underline underline-offset-4">{{ $companySiteHost }}</a>
-            @if (filled($companyLegalName))
-                <span class="text-zinc-300">{{ $companyLegalName }}</span>
-            @endif
             Все права защищены
         </p>
     </div>
