@@ -148,6 +148,7 @@ return [
                     'name',
                     'name_latin',
                     'sku',
+                    'search_terms',
                     'brand',
                     'brand_latin',
                 ],

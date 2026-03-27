@@ -123,6 +123,7 @@ class Product extends Model
         // Латиница (для кросс-скриптового поиска)
         $nameLatin = $this->toLatin($name);
         $brandLatin = $this->toLatin($brand);
+        $searchTerms = $this->buildSearchTerms($name, $sku);
 
         // Можно добавить что-то ещё, что полезно для поиска
         return [
@@ -132,6 +133,7 @@ class Product extends Model
             'brand' => $brand,
             'brand_latin' => $brandLatin,
             'sku' => $sku,
+            'search_terms' => $searchTerms,
             'price' => (float) $this->price,
             'discount_price' => (float) ($this->discount_price ?? 0),
             // при желании: category_id, in_stock, и т. п.
@@ -972,5 +974,56 @@ class Product extends Model
         $latin = trim(preg_replace('/\s+/u', ' ', $latin));
 
         return $latin;
+    }
+
+    /**
+     * Индексируем алиасы кодов вида W0201 / JWP-201, чтобы находились запросы без буквенного префикса.
+     *
+     * @return array<int, string>
+     */
+    private function buildSearchTerms(string ...$values): array
+    {
+        $terms = [];
+
+        foreach ($values as $value) {
+            $latinValue = $this->toLatin($value);
+
+            if ($latinValue === '') {
+                continue;
+            }
+
+            preg_match_all('/[a-z0-9-]+/u', $latinValue, $matches);
+
+            foreach ($matches[0] as $token) {
+                $token = trim($token, '-');
+
+                if ($token === '' || preg_match('/\d/', $token) !== 1) {
+                    continue;
+                }
+
+                if (preg_match('/^[a-z]+-?\d+[a-z0-9-]*$/', $token) !== 1) {
+                    continue;
+                }
+
+                $normalizedToken = str_replace('-', '', $token);
+                $suffixWithoutPrefix = preg_replace('/^[a-z]+-?/', '', $token) ?? '';
+                $normalizedSuffix = str_replace('-', '', $suffixWithoutPrefix);
+                $digitsOnly = preg_replace('/\D+/', '', $suffixWithoutPrefix) ?? '';
+
+                foreach ([$normalizedToken, $normalizedSuffix] as $term) {
+                    if ($term === '' || mb_strlen($term) < 3) {
+                        continue;
+                    }
+
+                    $terms[$term] = $term;
+                }
+
+                if ($digitsOnly !== '' && mb_strlen($digitsOnly) >= 3) {
+                    $terms[$digitsOnly] = $digitsOnly;
+                }
+            }
+        }
+
+        return array_values($terms);
     }
 }
