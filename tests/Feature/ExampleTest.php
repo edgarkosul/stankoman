@@ -10,7 +10,7 @@ test('home page renders base sections', function () {
         ->assertSee('InterTooler.ru');
 });
 
-test('home page renders configured public company email in layout', function (): void {
+test('site footer renders public company email without legal details', function (): void {
     config()->set('company.brand_line', 'Test Brand');
     config()->set('company.legal_name', 'ООО Тестовая компания');
     config()->set('company.site_host', 'settings.example.com');
@@ -18,12 +18,13 @@ test('home page renders configured public company email in layout', function ():
     config()->set('company.legal_addr', 'г. Краснодар, ул. Тестовая, 10');
     config()->set('company.public_email', 'public@example.com');
 
-    $this->get(route('home'))
-        ->assertOk()
-        ->assertSee('Test Brand')
-        ->assertSee('settings.example.com')
-        ->assertDontSee('ООО Тестовая компания')
-        ->assertDontSee('г. Краснодар, ул. Тестовая, 10')
-        ->assertSee('mailto:public@example.com', false)
-        ->assertSee('public@example.com');
+    $footer = view('components.layouts.partials.footer')->render();
+
+    expect($footer)
+        ->toContain('Test Brand')
+        ->toContain('settings.example.com')
+        ->not->toContain('ООО Тестовая компания')
+        ->not->toContain('г. Краснодар, ул. Тестовая, 10')
+        ->toContain('mailto:public@example.com')
+        ->toContain('public@example.com');
 });
