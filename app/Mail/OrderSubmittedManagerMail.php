@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\Order;
+use App\Support\Mail\OrderMailViewData;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
@@ -29,9 +30,10 @@ class OrderSubmittedManagerMail extends Mailable implements ShouldQueue
     public function content(): Content
     {
         return new Content(
-            view: 'mail.orders.submitted_manager',
+            markdown: 'mail.orders.submitted_manager',
             with: [
                 'order' => $this->order,
+                'mailData' => new OrderMailViewData($this->order),
             ],
         );
     }

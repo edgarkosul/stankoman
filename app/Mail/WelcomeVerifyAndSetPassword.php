@@ -25,7 +25,7 @@ class WelcomeVerifyAndSetPassword extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Добро пожаловать в '.config('app.name'),
+            subject: 'Добро пожаловать в '.config('settings.general.shop_name', config('app.name')),
         );
     }
 

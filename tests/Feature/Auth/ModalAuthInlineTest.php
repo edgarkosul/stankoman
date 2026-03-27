@@ -5,8 +5,8 @@ use App\Livewire\Auth\LoginInline;
 use App\Livewire\Auth\RegisterInline;
 use App\Livewire\Auth\VerifyEmailInline;
 use App\Models\User;
-use Illuminate\Auth\Notifications\ResetPassword;
-use Illuminate\Auth\Notifications\VerifyEmail;
+use App\Notifications\Auth\ResetPasswordNotification;
+use App\Notifications\Auth\VerifyEmailNotification;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
@@ -99,7 +99,7 @@ test('forgot password inline sends reset link and reopens login flow', function 
         ->assertSet('open', false)
         ->assertDispatched('showLoginModal');
 
-    Notification::assertSentTo($user, ResetPassword::class);
+    Notification::assertSentTo($user, ResetPasswordNotification::class);
 });
 
 test('forgot password inline form is rendered only when modal is open', function () {
@@ -125,7 +125,7 @@ test('verify email inline can resend verification email', function () {
         ->assertHasNoErrors()
         ->assertSet('linkSent', true);
 
-    Notification::assertSentTo($user, VerifyEmail::class);
+    Notification::assertSentTo($user, VerifyEmailNotification::class);
 });
 
 test('verify email inline shows correct initial text and resend button loading attributes', function () {

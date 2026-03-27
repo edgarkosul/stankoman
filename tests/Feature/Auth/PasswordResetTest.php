@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Auth\Notifications\ResetPassword;
+use App\Notifications\Auth\ResetPasswordNotification;
 use Illuminate\Support\Facades\Notification;
 
 test('reset password link screen can be rendered', function () {
@@ -17,7 +17,7 @@ test('reset password link can be requested', function () {
 
     $this->post(route('password.request'), ['email' => $user->email]);
 
-    Notification::assertSentTo($user, ResetPassword::class);
+    Notification::assertSentTo($user, ResetPasswordNotification::class);
 });
 
 test('reset password screen can be rendered', function () {
@@ -27,7 +27,7 @@ test('reset password screen can be rendered', function () {
 
     $this->post(route('password.request'), ['email' => $user->email]);
 
-    Notification::assertSentTo($user, ResetPassword::class, function ($notification) {
+    Notification::assertSentTo($user, ResetPasswordNotification::class, function ($notification) {
         $response = $this->get(route('password.reset', $notification->token));
         $response->assertOk();
 
@@ -42,7 +42,7 @@ test('password can be reset with valid token', function () {
 
     $this->post(route('password.request'), ['email' => $user->email]);
 
-    Notification::assertSentTo($user, ResetPassword::class, function ($notification) use ($user) {
+    Notification::assertSentTo($user, ResetPasswordNotification::class, function ($notification) use ($user) {
         $response = $this->post(route('password.update'), [
             'token' => $notification->token,
             'email' => $user->email,
@@ -58,23 +58,20 @@ test('password can be reset with valid token', function () {
     });
 });
 
-test('password reset notification is localized to russian', function () {
+test('custom password reset notification is used', function () {
     Notification::fake();
-    app()->setLocale('ru');
 
     $user = User::factory()->create();
 
     $this->post(route('password.request'), ['email' => $user->email]);
 
-    Notification::assertSentTo($user, ResetPassword::class, function (ResetPassword $notification) use ($user) {
+    Notification::assertSentTo($user, ResetPasswordNotification::class, function (ResetPasswordNotification $notification) use ($user) {
         $mailMessage = $notification->toMail($user);
-        $expirationMinutes = config('auth.passwords.'.config('auth.defaults.passwords').'.expire');
 
-        expect($mailMessage->subject)->toBe('Уведомление о сбросе пароля')
-            ->and($mailMessage->introLines)->toContain('Вы получили это письмо, потому что мы получили запрос на сброс пароля для вашей учетной записи.')
-            ->and($mailMessage->actionText)->toBe('Сбросить пароль')
-            ->and($mailMessage->outroLines)->toContain("Срок действия ссылки для сброса пароля истекает через {$expirationMinutes} мин.")
-            ->and($mailMessage->outroLines)->toContain('Если вы не запрашивали сброс пароля, никаких дополнительных действий не требуется.');
+        expect((string) $mailMessage->render())
+            ->toContain('Сброс пароля')
+            ->toContain('Сбросить пароль')
+            ->toContain($user->email);
 
         return true;
     });

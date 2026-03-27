@@ -1,7 +1,7 @@
 <x-mail::message>
 # Добро пожаловать, {{ $user->name ?? 'клиент' }}!
 
-Личный кабинет для вашего email уже существует на сайте {{ config('app.name') }}.
+Личный кабинет для вашего email уже существует на сайте {{ config('settings.general.shop_name', config('app.name')) }}.
 
 Если вы не помните пароль, задайте новый по ссылке ниже.
 
@@ -10,5 +10,5 @@
 </x-mail::button>
 
 С уважением,<br>
-{{ config('app.name') }}
+{{ config('settings.general.shop_name', config('app.name')) }}
 </x-mail::message>

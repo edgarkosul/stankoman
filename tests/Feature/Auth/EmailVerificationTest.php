@@ -1,8 +1,8 @@
 <?php
 
 use App\Models\User;
+use App\Notifications\Auth\VerifyEmailNotification;
 use Illuminate\Auth\Events\Verified;
-use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
@@ -68,21 +68,20 @@ test('already verified user visiting verification link is redirected without fir
     Event::assertNotDispatched(Verified::class);
 });
 
-test('verification email notification is localized to russian', function () {
+test('custom verification email notification is used', function () {
     Notification::fake();
-    app()->setLocale('ru');
 
     $user = User::factory()->unverified()->create();
 
     $user->sendEmailVerificationNotification();
 
-    Notification::assertSentTo($user, VerifyEmail::class, function (VerifyEmail $notification) use ($user) {
+    Notification::assertSentTo($user, VerifyEmailNotification::class, function (VerifyEmailNotification $notification) use ($user) {
         $mailMessage = $notification->toMail($user);
 
-        expect($mailMessage->subject)->toBe('Подтвердите адрес электронной почты')
-            ->and($mailMessage->introLines)->toContain('Пожалуйста, нажмите кнопку ниже, чтобы подтвердить адрес электронной почты.')
-            ->and($mailMessage->actionText)->toBe('Подтвердите адрес электронной почты')
-            ->and($mailMessage->outroLines)->toContain('Если вы не создавали аккаунт, никаких дополнительных действий не требуется.');
+        expect((string) $mailMessage->render())
+            ->toContain('Подтвердите e-mail')
+            ->toContain('Подтвердить e-mail')
+            ->toContain($user->email);
 
         return true;
     });

@@ -12,6 +12,7 @@ test('admin can create a custom unit family and base symbol from the unit form',
 
     config([
         'filament_admin.emails' => [strtolower((string) $user->email)],
+        'settings.general.filament_admin_emails' => [strtolower((string) $user->email)],
     ]);
 
     $this->actingAs($user);
@@ -68,6 +69,7 @@ test('admin can clear custom unit family selection before saving', function (): 
 
     config([
         'filament_admin.emails' => [strtolower((string) $user->email)],
+        'settings.general.filament_admin_emails' => [strtolower((string) $user->email)],
     ]);
 
     $this->actingAs($user);

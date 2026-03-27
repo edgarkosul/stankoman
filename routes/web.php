@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\MailPreviewController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductPrintController;
@@ -170,5 +171,14 @@ Route::middleware(['web', 'auth'])
         return response()->download($absPath, $downloadName);
     })
     ->name('admin.tools.download-import');
+
+if (app()->environment(['local', 'testing'])) {
+    Route::prefix('_preview/mail')
+        ->name('mail.preview.')
+        ->group(function (): void {
+            Route::get('/', [MailPreviewController::class, 'index'])->name('index');
+            Route::get('/{preview}', [MailPreviewController::class, 'show'])->name('show');
+        });
+}
 
 require __DIR__.'/settings.php';

@@ -10,6 +10,7 @@ test('duplicate product copies specs table into the new product', function (): v
 
     config([
         'filament_admin.emails' => [strtolower((string) $user->email)],
+        'settings.general.filament_admin_emails' => [strtolower((string) $user->email)],
     ]);
 
     $this->actingAs($user);

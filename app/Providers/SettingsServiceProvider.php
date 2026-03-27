@@ -27,10 +27,28 @@ class SettingsServiceProvider extends ServiceProvider
         }
 
         foreach ($settings as $setting) {
+            $value = $setting->getValueForConfig();
+
+            if ($this->shouldSkipOverride($setting->key, $value)) {
+                continue;
+            }
+
             config()->set(
                 'settings.'.$setting->key,
-                $setting->getValueForConfig(),
+                $value,
             );
         }
+    }
+
+    protected function shouldSkipOverride(string $key, mixed $value): bool
+    {
+        if (! in_array($key, [
+            'general.manager_emails',
+            'general.filament_admin_emails',
+        ], true)) {
+            return false;
+        }
+
+        return blank($value);
     }
 }

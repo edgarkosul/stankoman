@@ -3,7 +3,10 @@
 use App\Models\User;
 
 test('attributes page renders link to help center', function (): void {
-    config(['filament_admin.emails' => ['admin@example.com']]);
+    config([
+        'filament_admin.emails' => ['admin@example.com'],
+        'settings.general.filament_admin_emails' => ['admin@example.com'],
+    ]);
 
     $this->actingAs(User::factory()->create([
         'email' => 'admin@example.com',

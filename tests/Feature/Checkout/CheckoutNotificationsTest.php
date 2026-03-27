@@ -52,7 +52,6 @@ it('queues customer and manager emails on order submitted event', function (): v
         'manager.one@example.test',
         'manager.two@example.test',
     ]);
-    config()->set('settings.general.notification_email', '');
 
     Mail::fake();
 

@@ -8,7 +8,10 @@ use App\Models\User;
 use Livewire\Livewire;
 
 test('admin sees translated title on the setting edit page', function (): void {
-    config(['filament_admin.emails' => ['admin@example.com']]);
+    config([
+        'filament_admin.emails' => ['admin@example.com'],
+        'settings.general.filament_admin_emails' => ['admin@example.com'],
+    ]);
 
     $admin = User::factory()->create([
         'email' => 'admin@example.com',
@@ -33,7 +36,10 @@ test('settings global search only uses persisted columns', function (): void {
 });
 
 test('edit setting page saves manager emails repeater into json value', function (): void {
-    config(['filament_admin.emails' => ['admin@example.com']]);
+    config([
+        'filament_admin.emails' => ['admin@example.com'],
+        'settings.general.filament_admin_emails' => ['admin@example.com'],
+    ]);
 
     $admin = User::factory()->create([
         'email' => 'admin@example.com',

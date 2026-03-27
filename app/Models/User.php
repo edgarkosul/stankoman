@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+use App\Notifications\Auth\ResetPasswordNotification;
+use App\Notifications\Auth\VerifyEmailNotification;
+use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -14,7 +17,7 @@ use Illuminate\Support\Str;
 
 class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
+    /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
     /**
@@ -75,16 +78,19 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             ->implode('');
     }
 
+    public function sendEmailVerificationNotification(): void
+    {
+        $this->notify(new VerifyEmailNotification);
+    }
+
+    public function sendPasswordResetNotification(#[\SensitiveParameter] $token): void
+    {
+        $this->notify(new ResetPasswordNotification($token));
+    }
+
     public function canAccessPanel(Panel $panel): bool
     {
-        // если панелей несколько — можно ограничить только админку:
-        // if ($panel->getId() !== 'admin') return false;
-
-        return in_array(
-            strtolower($this->email ?? ''),
-            config('filament_admin.emails', []),
-            true
-        );
+        return in_array(Str::lower((string) $this->email), $this->allowedPanelEmails(), true);
     }
 
     public function favoriteProducts(): BelongsToMany
@@ -95,5 +101,44 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class);
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function allowedPanelEmails(): array
+    {
+        $configuredLists = [
+            config('settings.general.filament_admin_emails', []),
+            config('settings.general.manager_emails', []),
+            config('filament_admin.emails', []),
+        ];
+
+        foreach ($configuredLists as $emails) {
+            $normalized = $this->normalizeAllowedEmails($emails);
+
+            if ($normalized !== []) {
+                return $normalized;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function normalizeAllowedEmails(mixed $emails): array
+    {
+        if (! is_array($emails)) {
+            return [];
+        }
+
+        return collect($emails)
+            ->filter(fn ($email) => filled($email))
+            ->map(fn ($email) => Str::lower(trim((string) $email)))
+            ->unique()
+            ->values()
+            ->all();
     }
 }

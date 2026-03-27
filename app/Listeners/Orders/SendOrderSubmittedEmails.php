@@ -64,8 +64,6 @@ class SendOrderSubmittedEmails implements ShouldQueue
     private function resolveManagerEmails(): array
     {
         $managerEmails = config('settings.general.manager_emails', []);
-        $notificationEmail = config('settings.general.notification_email');
-
         $rawEmails = [];
 
         if (is_array($managerEmails)) {
@@ -74,13 +72,18 @@ class SendOrderSubmittedEmails implements ShouldQueue
             $rawEmails = [$managerEmails];
         }
 
-        if (is_string($notificationEmail) && trim($notificationEmail) !== '') {
-            $rawEmails[] = $notificationEmail;
+        if ($rawEmails === []) {
+            $notificationEmail = trim((string) config('settings.general.notification_email', ''));
+
+            if ($notificationEmail !== '') {
+                $rawEmails[] = $notificationEmail;
+            }
         }
 
         return collect($rawEmails)
             ->map(fn (mixed $email): string => trim((string) $email))
             ->filter()
+            ->unique()
             ->values()
             ->all();
     }

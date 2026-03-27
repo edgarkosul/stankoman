@@ -22,7 +22,7 @@ class WelcomeNoPassword extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Доступ в личный кабинет '.config('app.name'),
+            subject: 'Доступ в личный кабинет '.config('settings.general.shop_name', config('app.name')),
         );
     }
 
