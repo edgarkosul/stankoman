@@ -20,6 +20,7 @@ Email: {{ $user->email }}
 {{ $shopName }}
 
 <x-mail::subcopy>
-Ссылка действует ограниченное время. Если кнопка не открывается, используйте эту ссылку: {{ $verificationUrl }}
+Ссылка действует ограниченное время. Если кнопка не открывается, используйте эту ссылку:
+<a href="{{ $verificationUrl }}" class="break-all">{{ $verificationUrl }}</a>
 </x-mail::subcopy>
 </x-mail::message>

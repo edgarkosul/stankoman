@@ -20,6 +20,7 @@ Email: {{ $user->email }}
 {{ $shopName }}
 
 <x-mail::subcopy>
-Если кнопка не открывается, используйте эту ссылку: {{ $resetUrl }}
+Если кнопка не открывается, используйте эту ссылку:
+<a href="{{ $resetUrl }}" class="break-all">{{ $resetUrl }}</a>
 </x-mail::subcopy>
 </x-mail::message>

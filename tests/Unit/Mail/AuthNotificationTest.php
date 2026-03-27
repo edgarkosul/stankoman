@@ -36,7 +36,8 @@ test('user sends custom verification email notification', function () {
         expect((string) $notification->toMail($user)->render())
             ->toContain('Подтвердите e-mail')
             ->toContain('brand-logo-link')
-            ->toContain('images/logo.svg');
+            ->toContain('images/logo.svg')
+            ->toContain('word-break: break-all');
 
         return true;
     });
@@ -53,7 +54,8 @@ test('user sends custom reset password notification', function () {
         expect((string) $notification->toMail($user)->render())
             ->toContain('Сброс пароля')
             ->toContain('brand-logo-link')
-            ->toContain('images/logo.svg');
+            ->toContain('images/logo.svg')
+            ->toContain('word-break: break-all');
 
         return true;
     });
