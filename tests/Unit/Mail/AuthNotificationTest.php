@@ -34,7 +34,9 @@ test('user sends custom verification email notification', function () {
 
     Notification::assertSentTo($user, VerifyEmailNotification::class, function ($notification) use ($user) {
         expect((string) $notification->toMail($user)->render())
-            ->toContain('Подтвердите e-mail');
+            ->toContain('Подтвердите e-mail')
+            ->toContain('brand-logo-link')
+            ->toContain('images/logo.svg');
 
         return true;
     });
@@ -49,7 +51,9 @@ test('user sends custom reset password notification', function () {
 
     Notification::assertSentTo($user, ResetPasswordNotification::class, function ($notification) use ($user) {
         expect((string) $notification->toMail($user)->render())
-            ->toContain('Сброс пароля');
+            ->toContain('Сброс пароля')
+            ->toContain('brand-logo-link')
+            ->toContain('images/logo.svg');
 
         return true;
     });

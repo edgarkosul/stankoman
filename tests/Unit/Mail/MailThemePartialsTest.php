@@ -6,6 +6,7 @@ use Tests\TestCase;
 uses(TestCase::class);
 
 test('mail theme partials render configured company brand and contacts', function (): void {
+    config()->set('app.url', 'https://app.example.com');
     config()->set('settings.general.shop_name', 'InterTooler.ru');
     config()->set('company.brand_line', 'Test Brand');
     config()->set('company.legal_name', 'ООО Тестовая компания');
@@ -24,12 +25,15 @@ test('mail theme partials render configured company brand and contacts', functio
     ])->render();
 
     expect($header)
-        ->toContain('Test Brand')
-        ->toContain('ООО Тестовая компания')
+        ->toContain('brand-logo-link')
+        ->toContain('images/logo.svg')
+        ->toContain('alt="InterTooler.ru"')
         ->toContain('https://settings.example.com')
         ->toContain('settings.example.com')
         ->toContain('+7 (999) 123-45-67')
         ->toContain('public@example.com')
+        ->not->toContain('Test Brand')
+        ->not->toContain('ООО Тестовая компания')
         ->not->toContain('https://fallback.example.com');
 
     expect($footer)
