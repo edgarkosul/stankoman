@@ -46,7 +46,11 @@ test('admin can open user and order resources with relationship sections', funct
         ->assertSuccessful();
 
     $this->actingAs($admin)
-        ->get(OrderResource::getUrl('view', ['record' => $order], panel: 'admin'))
+        ->get(OrderResource::getUrl('edit', ['record' => $order], panel: 'admin'))
         ->assertSuccessful()
         ->assertSee($order->order_number);
+
+    $this->actingAs($admin)
+        ->get(OrderResource::getUrl('view', ['record' => $order], panel: 'admin'))
+        ->assertRedirect(OrderResource::getUrl('edit', ['record' => $order], panel: 'admin'));
 });

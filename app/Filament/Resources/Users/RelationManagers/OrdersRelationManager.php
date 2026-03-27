@@ -25,7 +25,7 @@ class OrdersRelationManager extends RelationManager
             ->columns([
                 TextColumn::make('order_number')
                     ->label('Номер')
-                    ->url(fn (Order $record): string => OrderResource::getUrl('view', ['record' => $record]))
+                    ->url(fn (Order $record): string => OrderResource::getUrl('edit', ['record' => $record]))
                     ->searchable(),
 
                 TextColumn::make('order_date')
@@ -65,11 +65,12 @@ class OrdersRelationManager extends RelationManager
                         fn (mixed $state, Order $record): string => number_format((float) $state, 2, ',', ' ').' '.($record->currency ?? 'RUB')
                     ),
             ])
+            ->recordUrl(fn (Order $record): string => OrderResource::getUrl('edit', ['record' => $record]))
             ->recordActions([
-                Action::make('view')
-                    ->label('Просмотр')
-                    ->icon('heroicon-o-eye')
-                    ->url(fn (Order $record): string => OrderResource::getUrl('view', ['record' => $record])),
+                Action::make('edit')
+                    ->label('Редактировать')
+                    ->icon('heroicon-o-pencil-square')
+                    ->url(fn (Order $record): string => OrderResource::getUrl('edit', ['record' => $record])),
             ]);
     }
 }

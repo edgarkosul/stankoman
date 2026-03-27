@@ -5,6 +5,8 @@ namespace App\Filament\Resources\Orders\Schemas;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\ShippingMethod;
+use App\Filament\Resources\Users\UserResource;
+use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -12,184 +14,234 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Fieldset;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Carbon;
 
 class OrderForm
 {
     public static function configure(Schema $schema): Schema
     {
-        return $schema->components([
-            Section::make('Основное')
-                ->columns(2)
-                ->schema([
-                    Select::make('user_id')
-                        ->label('Пользователь')
-                        ->relationship('user', 'name')
-                        ->searchable()
-                        ->preload()
-                        ->default(null)
-                        ->columnSpanFull(),
+        return $schema
+            ->columns(1)
+            ->components([
+                Section::make('Основное')
+                    ->columns([
+                        'default' => 1,
+                        'xl' => 2,
+                    ])
+                    ->schema([
+                        Select::make('user_id')
+                            ->label('Пользователь')
+                            ->relationship('user', 'name')
+                            ->searchable()
+                            ->preload()
+                            ->placeholder('Без привязки к заказчику')
+                            ->suffixAction(
+                                Action::make('edit_user')
+                                    ->icon('heroicon-o-user')
+                                    ->tooltip('Открыть заказчика')
+                                    ->url(fn (Get $get): ?string => filled($get('user_id'))
+                                        ? UserResource::getUrl('edit', ['record' => $get('user_id')])
+                                        : null)
+                                    ->visible(fn (Get $get): bool => filled($get('user_id')))
+                            )
+                            ->default(null)
+                            ->columnSpanFull(),
 
-                    TextInput::make('order_number')
-                        ->label('Номер заказа')
-                        ->disabled(),
+                        TextInput::make('order_number')
+                            ->label('Номер заказа')
+                            ->disabled(),
 
-                    DateTimePicker::make('submitted_at')
-                        ->label('Отправлен')
-                        ->displayFormat('d F Y G:i')
-                        ->seconds(false)
-                        ->native(false),
+                        TextInput::make('order_date')
+                            ->label('Дата заказа')
+                            ->disabled()
+                            ->formatStateUsing(fn (mixed $state): ?string => self::formatDate($state)),
 
-                    Select::make('status')
-                        ->label('Статус')
-                        ->native(false)
-                        ->required()
-                        ->selectablePlaceholder(false)
-                        ->options(OrderStatus::options()),
+                        DateTimePicker::make('submitted_at')
+                            ->label('Отправлен')
+                            ->displayFormat('d.m.Y H:i')
+                            ->seconds(false)
+                            ->native(false),
 
-                    Select::make('payment_status')
-                        ->label('Статус оплаты')
-                        ->native(false)
-                        ->required()
-                        ->selectablePlaceholder(false)
-                        ->options(PaymentStatus::options()),
+                        Select::make('status')
+                            ->label('Статус')
+                            ->native(false)
+                            ->required()
+                            ->selectablePlaceholder(false)
+                            ->options(OrderStatus::options()),
 
-                    TextInput::make('payment_method')
-                        ->label('Платёжный метод')
-                        ->maxLength(32),
-                ]),
+                        Select::make('payment_status')
+                            ->label('Статус оплаты')
+                            ->native(false)
+                            ->required()
+                            ->selectablePlaceholder(false)
+                            ->options(PaymentStatus::options()),
 
-            Section::make('Клиент')
-                ->columns(2)
-                ->schema([
-                    TextInput::make('customer_name')
-                        ->label('ФИО')
-                        ->required()
-                        ->maxLength(255)
-                        ->columnSpanFull(),
+                        TextInput::make('payment_method')
+                            ->label('Платёжный метод')
+                            ->maxLength(32),
 
-                    TextInput::make('customer_email')
-                        ->label('Email')
-                        ->email()
-                        ->maxLength(255),
+                        TextInput::make('currency')
+                            ->label('Валюта')
+                            ->disabled(),
+                    ]),
 
-                    TextInput::make('customer_phone')
-                        ->label('Телефон')
-                        ->tel()
-                        ->required()
-                        ->maxLength(32),
+                Section::make('Клиент')
+                    ->columns(1)
+                    ->schema([
+                        TextInput::make('customer_name')
+                            ->label('ФИО')
+                            ->required()
+                            ->maxLength(255)
+                            ->columnSpanFull(),
 
-                    Toggle::make('is_company')
-                        ->label('Юрлицо / ИП')
-                        ->inline(false)
-                        ->live(),
+                        TextInput::make('customer_email')
+                            ->label('Email')
+                            ->email()
+                            ->maxLength(255),
 
-                    Fieldset::make('Организация')
-                        ->visible(fn (callable $get): bool => (bool) $get('is_company'))
-                        ->schema([
-                            TextInput::make('company_name')
-                                ->label('Компания')
-                                ->maxLength(255)
-                                ->columnSpanFull(),
+                        TextInput::make('customer_phone')
+                            ->label('Телефон')
+                            ->tel()
+                            ->required()
+                            ->maxLength(32),
 
-                            TextInput::make('inn')
-                                ->label('ИНН')
-                                ->maxLength(12),
+                        Toggle::make('is_company')
+                            ->label('Юрлицо / ИП')
+                            ->inline(false)
+                            ->live(),
 
-                            TextInput::make('kpp')
-                                ->label('КПП')
-                                ->maxLength(9),
-                        ])
-                        ->columnSpan(2),
-                ]),
+                        Fieldset::make('Организация')
+                            ->visible(fn (callable $get): bool => (bool) $get('is_company'))
+                            ->schema([
+                                TextInput::make('company_name')
+                                    ->label('Компания')
+                                    ->maxLength(255)
+                                    ->columnSpanFull(),
 
-            Section::make('Доставка / Самовывоз')
-                ->columns(3)
-                ->schema([
-                    Select::make('shipping_method')
-                        ->label('Способ')
-                        ->native(false)
-                        ->required()
-                        ->selectablePlaceholder(false)
-                        ->options(ShippingMethod::options())
-                        ->columnSpanFull(),
+                                TextInput::make('inn')
+                                    ->label('ИНН')
+                                    ->maxLength(12),
 
-                    TextInput::make('pickup_point_id')
-                        ->label('ПВЗ ID')
-                        ->maxLength(64),
+                                TextInput::make('kpp')
+                                    ->label('КПП')
+                                    ->maxLength(9),
+                            ])
+                            ->columnSpanFull(),
+                    ]),
 
-                    TextInput::make('shipping_country')
-                        ->label('Страна')
-                        ->maxLength(64),
+                Section::make('Доставка / Самовывоз')
+                    ->columns([
+                        'default' => 1,
+                        'xl' => 2,
+                    ])
+                    ->schema([
+                        Select::make('shipping_method')
+                            ->label('Способ')
+                            ->native(false)
+                            ->required()
+                            ->selectablePlaceholder(false)
+                            ->options(ShippingMethod::options())
+                            ->columnSpanFull(),
 
-                    TextInput::make('shipping_region')
-                        ->label('Регион')
-                        ->maxLength(128),
+                        TextInput::make('pickup_point_id')
+                            ->label('ПВЗ ID')
+                            ->maxLength(64),
 
-                    TextInput::make('shipping_city')
-                        ->label('Город')
-                        ->maxLength(128),
+                        TextInput::make('shipping_country')
+                            ->label('Страна')
+                            ->maxLength(64),
 
-                    TextInput::make('shipping_street')
-                        ->label('Улица')
-                        ->maxLength(255)
-                        ->columnSpan(2),
+                        TextInput::make('shipping_region')
+                            ->label('Регион')
+                            ->maxLength(128),
 
-                    TextInput::make('shipping_house')
-                        ->label('Дом')
-                        ->maxLength(32),
+                        TextInput::make('shipping_city')
+                            ->label('Город')
+                            ->maxLength(128),
 
-                    TextInput::make('shipping_postcode')
-                        ->label('Индекс')
-                        ->maxLength(16),
+                        TextInput::make('shipping_street')
+                            ->label('Улица')
+                            ->maxLength(255)
+                            ->columnSpanFull(),
 
-                    Textarea::make('shipping_comment')
-                        ->label('Комментарий')
-                        ->columnSpanFull(),
-                ]),
+                        TextInput::make('shipping_house')
+                            ->label('Дом')
+                            ->maxLength(32),
 
-            Section::make('Суммы')
-                ->columns(['default' => 4, 'lg' => 2])
-                ->schema([
-                    TextInput::make('items_subtotal')
-                        ->label('Сумма товаров')
-                        ->numeric()
-                        ->default(0)
-                        ->suffix('₽')
-                        ->live(onBlur: true)
-                        ->afterStateUpdated(function (mixed $state, callable $set, callable $get): void {
-                            self::recalculateGrandTotal($get, $set);
-                        }),
+                        TextInput::make('shipping_postcode')
+                            ->label('Индекс')
+                            ->maxLength(16),
 
-                    TextInput::make('discount_total')
-                        ->label('Скидка')
-                        ->numeric()
-                        ->default(0)
-                        ->suffix('₽')
-                        ->live(onBlur: true)
-                        ->afterStateUpdated(function (mixed $state, callable $set, callable $get): void {
-                            self::recalculateGrandTotal($get, $set);
-                        }),
+                        Textarea::make('shipping_comment')
+                            ->label('Комментарий')
+                            ->columnSpanFull(),
+                    ]),
 
-                    TextInput::make('shipping_total')
-                        ->label('Доставка')
-                        ->numeric()
-                        ->default(0)
-                        ->suffix('₽')
-                        ->live(onBlur: true)
-                        ->afterStateUpdated(function (mixed $state, callable $set, callable $get): void {
-                            self::recalculateGrandTotal($get, $set);
-                        }),
+                Section::make('Суммы')
+                    ->columns([
+                        'default' => 1,
+                        'md' => 2,
+                        'xl' => 4,
+                    ])
+                    ->schema([
+                        TextInput::make('items_subtotal')
+                            ->label('Сумма товаров')
+                            ->numeric()
+                            ->default(0)
+                            ->suffix('₽')
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (mixed $state, callable $set, callable $get): void {
+                                self::recalculateGrandTotal($get, $set);
+                            }),
 
-                    TextInput::make('grand_total')
-                        ->label('Итого')
-                        ->numeric()
-                        ->default(0)
-                        ->suffix('₽')
-                        ->disabled()
-                        ->dehydrated(true),
-                ]),
-        ]);
+                        TextInput::make('discount_total')
+                            ->label('Скидка')
+                            ->numeric()
+                            ->default(0)
+                            ->suffix('₽')
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (mixed $state, callable $set, callable $get): void {
+                                self::recalculateGrandTotal($get, $set);
+                            }),
+
+                        TextInput::make('shipping_total')
+                            ->label('Доставка')
+                            ->numeric()
+                            ->default(0)
+                            ->suffix('₽')
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (mixed $state, callable $set, callable $get): void {
+                                self::recalculateGrandTotal($get, $set);
+                            }),
+
+                        TextInput::make('grand_total')
+                            ->label('Итого')
+                            ->numeric()
+                            ->default(0)
+                            ->suffix('₽')
+                            ->disabled()
+                            ->dehydrated(true),
+                    ]),
+
+                Section::make('Служебное')
+                    ->columns([
+                        'default' => 1,
+                        'xl' => 2,
+                    ])
+                    ->schema([
+                        TextInput::make('created_at')
+                            ->label('Создан')
+                            ->disabled()
+                            ->formatStateUsing(fn (mixed $state): ?string => self::formatDateTime($state)),
+
+                        TextInput::make('updated_at')
+                            ->label('Обновлён')
+                            ->disabled()
+                            ->formatStateUsing(fn (mixed $state): ?string => self::formatDateTime($state)),
+                    ]),
+            ]);
     }
 
     protected static function recalculateGrandTotal(callable $get, callable $set): void
@@ -199,5 +251,23 @@ class OrderForm
         $shipping = (float) ($get('shipping_total') ?? 0);
 
         $set('grand_total', max(0, $items - $discount + $shipping));
+    }
+
+    protected static function formatDate(mixed $state): ?string
+    {
+        if (blank($state)) {
+            return null;
+        }
+
+        return Carbon::parse($state)->format('d.m.Y');
+    }
+
+    protected static function formatDateTime(mixed $state): ?string
+    {
+        if (blank($state)) {
+            return null;
+        }
+
+        return Carbon::parse($state)->format('d.m.Y H:i:s');
     }
 }
