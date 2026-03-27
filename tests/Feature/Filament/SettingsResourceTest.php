@@ -34,6 +34,43 @@ test('settings global search only uses persisted columns', function (): void {
         ->not->toContain('translated_key');
 });
 
+test('settings index shows important settings before requisites', function (): void {
+    config([
+        'settings.general.filament_admin_emails' => ['admin@example.com'],
+    ]);
+
+    $admin = User::factory()->create([
+        'email' => 'admin@example.com',
+    ]);
+
+    foreach ([
+        'company.bank.name',
+        'company.legal_addr',
+        'company.public_email',
+        'general.filament_admin_emails',
+        'general.shop_name',
+        'general.manager_emails',
+    ] as $key) {
+        Setting::factory()->create([
+            'key' => $key,
+            'value' => 'test-value',
+            'type' => str_contains($key, 'emails') ? SettingType::Json : SettingType::String,
+        ]);
+    }
+
+    $this->actingAs($admin)
+        ->get(SettingResource::getUrl('index', panel: 'admin'))
+        ->assertSuccessful()
+        ->assertSeeInOrder([
+            'Название магазина',
+            'Адреса админов для уведомлений',
+            'Адреса админов Filament',
+            'Публичный email',
+            'Юридический адрес',
+            'Название банка',
+        ]);
+});
+
 test('edit setting page saves manager emails repeater into json value', function (): void {
     config([
         'settings.general.filament_admin_emails' => ['admin@example.com'],
