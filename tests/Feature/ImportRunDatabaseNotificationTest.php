@@ -14,6 +14,26 @@ test('admin panel has database notifications enabled', function () {
     expect($panel->getDatabaseNotificationsPollingInterval())->toBe('10s');
 });
 
+test('admin panel uses configured brand name', function () {
+    config()->set('settings.general.shop_name', 'Test Admin Brand');
+    config()->set('company.site_host', 'fallback.example.com');
+
+    $provider = new AdminPanelProvider(app());
+    $panel = $provider->panel(Panel::make());
+
+    expect((string) $panel->getBrandName())->toBe('Test Admin Brand');
+});
+
+test('admin panel falls back to company site host when shop name is blank', function () {
+    config()->set('settings.general.shop_name', '');
+    config()->set('company.site_host', 'fallback.example.com');
+
+    $provider = new AdminPanelProvider(app());
+    $panel = $provider->panel(Panel::make());
+
+    expect((string) $panel->getBrandName())->toBe('fallback.example.com');
+});
+
 test('import completion database notification is sent only to initiator for final statuses', function (string $status) {
     $initiator = User::factory()->create();
     $otherUser = User::factory()->create();

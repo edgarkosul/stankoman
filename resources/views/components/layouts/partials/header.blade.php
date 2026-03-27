@@ -1,3 +1,9 @@
+@php
+    $companyPhone = trim((string) config('company.phone'));
+    $companyPhoneHref = preg_replace('/\D+/', '', $companyPhone) ?? '';
+    $companyPublicEmail = trim((string) config('company.public_email', config('mail.from.address')));
+@endphp
+
 <header class="sticky top-0 z-50 shadow-md"
     x-data="catalogMenu(@js($catalogMenuActiveRootId))"
     @keydown.escape.window="catalogOpen = false"
@@ -25,26 +31,28 @@
                         <a href="https://max.ru/" target="_blank">
                             <x-icon name="max" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
                         </a>
-                        <a href="tg://resolve?phone=79002468660">
+                        <a href="tg://resolve?phone={{ $companyPhoneHref }}">
                             <x-icon name="telegram" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
                         </a>
-                        <a href="tel:+79002468660" class="flex gap-2">
+                        <a href="tel:+{{ $companyPhoneHref }}" class="flex gap-2">
                             <x-icon name="phone" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
-                            <span class="whitespace-nowrap hidden xs:block">+7 (900) 246-86-60</span>
+                            <span class="whitespace-nowrap hidden xs:block">{{ $companyPhone }}</span>
                         </a>
                     </div>
                 </div>
-                <div class="border-r border border-zinc-300"></div>
-                <div x-data x-tooltip.smart.bottom.offset-10.lt-md="'sales@intertooler.ru'" class="flex flex-col gap-8">
-                    <a href="mailto:sales@intertooler.ru">
-                        <div class="flex items-center md:gap-2 text-sm">
-                            <x-icon name="email" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
-                            <div>
-                                <span class="hidden md:block">sales@intertooler.ru</span>
+                @if (filled($companyPublicEmail))
+                    <div class="border-r border border-zinc-300"></div>
+                    <div x-data x-tooltip.smart.bottom.offset-10.lt-md='@js($companyPublicEmail)' class="flex flex-col gap-8">
+                        <a href="mailto:{{ $companyPublicEmail }}">
+                            <div class="flex items-center md:gap-2 text-sm">
+                                <x-icon name="email" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
+                                <div>
+                                    <span class="hidden md:block">{{ $companyPublicEmail }}</span>
+                                </div>
                             </div>
-                        </div>
-                    </a>
-                </div>
+                        </a>
+                    </div>
+                @endif
                 <div class="border-r border border-zinc-300"></div>
                 <div class="flex flex-col gap-8">
                     <div class="flex items-center gap-2 text-sm">

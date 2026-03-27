@@ -34,10 +34,19 @@ class SettingsServiceProvider extends ServiceProvider
             }
 
             config()->set(
-                'settings.'.$setting->key,
+                $this->resolveConfigPath($setting->key),
                 $value,
             );
         }
+    }
+
+    protected function resolveConfigPath(string $key): string
+    {
+        if (str_starts_with($key, 'company.') || str_starts_with($key, 'mail.')) {
+            return $key;
+        }
+
+        return 'settings.'.$key;
     }
 
     protected function shouldSkipOverride(string $key, mixed $value): bool
@@ -45,6 +54,8 @@ class SettingsServiceProvider extends ServiceProvider
         if (! in_array($key, [
             'general.manager_emails',
             'general.filament_admin_emails',
+            'company.public_email',
+            'mail.from.address',
         ], true)) {
             return false;
         }

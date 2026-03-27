@@ -1,11 +1,13 @@
 @php
     $shopName = config('settings.general.shop_name', config('app.name'));
-    $siteUrl = config('company.site_url', config('app.url'));
-    $siteHost = preg_replace('#^https?://#', '', (string) $siteUrl);
-    $phone = config('company.phone');
+    $brandLine = trim((string) config('company.brand_line'));
+    $legalName = trim((string) config('company.legal_name'));
+    $siteUrl = trim((string) config('company.site_url', config('app.url')));
+    $siteHost = trim((string) config('company.site_host')) ?: preg_replace('#^https?://#', '', (string) $siteUrl);
+    $phone = trim((string) config('company.phone'));
     $phoneHref = preg_replace('/\D+/', '', (string) $phone) ?? '';
-    $address = config('company.legal_addr');
-    $publicEmail = config('company.public_email', config('mail.from.address'));
+    $address = trim((string) config('company.legal_addr'));
+    $publicEmail = trim((string) config('company.public_email', config('mail.from.address')));
 @endphp
 
 <tr>
@@ -13,7 +15,10 @@
 <table class="footer-shell" align="center" width="640" cellpadding="0" cellspacing="0" role="presentation">
 <tr>
 <td class="footer-content">
-<p class="footer-heading">{{ $shopName }}</p>
+<p class="footer-heading">{{ filled($brandLine) ? $brandLine : $shopName }}</p>
+@if (filled($legalName))
+<p class="footer-copy">{{ $legalName }}</p>
+@endif
 @if (filled($address))
 <p class="footer-copy">{{ $address }}</p>
 @endif

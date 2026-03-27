@@ -67,7 +67,7 @@ class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])
-            ->brandName('InterTooler.ru')
+            ->brandName(fn (): string => $this->resolveBrandName())
             ->brandLogo(asset('images/logo.svg'))
             ->brandLogoHeight('3rem')
             ->favicon(asset('favicon.svg'))
@@ -88,5 +88,22 @@ class AdminPanelProvider extends PanelProvider
             ->databaseNotifications(isLazy: false)
             ->databaseNotificationsPolling('10s')
             ->plugins($plugins);
+    }
+
+    protected function resolveBrandName(): string
+    {
+        $shopName = trim((string) config('settings.general.shop_name'));
+
+        if ($shopName !== '') {
+            return $shopName;
+        }
+
+        $siteHost = trim((string) config('company.site_host'));
+
+        if ($siteHost !== '') {
+            return $siteHost;
+        }
+
+        return (string) config('app.name');
     }
 }

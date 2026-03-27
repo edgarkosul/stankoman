@@ -155,17 +155,33 @@ class SiteSeoDataBuilder
      */
     protected function organizationSchema(): array
     {
+        $shopName = (string) config('settings.general.shop_name', config('app.name'));
+        $brandLine = trim((string) config('company.brand_line'));
+        $legalName = trim((string) config('company.legal_name'));
+        $siteUrl = trim((string) config('company.site_url', $this->absoluteUrl('/')));
         $phone = trim((string) config('company.phone'));
         $address = trim((string) config('company.legal_addr'));
+        $email = trim((string) config('company.public_email'));
 
         $schema = [
             '@context' => 'https://schema.org',
             '@type' => 'Organization',
-            'name' => config('app.name'),
-            'legalName' => config('company.legal_name'),
-            'url' => $this->absoluteUrl('/'),
+            'name' => $shopName,
+            'alternateName' => $brandLine !== '' ? $brandLine : null,
+            'legalName' => $legalName !== '' ? $legalName : null,
+            'url' => $siteUrl !== '' ? $siteUrl : $this->absoluteUrl('/'),
             'logo' => $this->absoluteUrl('/apple-touch-icon.png'),
             'telephone' => $phone !== '' ? $phone : null,
+            'email' => $email !== '' ? $email : null,
+            'contactPoint' => ($phone !== '' || $email !== '')
+                ? [[
+                    '@type' => 'ContactPoint',
+                    'contactType' => 'customer support',
+                    'telephone' => $phone !== '' ? $phone : null,
+                    'email' => $email !== '' ? $email : null,
+                    'url' => $siteUrl !== '' ? $siteUrl : null,
+                ]]
+                : null,
             'address' => $address !== ''
                 ? [
                     '@type' => 'PostalAddress',

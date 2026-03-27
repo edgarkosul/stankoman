@@ -54,5 +54,7 @@ it('skips overriding blank email lists when bootstrapping settings config', func
     expect($method->invoke($provider, 'general.filament_admin_emails', null))->toBeTrue()
         ->and($method->invoke($provider, 'general.filament_admin_emails', []))->toBeTrue()
         ->and($method->invoke($provider, 'general.manager_emails', ''))->toBeTrue()
+        ->and($method->invoke($provider, 'company.public_email', ''))->toBeTrue()
+        ->and($method->invoke($provider, 'mail.from.address', null))->toBeTrue()
         ->and($method->invoke($provider, 'general.shop_name', 'InterTooler'))->toBeFalse();
 });

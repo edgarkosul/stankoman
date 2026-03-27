@@ -31,3 +31,41 @@ it('downloads product pdf when dl query parameter is set', function (): void {
         ->assertDownload()
         ->assertHeader('content-type', 'application/pdf');
 });
+
+it('renders configured company contacts and bank details in product pdf offer view', function (): void {
+    config()->set('company.site_url', 'https://settings.example.com');
+    config()->set('company.site_host', 'docs.settings.example.com');
+    config()->set('company.phone', '+7 (999) 123-45-67');
+    config()->set('company.legal_addr', 'г. Краснодар, ул. Тестовая, 10');
+    config()->set('company.bank.name', 'Тестовый банк');
+    config()->set('company.bank.bik', '012345678');
+    config()->set('company.bank.rs', '40802810999999999999');
+    config()->set('company.bank.ks', '30101810999999999999');
+
+    $product = Product::query()->create([
+        'name' => 'Тестовый товар PDF offer view',
+        'slug' => 'test-product-pdf-offer-view',
+        'is_active' => true,
+        'price_amount' => 90_000,
+    ]);
+
+    $html = view('pages.product.pdf.offer', [
+        'product' => $product,
+        'cover' => null,
+        'sku' => $product->id,
+        'price' => '90 000 ₽',
+        'attributes' => [],
+        'descriptionHtml' => '<p>Описание</p>',
+    ])->render();
+
+    expect($html)
+        ->toContain('КОНТАКТЫ И РЕКВИЗИТЫ')
+        ->toContain('https://settings.example.com')
+        ->toContain('docs.settings.example.com')
+        ->toContain('+7 (999) 123-45-67')
+        ->toContain('г. Краснодар, ул. Тестовая, 10')
+        ->toContain('Тестовый банк')
+        ->toContain('012345678')
+        ->toContain('40802810999999999999')
+        ->toContain('30101810999999999999');
+});

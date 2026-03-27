@@ -8,6 +8,12 @@ use App\Models\User;
 use Livewire\Livewire;
 
 it('renders organization and website schema with social meta tags on the home page', function (): void {
+    config()->set('company.legal_name', 'ООО Тестовая компания');
+    config()->set('company.brand_line', 'Test Brand');
+    config()->set('company.site_url', 'https://settings.example.com');
+    config()->set('company.phone', '+7 (999) 123-45-67');
+    config()->set('company.public_email', 'public@example.com');
+
     Page::factory()->create([
         'slug' => 'home',
         'title' => 'Главная',
@@ -25,6 +31,12 @@ it('renders organization and website schema with social meta tags on the home pa
         ->assertSee('<meta property="og:type" content="website" />', false)
         ->assertSee('<meta name="twitter:card" content="summary_large_image" />', false)
         ->assertSee('"@type": "Organization"', false)
+        ->assertSee('"legalName": "ООО Тестовая компания"', false)
+        ->assertSee('"alternateName": "Test Brand"', false)
+        ->assertSee('"url": "https://settings.example.com"', false)
+        ->assertSee('"telephone": "+7 (999) 123-45-67"', false)
+        ->assertSee('"email": "public@example.com"', false)
+        ->assertSee('"contactType": "customer support"', false)
         ->assertSee('"@type": "WebSite"', false)
         ->assertSee('"SearchAction"', false);
 });

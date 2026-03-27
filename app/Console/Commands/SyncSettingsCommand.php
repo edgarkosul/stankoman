@@ -15,7 +15,7 @@ class SyncSettingsCommand extends Command
 
     public function handle(): int
     {
-        $config = config('settings', []);
+        $config = require config_path('settings.php');
 
         if (! is_array($config)) {
             $this->error('config("settings") must be an array.');

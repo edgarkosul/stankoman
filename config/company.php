@@ -1,6 +1,16 @@
 <?php
 
 return [
+    /*
+    |--------------------------------------------------------------------------
+    | Company Defaults
+    |--------------------------------------------------------------------------
+    |
+    | These values seed the settings registry and act as bootstrap defaults
+    | until autoloaded settings override the runtime config.
+    |
+    */
+
     // Название
     'legal_name' => 'Индивидуальный предприниматель Кодаченко Роман Александрович',
     'brand_line' => '«InterTooler»',

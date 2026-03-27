@@ -2,6 +2,8 @@
     $c = fn($key, $default = '') => config("company.$key", $default);
     $bank = config('company.bank', []);
     $coverSrc = $cover ?? null;
+    $siteUrl = (string) $c('site_url');
+    $siteHost = trim((string) $c('site_host')) ?: preg_replace('#^https?://#', '', $siteUrl);
 @endphp
 
 <style>
@@ -245,6 +247,26 @@
         height: auto;
     }
 
+    table.requisites {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 14px;
+    }
+
+    table.requisites th,
+    table.requisites td {
+        padding: 6px 8px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid #ececec;
+    }
+
+    table.requisites th {
+        width: 36%;
+        color: #444;
+        font-weight: 700;
+    }
+
 </style>
 
 <table class="company-header">
@@ -252,7 +274,7 @@
         <td>
             <div class="ch-name">{{ $c('legal_name') }}</div>
             <div class="ch-site">
-                <a href="{{ $c('site_url') }}">{{ $c('site_host') }}</a>
+                <a href="{{ $siteUrl }}">{{ $siteHost }}</a>
             </div>
 
             <div class="ch-innkpp">
@@ -326,6 +348,37 @@
         @endif --}}
     </div>
 </div>
+<h2>КОНТАКТЫ И РЕКВИЗИТЫ</h2>
+<table class="requisites">
+    <tr>
+        <th>Сайт</th>
+        <td>{{ $siteUrl }}</td>
+    </tr>
+    <tr>
+        <th>Телефон</th>
+        <td>{{ $c('phone') }}</td>
+    </tr>
+    <tr>
+        <th>Юридический адрес</th>
+        <td>{{ $c('legal_addr') }}</td>
+    </tr>
+    <tr>
+        <th>Банк</th>
+        <td>{{ $bank['name'] ?? '' }}</td>
+    </tr>
+    <tr>
+        <th>БИК</th>
+        <td>{{ $bank['bik'] ?? '' }}</td>
+    </tr>
+    <tr>
+        <th>Расчетный счет</th>
+        <td>{{ $bank['rs'] ?? '' }}</td>
+    </tr>
+    <tr>
+        <th>Корреспондентский счет</th>
+        <td>{{ $bank['ks'] ?? '' }}</td>
+    </tr>
+</table>
 <h2>ОПИСАНИЕ</h2>
 <div class="pdf-description">
     @if (!empty($descriptionHtml))
@@ -343,6 +396,6 @@
     Сформировано {{ now()->format('d.m.Y H:i') }} · INTERTOOLER.RU
 </div>
 <div class="pdf-footer">
-    {{ config('company.legal_name') }} · {{ config('company.site_host') }} · Тел. {{ config('company.phone') }} ·
+    {{ config('company.legal_name') }} · {{ $siteHost }} · Тел. {{ config('company.phone') }} ·
     стр. <span class="pagenum"></span>
 </div>
