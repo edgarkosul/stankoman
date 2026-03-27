@@ -12,16 +12,18 @@ test('inline login modal can be opened', function () {
         ->assertSet('open', true);
 });
 
-test('inline login form is rendered only when modal is open', function () {
+test('inline login modal markup is guarded by alpine template and contains auth fields', function () {
     Livewire::test(LoginInline::class)
-        ->assertDontSee('login-inline-button')
-        ->call('open')
-        ->assertSee('login-inline-button')
-        ->assertSeeHtml('method="POST"')
-        ->assertSeeHtml('action="'.route('login', absolute: false).'"')
+        ->assertSeeHtml('x-cloak')
+        ->assertSeeHtml('x-if="open"')
+        ->assertSeeHtml('x-on:click.self="$wire.close()"')
+        ->assertSeeHtml('wire:submit="login"')
         ->assertSeeHtml('autocomplete="email"')
+        ->assertSeeHtml('x-ref="inlineLoginEmail"')
         ->assertSeeHtml('id="inline-login-email"')
-        ->assertSeeHtml('id="inline-login-password"');
+        ->assertSeeHtml('id="inline-login-password"')
+        ->assertSeeHtml('data-test="login-inline-button"')
+        ->assertDontSeeHtml('@click.stop');
 });
 
 test('users can authenticate using inline login modal', function () {

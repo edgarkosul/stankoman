@@ -1,22 +1,20 @@
-<div>
-    @if ($open)
+<div x-data="{ open: @entangle('open').live }" x-cloak>
+    <template x-if="open">
         <div
             class="fixed inset-0 z-[70] grid place-items-center bg-black/50 p-6"
-            wire:click="close"
-            x-data
+            x-init="$nextTick(() => $refs.inlineLoginEmail?.focus())"
+            x-on:click.self="$wire.close()"
             x-on:keydown.escape.window="$wire.close()"
-            wire:key="login-inline-modal"
         >
             <div
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="inline-login-title"
                 class="relative w-full max-w-md bg-white p-8 shadow-xl dark:bg-zinc-800"
-                wire:click.stop
             >
                 <button
                     type="button"
-                    wire:click="close"
+                    @click="$wire.close()"
                     class="absolute right-3 top-3 flex h-8 w-8 items-center justify-center text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:hover:text-white"
                     aria-label="{{ __('Close') }}"
                 >
@@ -35,14 +33,13 @@
 
                     <x-auth-session-status class="text-center" :status="session('status')" />
 
-                    <form method="POST" action="{{ route('login', absolute: false) }}" wire:submit="login" class="flex flex-col gap-5">
-                        @csrf
-
+                    <form wire:submit="login" class="flex flex-col gap-5">
                         <div class="flex flex-col gap-1.5">
                             <label for="inline-login-email" class="text-sm font-medium text-zinc-700 dark:text-zinc-200">
                                 {{ __('Email address') }}
                             </label>
                             <input
+                                x-ref="inlineLoginEmail"
                                 wire:model="email"
                                 name="email"
                                 id="inline-login-email"
@@ -63,7 +60,11 @@
                                 <label for="inline-login-password" class="text-sm font-medium text-zinc-700 dark:text-zinc-200">
                                     {{ __('Password') }}
                                 </label>
-                                <button type="button" class="cursor-pointer text-sm font-medium text-brand-green hover:underline" wire:click="openForgotPasswordModal">
+                                <button
+                                    type="button"
+                                    class="cursor-pointer text-sm font-medium text-brand-green hover:underline"
+                                    @click="$wire.openForgotPasswordModal()"
+                                >
                                     {{ __('Forgot your password?') }}
                                 </button>
                             </div>
@@ -106,7 +107,7 @@
 
                         <button
                             type="submit"
-                            class="inline-flex h-11 w-full items-center justify-center  bg-brand-green px-4 text-sm font-semibold text-white transition hover:bg-[#1c7731] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/40 disabled:cursor-not-allowed disabled:opacity-60"
+                            class="inline-flex h-11 w-full items-center justify-center bg-brand-green px-4 text-sm font-semibold text-white transition hover:bg-[#1c7731] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/40 disabled:cursor-not-allowed disabled:opacity-60"
                             data-test="login-inline-button"
                         >
                             {{ __('Log in') }}
@@ -115,12 +116,12 @@
 
                     <div class="space-x-1 text-center text-sm text-zinc-600 rtl:space-x-reverse dark:text-zinc-400">
                         <span>{{ __('Don\'t have an account?') }}</span>
-                        <button type="button" class="cursor-pointer font-medium text-brand-green hover:underline" wire:click="openRegisterModal">
+                        <button type="button" class="cursor-pointer font-medium text-brand-green hover:underline" @click="$wire.openRegisterModal()">
                             {{ __('Sign up') }}
                         </button>
                     </div>
                 </div>
             </div>
         </div>
-    @endif
+    </template>
 </div>

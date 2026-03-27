@@ -1,22 +1,20 @@
-<div>
-    @if ($open)
+<div x-data="{ open: @entangle('open').live }" x-cloak>
+    <template x-if="open">
         <div
             class="fixed inset-0 z-[70] grid place-items-center bg-black/50 p-6"
-            wire:click="close"
-            x-data
+            x-init="$nextTick(() => $refs.inlineRegisterName?.focus())"
+            x-on:click.self="$wire.close()"
             x-on:keydown.escape.window="$wire.close()"
-            wire:key="register-inline-modal"
         >
             <div
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="inline-register-title"
                 class="relative w-full max-w-md bg-white p-8 shadow-xl dark:bg-zinc-800"
-                wire:click.stop
             >
                 <button
                     type="button"
-                    wire:click="close"
+                    @click="$wire.close()"
                     class="absolute right-3 top-3 flex h-8 w-8 items-center justify-center text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:hover:text-white"
                     aria-label="{{ __('Close') }}"
                 >
@@ -39,6 +37,7 @@
                                 {{ __('Name') }}
                             </label>
                             <input
+                                x-ref="inlineRegisterName"
                                 wire:model="name"
                                 id="inline-register-name"
                                 name="name"
@@ -144,12 +143,12 @@
 
                     <div class="space-x-1 text-center text-sm text-zinc-600 rtl:space-x-reverse dark:text-zinc-400">
                         <span>{{ __('Already have an account?') }}</span>
-                        <button type="button" class="cursor-pointer font-medium text-brand-green hover:underline" wire:click="openLoginModal">
+                        <button type="button" class="cursor-pointer font-medium text-brand-green hover:underline" @click="$wire.openLoginModal()">
                             {{ __('Log in') }}
                         </button>
                     </div>
                 </div>
             </div>
         </div>
-    @endif
+    </template>
 </div>

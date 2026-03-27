@@ -37,15 +37,19 @@ test('register inline can switch to login modal', function () {
         ->assertDispatched('showLoginModal');
 });
 
-test('register inline form is rendered only when modal is open', function () {
+test('register inline modal markup is guarded by alpine template and contains auth fields', function () {
     Livewire::test(RegisterInline::class)
-        ->assertDontSee('register-inline-button')
-        ->call('open')
-        ->assertSee('register-inline-button')
+        ->assertSeeHtml('x-cloak')
+        ->assertSeeHtml('x-if="open"')
+        ->assertSeeHtml('x-on:click.self="$wire.close()"')
+        ->assertSeeHtml('wire:submit="register"')
+        ->assertSeeHtml('x-ref="inlineRegisterName"')
         ->assertSeeHtml('id="inline-register-name"')
         ->assertSeeHtml('id="inline-register-email"')
         ->assertSeeHtml('id="inline-register-password"')
-        ->assertSeeHtml('id="inline-register-password-confirmation"');
+        ->assertSeeHtml('id="inline-register-password-confirmation"')
+        ->assertSeeHtml('data-test="register-inline-button"')
+        ->assertDontSeeHtml('@click.stop');
 });
 
 test('new users can register via inline modal', function () {
