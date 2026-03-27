@@ -10,8 +10,6 @@ use Livewire\Component;
 
 class UserMenu extends Component
 {
-    protected $listeners = ['auth:logged-in' => '$refresh'];
-
     public function openLoginModal(): void
     {
         $this->dispatch('showLoginModal');

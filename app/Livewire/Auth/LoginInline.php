@@ -8,7 +8,6 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Livewire\Component;
@@ -78,7 +77,6 @@ class LoginInline extends Component
         }
 
         RateLimiter::clear($this->throttleKey());
-        Session::regenerate();
 
         $user = Auth::user();
 
@@ -86,8 +84,7 @@ class LoginInline extends Component
         $this->skipRender();
 
         if ($user instanceof MustVerifyEmail && ! $user->hasVerifiedEmail()) {
-            $this->dispatch('auth:logged-in');
-            $this->dispatch('showVerifyEmailModal');
+            $this->dispatch('auth:redirect', url: route('verification.notice', absolute: false));
 
             return;
         }

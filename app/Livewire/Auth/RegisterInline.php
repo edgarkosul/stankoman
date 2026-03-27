@@ -8,7 +8,6 @@ use Illuminate\Auth\Events\Registered;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Session;
 use Livewire\Component;
 
 class RegisterInline extends Component
@@ -60,14 +59,12 @@ class RegisterInline extends Component
         event(new Registered($user));
 
         Auth::login($user);
-        Session::regenerate();
 
         $this->close();
         $this->skipRender();
 
         if ($user instanceof MustVerifyEmail && ! $user->hasVerifiedEmail()) {
-            $this->dispatch('auth:logged-in');
-            $this->dispatch('showVerifyEmailModal');
+            $this->dispatch('auth:redirect', url: route('verification.notice', absolute: false));
 
             return;
         }

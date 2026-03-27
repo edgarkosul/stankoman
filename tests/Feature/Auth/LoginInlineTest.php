@@ -60,9 +60,9 @@ test('unverified users are redirected to verify email modal after inline login',
     $response
         ->assertHasNoErrors()
         ->assertSet('open', false)
-        ->assertDispatched('auth:logged-in')
-        ->assertDispatched('showVerifyEmailModal')
-        ->assertNotDispatched('auth:redirect');
+        ->assertDispatched('auth:redirect', url: route('verification.notice', absolute: false))
+        ->assertNotDispatched('auth:logged-in')
+        ->assertNotDispatched('showVerifyEmailModal');
 
     $this->assertAuthenticatedAs($user);
 });
@@ -136,7 +136,7 @@ test('unverified user menu renders verify email action', function () {
     Livewire::actingAs($user)
         ->test(UserMenu::class)
         ->assertSeeHtml('data-test="user-menu-verify-email-item"')
-        ->assertSee(__('Verify email'));
+        ->assertSee('Подтвердить email');
 });
 
 test('authenticated user menu can dispatch verify email modal event', function () {

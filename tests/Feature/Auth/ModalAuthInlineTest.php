@@ -64,14 +64,20 @@ test('new users can register via inline modal', function () {
     $response
         ->assertHasNoErrors()
         ->assertSet('open', false)
-        ->assertDispatched('auth:logged-in')
-        ->assertDispatched('showVerifyEmailModal')
-        ->assertNotDispatched('auth:redirect');
+        ->assertDispatched('auth:redirect', url: route('verification.notice', absolute: false))
+        ->assertNotDispatched('auth:logged-in')
+        ->assertNotDispatched('showVerifyEmailModal');
 
     $this->assertAuthenticated();
     $this->assertDatabaseHas('users', [
         'email' => 'inline-user@example.com',
     ]);
+});
+
+test('application layout includes csrf meta tag for javascript requests', function () {
+    $this->get(route('login'))
+        ->assertSuccessful()
+        ->assertSee('<meta name="csrf-token" content="', escape: false);
 });
 
 test('register inline validates duplicate email', function () {
