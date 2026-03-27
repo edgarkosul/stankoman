@@ -34,7 +34,7 @@ it('falls back to manager emails when admin list is empty', function () {
         ->and($blockedUser->canAccessPanel(Panel::make()->id('admin')))->toBeFalse();
 });
 
-it('falls back to legacy filament admin config when settings lists are empty', function () {
+it('denies access when settings lists are empty even if legacy config is set', function () {
     config()->set('settings.general.filament_admin_emails', []);
     config()->set('settings.general.manager_emails', []);
     config()->set('filament_admin.emails', ['legacy@example.com']);
@@ -43,7 +43,7 @@ it('falls back to legacy filament admin config when settings lists are empty', f
         'email' => 'legacy@example.com',
     ]);
 
-    expect($user->canAccessPanel(Panel::make()->id('admin')))->toBeTrue();
+    expect($user->canAccessPanel(Panel::make()->id('admin')))->toBeFalse();
 });
 
 it('skips overriding blank email lists when bootstrapping settings config', function () {

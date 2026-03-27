@@ -72,14 +72,6 @@ class SendOrderSubmittedEmails implements ShouldQueue
             $rawEmails = [$managerEmails];
         }
 
-        if ($rawEmails === []) {
-            $notificationEmail = trim((string) config('settings.general.notification_email', ''));
-
-            if ($notificationEmail !== '') {
-                $rawEmails[] = $notificationEmail;
-            }
-        }
-
         return collect($rawEmails)
             ->map(fn (mixed $email): string => trim((string) $email))
             ->filter()

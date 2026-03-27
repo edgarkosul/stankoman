@@ -6,7 +6,6 @@ use App\Models\User;
 use Illuminate\Support\Facades\Config;
 
 it('shows filament edit link on product page for configured filament admin', function (): void {
-    Config::set('filament_admin.emails', ['admin@example.com']);
     Config::set('settings.general.filament_admin_emails', ['admin@example.com']);
 
     $adminUser = User::factory()->create([
@@ -30,7 +29,6 @@ it('shows filament edit link on product page for configured filament admin', fun
 });
 
 it('hides filament edit link on product page for authenticated non admin user', function (): void {
-    Config::set('filament_admin.emails', ['admin@example.com']);
     Config::set('settings.general.filament_admin_emails', ['admin@example.com']);
 
     $regularUser = User::factory()->create([
@@ -54,7 +52,6 @@ it('hides filament edit link on product page for authenticated non admin user', 
 });
 
 it('hides filament edit link on product page for guest', function (): void {
-    Config::set('filament_admin.emails', ['admin@example.com']);
     Config::set('settings.general.filament_admin_emails', ['admin@example.com']);
 
     $product = Product::query()->create([

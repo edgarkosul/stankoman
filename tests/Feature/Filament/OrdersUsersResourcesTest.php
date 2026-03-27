@@ -16,7 +16,6 @@ test('user and order resources register relationship managers', function (): voi
 
 test('admin can open user and order resources with relationship sections', function (): void {
     config([
-        'filament_admin.emails' => ['admin@example.com'],
         'settings.general.filament_admin_emails' => ['admin@example.com'],
     ]);
 

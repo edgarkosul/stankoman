@@ -12,7 +12,6 @@ test('create category page asks to save record before choosing product image', f
     $user = User::factory()->create();
 
     config([
-        'filament_admin.emails' => [strtolower((string) $user->email)],
         'settings.general.filament_admin_emails' => [strtolower((string) $user->email)],
     ]);
 
@@ -27,7 +26,6 @@ test('edit category page uses deduplicated descendant product images and saves n
     $user = User::factory()->create();
 
     config([
-        'filament_admin.emails' => [strtolower((string) $user->email)],
         'settings.general.filament_admin_emails' => [strtolower((string) $user->email)],
     ]);
 

@@ -111,7 +111,6 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         $configuredLists = [
             config('settings.general.filament_admin_emails', []),
             config('settings.general.manager_emails', []),
-            config('filament_admin.emails', []),
         ];
 
         foreach ($configuredLists as $emails) {
