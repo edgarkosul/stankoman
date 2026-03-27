@@ -37,6 +37,8 @@ test('user sends custom verification email notification', function () {
             ->toContain('Подтвердите e-mail')
             ->toContain('brand-logo-link')
             ->toContain('images/logo.svg')
+            ->toContain('padding: 16px 18px')
+            ->toContain('background-color: #fff5f5')
             ->toContain('word-break: break-all');
 
         return true;
@@ -55,6 +57,8 @@ test('user sends custom reset password notification', function () {
             ->toContain('Сброс пароля')
             ->toContain('brand-logo-link')
             ->toContain('images/logo.svg')
+            ->toContain('padding: 16px 18px')
+            ->toContain('background-color: #fff5f5')
             ->toContain('word-break: break-all');
 
         return true;

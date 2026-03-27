@@ -288,8 +288,28 @@ img {
 }
 
 .panel {
+    margin: 22px 0;
     background-color: #fff5f5;
     border-left: 4px solid #ea0005;
+}
+
+.panel-content {
+    background-color: #fff5f5;
+    color: #171717;
+    padding: 16px 18px;
+}
+
+.panel-content p {
+    color: #171717;
+}
+
+.panel-item {
+    padding: 0;
+}
+
+.panel-item p:last-of-type {
+    margin-bottom: 0;
+    padding-bottom: 0;
 }
 
 .button {
