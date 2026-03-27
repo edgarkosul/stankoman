@@ -32,12 +32,12 @@
                             class="w-5 h-5 [&_.icon-base]:text-white [&_.icon-accent]:text-brand-red" />
                         <span class="whitespace-nowrap ">+7 (900) 246-86-60</span>
                     </a>
-                    <a href="mailto:sale@intertooler.ru">
+                    <a href="mailto:sales@intertooler.ru">
                         <div class="flex items-center md:gap-2">
                             <x-icon name="email"
                                 class="w-5 h-5 [&_.icon-base]:text-white [&_.icon-accent]:text-brand-red" />
                             <div>
-                                <span class="">sale@intertooler.ru</span>
+                                <span class="">sales@intertooler.ru</span>
                             </div>
                         </div>
                     </a>
@@ -47,6 +47,6 @@
     </div>
     <div class="max-w-7xl mx-auto px-4 md:px-6 py-4">
         <p class="border-t border-zinc-600 py-4 flex gap-4">© {{ now()->year }} <a href="{{ url('/') }}"
-                class="hover:underline underline-offset-4">StankoMan.ru</a> Все права защищены</p>
+                class="hover:underline underline-offset-4">InterTooler.ru</a> Все права защищены</p>
     </div>
 </footer>

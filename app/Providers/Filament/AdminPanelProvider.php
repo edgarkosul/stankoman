@@ -67,7 +67,7 @@ class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])
-            ->brandName('StankoMan.ru')
+            ->brandName('InterTooler.ru')
             ->brandLogo(asset('images/logo.svg'))
             ->brandLogoHeight('3rem')
             ->favicon(asset('favicon.svg'))
