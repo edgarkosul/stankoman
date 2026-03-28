@@ -73,5 +73,5 @@ test('order submitted manager preview renders metadata rows on separate lines in
     $response->assertSeeText('Статус оплаты:');
     $response->assertSeeText('Способ оплаты:');
     $response->assertSeeText('ID заказа:');
-    $response->assertSeeText('Публичный хеш:');
+    $response->assertDontSeeText('Публичный хеш:');
 });

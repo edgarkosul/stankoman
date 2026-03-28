@@ -161,7 +161,6 @@ class OrderMailViewData
         $this->pushRow($rows, 'Статус оплаты', $this->stringValue($this->order->payment_status));
         $this->pushRow($rows, 'Способ оплаты', $this->paymentMethodLabel());
         $this->pushRow($rows, 'ID заказа', $this->stringValue($this->order->id));
-        $this->pushRow($rows, 'Публичный хеш', $this->stringValue($this->order->public_hash));
 
         return $rows;
     }

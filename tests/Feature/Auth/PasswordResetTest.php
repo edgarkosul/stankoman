@@ -24,13 +24,20 @@ test('reset password link can be requested', function () {
 test('reset password screen can be rendered', function () {
     Notification::fake();
 
+    app()->setLocale('ru');
+
     $user = User::factory()->create();
 
     $this->post(route('password.request'), ['email' => $user->email]);
 
     Notification::assertSentTo($user, ResetPasswordNotification::class, function ($notification) {
         $response = $this->get(route('password.reset', $notification->token));
-        $response->assertOk();
+        $response
+            ->assertOk()
+            ->assertSeeText('Сбросить пароль')
+            ->assertSeeText('Введите новый пароль ниже')
+            ->assertSeeText('Адрес электронной почты')
+            ->assertSeeText('Подтвердите пароль');
 
         return true;
     });
