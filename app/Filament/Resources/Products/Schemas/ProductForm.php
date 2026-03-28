@@ -8,6 +8,7 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGaller
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\SellerRequisitesBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
 use App\Models\Product;
 use Filament\Forms\Components\FileUpload;
@@ -284,6 +285,7 @@ class ProductForm
                 ImageBlock::class,
                 ImageGalleryBlock::class,
                 PdfLinkBlock::class,
+                SellerRequisitesBlock::class,
                 RutubeVideoBlock::class,
                 YoutubeVideoBlock::class,
                 RawHtmlBlock::class,

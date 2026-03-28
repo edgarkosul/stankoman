@@ -34,6 +34,9 @@ class SettingForm
         'company.legal_name',
         'company.brand_line',
         'company.site_host',
+        'company.inn',
+        'company.ogrn',
+        'company.ogrnip',
         'company.bank.name',
         'company.bank.bik',
         'company.bank.rs',
@@ -42,6 +45,7 @@ class SettingForm
 
     private const TEXTAREA_VALUE_KEYS = [
         'company.legal_addr',
+        'company.correspondence_addr',
     ];
 
     public static function configure(Schema $schema): Schema
@@ -136,6 +140,27 @@ class SettingForm
                     ->dehydrated(fn (Get $get): bool => $get('key') === 'company.site_host')
                     ->columnSpanFull(),
 
+                TextInput::make('inn_value')
+                    ->label('ИНН')
+                    ->required()
+                    ->visible(fn (Get $get): bool => $get('key') === 'company.inn')
+                    ->dehydrated(fn (Get $get): bool => $get('key') === 'company.inn')
+                    ->columnSpanFull(),
+
+                TextInput::make('ogrn_value')
+                    ->label('ОГРН')
+                    ->helperText('Для юридического лица. Для ИП можно оставить пустым.')
+                    ->visible(fn (Get $get): bool => $get('key') === 'company.ogrn')
+                    ->dehydrated(fn (Get $get): bool => $get('key') === 'company.ogrn')
+                    ->columnSpanFull(),
+
+                TextInput::make('ogrnip_value')
+                    ->label('ОГРНИП')
+                    ->helperText('Для индивидуального предпринимателя. Для юрлица можно оставить пустым.')
+                    ->visible(fn (Get $get): bool => $get('key') === 'company.ogrnip')
+                    ->dehydrated(fn (Get $get): bool => $get('key') === 'company.ogrnip')
+                    ->columnSpanFull(),
+
                 TextInput::make('bank_name_value')
                     ->label('Название банка')
                     ->required()
@@ -169,8 +194,16 @@ class SettingForm
                     ->helperText('Используется в письмах, SEO и документах.')
                     ->required()
                     ->rows(4)
-                    ->visible(fn (Get $get): bool => in_array($get('key'), self::TEXTAREA_VALUE_KEYS, true))
-                    ->dehydrated(fn (Get $get): bool => in_array($get('key'), self::TEXTAREA_VALUE_KEYS, true))
+                    ->visible(fn (Get $get): bool => $get('key') === 'company.legal_addr')
+                    ->dehydrated(fn (Get $get): bool => $get('key') === 'company.legal_addr')
+                    ->columnSpanFull(),
+
+                Textarea::make('correspondence_addr_value')
+                    ->label('Адрес для корреспонденции')
+                    ->helperText('Показывается в реквизитах сайта, если отличается от юридического адреса.')
+                    ->rows(4)
+                    ->visible(fn (Get $get): bool => $get('key') === 'company.correspondence_addr')
+                    ->dehydrated(fn (Get $get): bool => $get('key') === 'company.correspondence_addr')
                     ->columnSpanFull(),
 
                 Repeater::make('manager_emails')

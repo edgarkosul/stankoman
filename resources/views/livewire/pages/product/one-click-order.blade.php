@@ -163,23 +163,21 @@
                                         />
                                     </div>
 
-                                    <div class="md:col-span-2">
-                                        <label class="inline-flex items-start gap-3 text-sm text-zinc-900">
-                                            <input
-                                                type="checkbox"
-                                                wire:model.live="acceptTerms"
-                                                class="mt-1 size-4 border-zinc-300 text-brand-green focus:ring-brand-green"
-                                            />
-                                            <span>
-                                                Я согласен на
-                                                <a href="{{ route('page.show', 'terms') }}"
-                                                    class="font-semibold text-brand-green underline"
-                                                    target="_blank"
-                                                    rel="noopener">
-                                                    обработку персональных данных
-                                                </a>
-                                            </span>
-                                        </label>
+                                    <div class="md:col-span-2 text-sm text-zinc-600">
+                                        Нажимая кнопку «Отправить», вы соглашаетесь с
+                                        <a href="{{ route('page.show', 'terms') }}"
+                                            class="font-semibold text-brand-green underline"
+                                            target="_blank"
+                                            rel="noopener">
+                                            Пользовательским соглашением
+                                        </a>
+                                        и
+                                        <a href="{{ route('page.show', 'privacy') }}"
+                                            class="font-semibold text-brand-green underline"
+                                            target="_blank"
+                                            rel="noopener">
+                                            Политикой обработки персональных данных
+                                        </a>.
                                     </div>
 
                                     <div class="md:col-span-2 flex justify-end pt-2">

@@ -19,14 +19,17 @@ return [
     'site_host' => 'www.intertooler.ru',
     'site_url' => 'https://www.intertooler.ru',
 
-    // ИНН/КПП
+    // Регистрационные данные
     'inn' => '231102927496',
+    'ogrn' => '',
+    'ogrnip' => '',
     'kpp' => '',
 
     // Контакты и адрес
     'phone' => '+7 (900) 246-86-60',
     'public_email' => env('COMPANY_PUBLIC_EMAIL', env('MAIL_FROM_ADDRESS', 'hello@example.com')),
     'legal_addr' => '350020,Краснодарский край, г.Краснодар, ул. Рашпилевская, д.170, корпус 2, квартира 16',
+    'correspondence_addr' => '',
 
     // Банк
     'bank' => [

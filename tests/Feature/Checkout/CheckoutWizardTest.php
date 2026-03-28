@@ -206,7 +206,29 @@ it('renders phone mask attribute on checkout page', function (): void {
         ->assertSuccessful()
         ->assertSee('data-phone-mask="ru"', escape: false)
         ->assertSee('placeholder="+7 (___) ___-__-__"', escape: false)
-        ->assertSee('Формат: +7 (999) 123-45-67.');
+        ->assertSee('Формат: +7 (999) 123-45-67.')
+        ->assertSee('/page/terms', escape: false)
+        ->assertSee('/page/privacy', escape: false)
+        ->assertSee('Пользовательским соглашением')
+        ->assertSee('Политикой обработки персональных данных');
+});
+
+it('requires consent acceptance in checkout wizard', function (): void {
+    $product = createCheckoutProduct([
+        'price_amount' => 100000,
+    ]);
+
+    app(CartService::class)->addItem($product->id, 1);
+
+    Livewire::test(Wizard::class)
+        ->assertSet('review.accept_terms', false)
+        ->set('contact.customer_name', 'Покупатель')
+        ->set('contact.customer_phone', '+79990001122')
+        ->set('delivery.shipping_method', 'delivery')
+        ->set('delivery.shipping_city', 'Краснодар')
+        ->set('review.payment_method', 'cash')
+        ->call('confirm')
+        ->assertHasErrors(['review.accept_terms' => 'accepted']);
 });
 
 it('shows inline login prompt for guests on checkout page', function (): void {

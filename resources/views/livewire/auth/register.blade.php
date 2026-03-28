@@ -52,6 +52,29 @@
                 viewable
             />
 
+            <div class="space-y-2">
+                <flux:field variant="inline">
+                    <flux:checkbox
+                        name="accept_terms"
+                        :checked="(bool) old('accept_terms')"
+                    />
+                    <flux:label>
+                        Я соглашаюсь с
+                        <a href="{{ route('page.show', 'terms') }}" class="font-medium text-brand-green underline" target="_blank" rel="noopener">
+                            Пользовательским соглашением
+                        </a>
+                        и
+                        <a href="{{ route('page.show', 'privacy') }}" class="font-medium text-brand-green underline" target="_blank" rel="noopener">
+                            Политикой обработки персональных данных
+                        </a>
+                    </flux:label>
+                </flux:field>
+
+                @error('accept_terms')
+                    <p class="text-sm font-medium text-red-600 dark:text-red-400">{{ $message }}</p>
+                @enderror
+            </div>
+
             <div class="flex items-center justify-end">
                 <flux:button type="submit" variant="primary" class="w-full bg-brand-green rounded-none  hover:bg-brand-green/90" data-test="register-user-button">
                     {{ __('Create account') }}

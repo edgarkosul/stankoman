@@ -33,8 +33,6 @@ class OneClickOrder extends Component
 
     public string $shippingComment = '';
 
-    public bool $acceptTerms = false;
-
     public ?string $submittedOrderNumber = null;
 
     /**
@@ -124,7 +122,6 @@ class OneClickOrder extends Component
             'shippingCountry' => ['required', 'string', 'max:64'],
             'shippingRegion' => ['nullable', 'string', 'max:128'],
             'shippingComment' => ['nullable', 'string', 'max:1000'],
-            'acceptTerms' => ['accepted'],
         ];
     }
 
@@ -138,7 +135,6 @@ class OneClickOrder extends Component
             'customerPhone.required' => 'Укажите телефон.',
             'customerEmail.email' => 'Укажите корректный email.',
             'shippingCountry.required' => 'Укажите страну.',
-            'acceptTerms.accepted' => 'Необходимо принять условия соглашения.',
         ];
     }
 
@@ -154,7 +150,6 @@ class OneClickOrder extends Component
             'shippingCountry' => 'страна',
             'shippingRegion' => 'регион',
             'shippingComment' => 'сообщение',
-            'acceptTerms' => 'условия соглашения',
         ];
     }
 
@@ -172,7 +167,6 @@ class OneClickOrder extends Component
         $this->shippingCountry = 'Россия';
         $this->shippingRegion = '';
         $this->shippingComment = '';
-        $this->acceptTerms = false;
         $this->submitted = false;
         $this->submittedOrderNumber = null;
 

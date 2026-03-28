@@ -37,7 +37,6 @@ it('creates guest one click order without touching cart contents', function (): 
         ->set('shippingCountry', 'Россия')
         ->set('shippingRegion', '')
         ->set('shippingComment', 'Позвоните утром')
-        ->set('acceptTerms', true)
         ->call('submit')
         ->assertSet('submitted', true);
 
@@ -85,7 +84,6 @@ it('keeps one click orders guest-only even for authenticated matching users', fu
         ->assertSet('customerPhone', '+79991112233')
         ->assertSet('shippingCountry', 'Россия')
         ->assertSet('shippingRegion', 'Московская область')
-        ->set('acceptTerms', true)
         ->call('submit')
         ->assertSet('submitted', true);
 
@@ -109,7 +107,6 @@ it('validates required one click fields', function (): void {
             'customerName',
             'customerPhone',
             'shippingCountry',
-            'acceptTerms',
         ]);
 });
 
@@ -122,7 +119,10 @@ it('renders scroll lock hook and inner scroll container for one click modal', fu
         ->call('openModal', $product->id, 1)
         ->assertSee("x-init=\"syncScrollLock(\$wire.isOpen); \$watch('\$wire.isOpen', value => syncScrollLock(value))\"", escape: false)
         ->assertSee('max-h-[calc(100dvh-2rem)]', escape: false)
-        ->assertSee('overflow-y-auto overscroll-contain', escape: false);
+        ->assertSee('overflow-y-auto overscroll-contain', escape: false)
+        ->assertSee('Нажимая кнопку «Отправить», вы соглашаетесь с')
+        ->assertSee('/page/terms', escape: false)
+        ->assertSee('/page/privacy', escape: false);
 });
 
 function createOneClickProduct(array $attributes = []): Product

@@ -45,7 +45,7 @@ class Wizard extends Component
 
     public array $review = [
         'payment_method' => 'cash',
-        'accept_terms' => true,
+        'accept_terms' => false,
     ];
 
     public array $totals = [
@@ -246,7 +246,7 @@ class Wizard extends Component
             'contact.kpp.regex' => 'КПП должен содержать 9 цифр.',
             'delivery.shipping_method.required' => 'Выберите способ доставки.',
             'review.payment_method.required' => 'Выберите способ оплаты.',
-            'review.accept_terms.accepted' => 'Необходимо принять условия соглашения.',
+            'review.accept_terms.accepted' => 'Необходимо согласиться с пользовательским соглашением и политикой обработки персональных данных.',
         ];
     }
 
@@ -263,7 +263,7 @@ class Wizard extends Component
             'delivery.shipping_method' => 'способ доставки',
             'delivery.shipping_city' => 'город',
             'review.payment_method' => 'способ оплаты',
-            'review.accept_terms' => 'условия соглашения',
+            'review.accept_terms' => 'пользовательское соглашение и политика обработки персональных данных',
         ];
     }
 

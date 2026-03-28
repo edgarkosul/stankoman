@@ -6,6 +6,7 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGaller
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\SellerRequisitesBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
 use App\Models\Slider;
 use App\Support\Filament\PdfLinkBlockConfigNormalizer;
@@ -108,6 +109,46 @@ it('renders raw html custom block without modification', function () {
     expect($html)->toBe('<div data-test="raw">OK</div>');
 });
 
+it('renders seller requisites custom block from company config', function () {
+    config()->set('company.legal_name', 'ООО Тестовая компания');
+    config()->set('company.inn', '231102927496');
+    config()->set('company.ogrn', '1234567890123');
+    config()->set('company.ogrnip', '');
+    config()->set('company.legal_addr', 'г. Краснодар, ул. Тестовая, 10');
+    config()->set('company.correspondence_addr', 'г. Краснодар, а/я 100');
+    config()->set('company.public_email', 'public@example.com');
+    config()->set('company.phone', '+7 (999) 123-45-67');
+
+    $html = SellerRequisitesBlock::toHtml([], []);
+
+    expect($html)->toContain('Продавец / Администрация сайта')
+        ->and($html)->toContain('ООО Тестовая компания')
+        ->and($html)->toContain('ИНН: 231102927496')
+        ->and($html)->toContain('ОГРН: 1234567890123')
+        ->and($html)->toContain('Юридический адрес')
+        ->and($html)->toContain('г. Краснодар, ул. Тестовая, 10')
+        ->and($html)->toContain('Адрес для корреспонденции')
+        ->and($html)->toContain('г. Краснодар, а/я 100')
+        ->and($html)->toContain('href="mailto:public@example.com"')
+        ->and($html)->toContain('href="tel:+79991234567"');
+});
+
+it('omits correspondence address when it matches the legal address', function () {
+    config()->set('company.legal_name', 'ООО Тестовая компания');
+    config()->set('company.inn', '231102927496');
+    config()->set('company.ogrn', '');
+    config()->set('company.ogrnip', '123456789012345');
+    config()->set('company.legal_addr', 'г. Краснодар, ул. Тестовая, 10');
+    config()->set('company.correspondence_addr', 'г. Краснодар, ул. Тестовая, 10');
+    config()->set('company.public_email', 'public@example.com');
+    config()->set('company.phone', '+7 (999) 123-45-67');
+
+    $html = SellerRequisitesBlock::toHtml([], []);
+
+    expect($html)->toContain('ОГРНИП: 123456789012345')
+        ->and($html)->not->toContain('Адрес для корреспонденции');
+});
+
 it('renders pdf link custom block using public storage url', function () {
     config(['filesystems.disks.public.url' => '/storage']);
 
@@ -120,7 +161,7 @@ it('renders pdf link custom block using public storage url', function () {
 
     expect($html)->toContain('/storage/documents/rich-content/catalog.pdf')
         ->and($html)->toContain('Скачать каталог')
-        ->and($html)->toContain('motion-safe:transition-[scale]')
+        ->and($html)->toContain('motion-safe:transition-transform')
         ->and($html)->toContain('hover:scale-[1.015]')
         ->and($html)->toContain('target="_blank"')
         ->and($html)->toContain('rel="noopener noreferrer"');

@@ -14,10 +14,14 @@ it('syncs settings from config into database', function (): void {
     $legalNameSetting = Setting::query()->where('key', 'company.legal_name')->first();
     $brandLineSetting = Setting::query()->where('key', 'company.brand_line')->first();
     $siteHostSetting = Setting::query()->where('key', 'company.site_host')->first();
+    $innSetting = Setting::query()->where('key', 'company.inn')->first();
+    $ogrnSetting = Setting::query()->where('key', 'company.ogrn')->first();
+    $ogrnipSetting = Setting::query()->where('key', 'company.ogrnip')->first();
     $phoneSetting = Setting::query()->where('key', 'company.phone')->first();
     $siteUrlSetting = Setting::query()->where('key', 'company.site_url')->first();
     $publicEmailSetting = Setting::query()->where('key', 'company.public_email')->first();
     $legalAddressSetting = Setting::query()->where('key', 'company.legal_addr')->first();
+    $correspondenceAddressSetting = Setting::query()->where('key', 'company.correspondence_addr')->first();
     $bankNameSetting = Setting::query()->where('key', 'company.bank.name')->first();
     $bankBikSetting = Setting::query()->where('key', 'company.bank.bik')->first();
     $bankRsSetting = Setting::query()->where('key', 'company.bank.rs')->first();
@@ -36,6 +40,15 @@ it('syncs settings from config into database', function (): void {
         ->and($siteHostSetting)->toBeInstanceOf(Setting::class)
         ->and($siteHostSetting->type)->toBe(SettingType::String)
         ->and($siteHostSetting->value)->toBe((string) config('settings.company.site_host'))
+        ->and($innSetting)->toBeInstanceOf(Setting::class)
+        ->and($innSetting->type)->toBe(SettingType::String)
+        ->and($innSetting->value)->toBe((string) config('settings.company.inn'))
+        ->and($ogrnSetting)->toBeInstanceOf(Setting::class)
+        ->and($ogrnSetting->type)->toBe(SettingType::String)
+        ->and($ogrnSetting->value)->toBe((string) config('settings.company.ogrn'))
+        ->and($ogrnipSetting)->toBeInstanceOf(Setting::class)
+        ->and($ogrnipSetting->type)->toBe(SettingType::String)
+        ->and($ogrnipSetting->value)->toBe((string) config('settings.company.ogrnip'))
         ->and($phoneSetting)->toBeInstanceOf(Setting::class)
         ->and($phoneSetting->type)->toBe(SettingType::String)
         ->and($phoneSetting->value)->toBe((string) config('settings.company.phone'))
@@ -48,6 +61,9 @@ it('syncs settings from config into database', function (): void {
         ->and($legalAddressSetting)->toBeInstanceOf(Setting::class)
         ->and($legalAddressSetting->type)->toBe(SettingType::String)
         ->and($legalAddressSetting->value)->toBe((string) config('settings.company.legal_addr'))
+        ->and($correspondenceAddressSetting)->toBeInstanceOf(Setting::class)
+        ->and($correspondenceAddressSetting->type)->toBe(SettingType::String)
+        ->and($correspondenceAddressSetting->value)->toBe((string) config('settings.company.correspondence_addr'))
         ->and($bankNameSetting)->toBeInstanceOf(Setting::class)
         ->and($bankNameSetting->type)->toBe(SettingType::String)
         ->and($bankNameSetting->value)->toBe((string) config('settings.company.bank.name'))
@@ -116,6 +132,24 @@ it('loads autoload settings into config via provider', function (): void {
         'autoload' => true,
     ]);
     Setting::query()->create([
+        'key' => 'company.inn',
+        'value' => '231102927496',
+        'type' => SettingType::String,
+        'autoload' => true,
+    ]);
+    Setting::query()->create([
+        'key' => 'company.ogrn',
+        'value' => '1234567890123',
+        'type' => SettingType::String,
+        'autoload' => true,
+    ]);
+    Setting::query()->create([
+        'key' => 'company.ogrnip',
+        'value' => '123456789012345',
+        'type' => SettingType::String,
+        'autoload' => true,
+    ]);
+    Setting::query()->create([
         'key' => 'company.public_email',
         'value' => 'public@example.com',
         'type' => SettingType::String,
@@ -136,6 +170,12 @@ it('loads autoload settings into config via provider', function (): void {
     Setting::query()->create([
         'key' => 'company.legal_addr',
         'value' => 'г. Краснодар, ул. Тестовая, 10',
+        'type' => SettingType::String,
+        'autoload' => true,
+    ]);
+    Setting::query()->create([
+        'key' => 'company.correspondence_addr',
+        'value' => 'г. Краснодар, а/я 100',
         'type' => SettingType::String,
         'autoload' => true,
     ]);
@@ -176,10 +216,14 @@ it('loads autoload settings into config via provider', function (): void {
     config()->set('company.legal_name', '');
     config()->set('company.brand_line', '');
     config()->set('company.site_host', '');
+    config()->set('company.inn', '');
+    config()->set('company.ogrn', '');
+    config()->set('company.ogrnip', '');
     config()->set('company.public_email', 'fallback@example.com');
     config()->set('company.phone', '');
     config()->set('company.site_url', '');
     config()->set('company.legal_addr', '');
+    config()->set('company.correspondence_addr', '');
     config()->set('company.bank.name', '');
     config()->set('company.bank.bik', '');
     config()->set('company.bank.rs', '');
@@ -192,10 +236,14 @@ it('loads autoload settings into config via provider', function (): void {
         ->and(config('company.legal_name'))->toBe('ООО Тестовая компания')
         ->and(config('company.brand_line'))->toBe('Test Brand')
         ->and(config('company.site_host'))->toBe('settings.example.com')
+        ->and(config('company.inn'))->toBe('231102927496')
+        ->and(config('company.ogrn'))->toBe('1234567890123')
+        ->and(config('company.ogrnip'))->toBe('123456789012345')
         ->and(config('company.public_email'))->toBe('public@example.com')
         ->and(config('company.phone'))->toBe('+7 (999) 123-45-67')
         ->and(config('company.site_url'))->toBe('https://settings.example.com')
         ->and(config('company.legal_addr'))->toBe('г. Краснодар, ул. Тестовая, 10')
+        ->and(config('company.correspondence_addr'))->toBe('г. Краснодар, а/я 100')
         ->and(config('company.bank.name'))->toBe('Тестовый банк')
         ->and(config('company.bank.bik'))->toBe('012345678')
         ->and(config('company.bank.rs'))->toBe('40802810999999999999')

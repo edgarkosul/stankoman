@@ -48,7 +48,10 @@ test('register inline modal markup is guarded by alpine template and contains au
         ->assertSeeHtml('id="inline-register-email"')
         ->assertSeeHtml('id="inline-register-password"')
         ->assertSeeHtml('id="inline-register-password-confirmation"')
+        ->assertSeeHtml('id="inline-register-accept-terms"')
         ->assertSeeHtml('data-test="register-inline-button"')
+        ->assertSee('/page/terms', escape: false)
+        ->assertSee('/page/privacy', escape: false)
         ->assertDontSeeHtml('@click.stop');
 });
 
@@ -59,6 +62,7 @@ test('new users can register via inline modal', function () {
         ->set('email', 'inline-user@example.com')
         ->set('password', 'password')
         ->set('password_confirmation', 'password')
+        ->set('accept_terms', true)
         ->call('register');
 
     $response
@@ -90,8 +94,19 @@ test('register inline validates duplicate email', function () {
         ->set('email', 'duplicate@example.com')
         ->set('password', 'password')
         ->set('password_confirmation', 'password')
+        ->set('accept_terms', true)
         ->call('register')
         ->assertHasErrors('email');
+});
+
+test('register inline requires legal terms acceptance', function () {
+    Livewire::test(RegisterInline::class)
+        ->set('name', 'Inline User')
+        ->set('email', 'inline-user@example.com')
+        ->set('password', 'password')
+        ->set('password_confirmation', 'password')
+        ->call('register')
+        ->assertHasErrors('accept_terms');
 });
 
 test('forgot password inline sends reset link and reopens login flow', function () {

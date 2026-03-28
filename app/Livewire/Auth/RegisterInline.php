@@ -27,6 +27,8 @@ class RegisterInline extends Component
 
     public string $password_confirmation = '';
 
+    public bool $accept_terms = false;
+
     public bool $open = false;
 
     public function open(): void
@@ -37,7 +39,7 @@ class RegisterInline extends Component
 
     public function close(): void
     {
-        $this->reset(['name', 'email', 'password', 'password_confirmation']);
+        $this->reset(['name', 'email', 'password', 'password_confirmation', 'accept_terms']);
         $this->open = false;
     }
 
@@ -54,6 +56,7 @@ class RegisterInline extends Component
             'email' => $this->email,
             'password' => $this->password,
             'password_confirmation' => $this->password_confirmation,
+            'accept_terms' => $this->accept_terms,
         ]);
 
         event(new Registered($user));

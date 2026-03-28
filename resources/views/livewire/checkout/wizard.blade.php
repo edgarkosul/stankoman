@@ -172,10 +172,14 @@
                             <input type="checkbox" wire:model.live="review.accept_terms"
                                 class="h-4 w-4 border border-brand-green" />
                             <span>
-                                Принимаю
+                                Я соглашаюсь с
                                 <a href="{{ route('page.show', 'terms') }}"
                                     class="font-semibold text-brand-green underline" target="_blank"
-                                    rel="noopener">пользовательское соглашение</a>
+                                    rel="noopener">Пользовательским соглашением</a>
+                                и
+                                <a href="{{ route('page.show', 'privacy') }}"
+                                    class="font-semibold text-brand-green underline" target="_blank"
+                                    rel="noopener">Политикой обработки персональных данных</a>
                             </span>
                         </label>
                     </div>

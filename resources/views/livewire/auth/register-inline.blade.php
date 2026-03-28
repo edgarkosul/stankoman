@@ -132,6 +132,31 @@
                             @enderror
                         </div>
 
+                        <div class="flex flex-col gap-2">
+                            <label for="inline-register-accept-terms" class="inline-flex items-start gap-3 text-sm text-zinc-700 dark:text-zinc-200">
+                                <input
+                                    id="inline-register-accept-terms"
+                                    wire:model="accept_terms"
+                                    name="accept_terms"
+                                    type="checkbox"
+                                    class="mt-1 size-4 border-zinc-300 text-brand-green focus:ring-brand-green dark:border-zinc-600 dark:bg-zinc-900"
+                                />
+                                <span>
+                                    Я соглашаюсь с
+                                    <a href="{{ route('page.show', 'terms') }}" class="font-medium text-brand-green underline" target="_blank" rel="noopener">
+                                        Пользовательским соглашением
+                                    </a>
+                                    и
+                                    <a href="{{ route('page.show', 'privacy') }}" class="font-medium text-brand-green underline" target="_blank" rel="noopener">
+                                        Политикой обработки персональных данных
+                                    </a>
+                                </span>
+                            </label>
+                            @error('accept_terms')
+                                <p class="text-sm font-medium text-red-600 dark:text-red-400">{{ $message }}</p>
+                            @enderror
+                        </div>
+
                         <button
                             type="submit"
                             class="inline-flex h-11 w-full items-center justify-center bg-brand-green px-4 text-sm font-semibold text-white transition hover:bg-[#1c7731] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green/40 disabled:cursor-not-allowed disabled:opacity-60"
