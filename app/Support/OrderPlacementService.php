@@ -6,17 +6,15 @@ use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
 use App\Events\Orders\OrderSubmitted;
 use App\Mail\WelcomeNoPassword;
-use App\Mail\WelcomeVerifyAndSetPassword;
+use App\Mail\WelcomeSetPassword;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -229,10 +227,6 @@ class OrderPlacementService
             $this->syncUserContact($existingUser, $name, $phone);
 
             DB::afterCommit(function () use ($existingUser): void {
-                if ($existingUser instanceof MustVerifyEmail && ! $existingUser->hasVerifiedEmail()) {
-                    $existingUser->sendEmailVerificationNotification();
-                }
-
                 Mail::to($existingUser->email)->queue(new WelcomeNoPassword($existingUser));
             });
 
@@ -246,24 +240,15 @@ class OrderPlacementService
             'password' => Hash::make(Str::password(16)),
         ]);
 
-        $verifyUrl = URL::temporarySignedRoute(
-            'verification.verify',
-            now()->addMinutes((int) config('auth.verification.expire', 60)),
-            [
-                'id' => $user->getKey(),
-                'hash' => sha1($user->getEmailForVerification()),
-            ]
-        );
-
         $token = Password::broker()->createToken($user);
         $resetUrl = route('password.reset', [
             'token' => $token,
             'email' => $user->email,
         ]);
 
-        DB::afterCommit(function () use ($user, $verifyUrl, $resetUrl): void {
+        DB::afterCommit(function () use ($user, $resetUrl): void {
             Mail::to($user->email)->queue(
-                new WelcomeVerifyAndSetPassword($user, $verifyUrl, $resetUrl)
+                new WelcomeSetPassword($user, $resetUrl)
             );
         });
 

@@ -4,14 +4,16 @@ use App\Events\Orders\OrderSubmitted;
 use App\Mail\OrderSubmittedCustomerMail;
 use App\Mail\OrderSubmittedManagerMail;
 use App\Mail\WelcomeNoPassword;
-use App\Mail\WelcomeVerifyAndSetPassword;
+use App\Mail\WelcomeSetPassword;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
+use App\Notifications\Auth\VerifyEmailNotification;
 use App\Support\CartService;
 use App\Support\CheckoutService;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 
 it('dispatches order submitted event after checkout submit', function (): void {
     $user = User::factory()->create();
@@ -104,8 +106,9 @@ it('queues customer and manager emails on order submitted event', function (): v
     Mail::assertQueuedCount(3);
 });
 
-it('queues welcome verify and set password email for newly created checkout account', function (): void {
+it('queues welcome set password email for newly created checkout account without verification notification', function (): void {
     Mail::fake();
+    Notification::fake();
 
     $product = createCheckoutNotificationProduct([
         'name' => 'Checkout Welcome Product',
@@ -135,15 +138,17 @@ it('queues welcome verify and set password email for newly created checkout acco
         ],
     );
 
-    Mail::assertQueued(WelcomeVerifyAndSetPassword::class, function (WelcomeVerifyAndSetPassword $mail): bool {
+    Mail::assertQueued(WelcomeSetPassword::class, function (WelcomeSetPassword $mail): bool {
         return $mail->hasTo('welcome-new@example.test')
-            && $mail->verifyUrl !== ''
             && $mail->resetUrl !== '';
     });
+
+    Notification::assertNothingSent();
 });
 
-it('queues welcome no password email for existing checkout account', function (): void {
+it('queues welcome no password email for existing checkout account without verification notification', function (): void {
     Mail::fake();
+    Notification::fake();
 
     $existingUser = User::factory()->unverified()->create([
         'email' => 'welcome-existing@example.test',
@@ -182,6 +187,8 @@ it('queues welcome no password email for existing checkout account', function ()
         return $mail->user->is($existingUser)
             && $mail->hasTo('welcome-existing@example.test');
     });
+
+    Notification::assertNotSentTo($existingUser, VerifyEmailNotification::class);
 });
 
 function createCheckoutNotificationProduct(array $attributes = []): Product

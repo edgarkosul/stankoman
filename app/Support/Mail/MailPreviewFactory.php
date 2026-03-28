@@ -7,7 +7,7 @@ use App\Enums\PaymentStatus;
 use App\Mail\OrderSubmittedCustomerMail;
 use App\Mail\OrderSubmittedManagerMail;
 use App\Mail\WelcomeNoPassword;
-use App\Mail\WelcomeVerifyAndSetPassword;
+use App\Mail\WelcomeSetPassword;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\User;
@@ -17,7 +17,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Mail\Mailable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\URL;
 use InvalidArgumentException;
 
 class MailPreviewFactory
@@ -41,10 +40,10 @@ class MailPreviewFactory
                 'expectedText' => 'Новый заказ',
             ],
             [
-                'key' => 'welcome-verify-and-set-password',
+                'key' => 'welcome-set-password',
                 'group' => 'Welcome и Auth',
-                'label' => 'Welcome: verify + set password',
-                'expectedText' => 'Добро пожаловать',
+                'label' => 'Welcome: set password',
+                'expectedText' => 'Установить пароль',
             ],
             [
                 'key' => 'welcome-no-password',
@@ -92,11 +91,7 @@ class MailPreviewFactory
         return match ($key) {
             'order-submitted-customer' => new OrderSubmittedCustomerMail($this->sampleOrder()),
             'order-submitted-manager' => new OrderSubmittedManagerMail($this->sampleOrder()),
-            'welcome-verify-and-set-password' => new WelcomeVerifyAndSetPassword(
-                $this->customerUser(),
-                $this->verificationUrl(),
-                $this->passwordResetUrl()
-            ),
+            'welcome-set-password' => $this->welcomeSetPasswordPreview(),
             'welcome-no-password' => new WelcomeNoPassword($this->customerUser()),
             'auth-verify-email' => (new VerifyEmailNotification)->toMail($this->unverifiedUser()),
             'auth-reset-password' => (new ResetPasswordNotification('preview-reset-token'))->toMail($this->customerUser()),
@@ -183,24 +178,15 @@ class MailPreviewFactory
         return $order;
     }
 
-    private function verificationUrl(): string
+    private function welcomeSetPasswordPreview(): WelcomeSetPassword
     {
         $user = $this->unverifiedUser();
 
-        return URL::temporarySignedRoute(
-            'verification.verify',
-            now()->addMinutes((int) config('auth.verification.expire', 60)),
-            [
-                'id' => $user->getKey(),
-                'hash' => sha1((string) $user->getEmailForVerification()),
-            ],
-        );
+        return new WelcomeSetPassword($user, $this->passwordResetUrl($user));
     }
 
-    private function passwordResetUrl(): string
+    private function passwordResetUrl(User $user): string
     {
-        $user = $this->customerUser();
-
         return route('password.reset', [
             'token' => 'preview-reset-token',
             'email' => $user->email,

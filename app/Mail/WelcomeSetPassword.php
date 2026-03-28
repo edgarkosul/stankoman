@@ -10,13 +10,12 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class WelcomeVerifyAndSetPassword extends Mailable implements ShouldQueue
+class WelcomeSetPassword extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
     public function __construct(
         public User $user,
-        public string $verifyUrl,
         public string $resetUrl,
     ) {
         $this->afterCommit();
@@ -32,10 +31,9 @@ class WelcomeVerifyAndSetPassword extends Mailable implements ShouldQueue
     public function content(): Content
     {
         return new Content(
-            markdown: 'mail.welcome-verify-and-set-password',
+            markdown: 'mail.welcome-set-password',
             with: [
                 'user' => $this->user,
-                'verifyUrl' => $this->verifyUrl,
                 'resetUrl' => $this->resetUrl,
             ],
         );
