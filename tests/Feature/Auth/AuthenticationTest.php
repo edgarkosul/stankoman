@@ -8,6 +8,19 @@ test('login screen can be rendered', function () {
     $response->assertOk();
 });
 
+test('login screen translates flashed password reset status', function () {
+    app()->setLocale('ru');
+
+    $response = $this->withSession([
+        'status' => 'passwords.reset',
+    ])->get(route('login'));
+
+    $response
+        ->assertOk()
+        ->assertSeeText('Ваш пароль был сброшен.')
+        ->assertDontSeeText('passwords.reset');
+});
+
 test('users can authenticate using the login screen', function () {
     $user = User::factory()->create();
 
