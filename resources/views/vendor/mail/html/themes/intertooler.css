@@ -312,6 +312,40 @@ img {
     padding-bottom: 0;
 }
 
+.mail-key-value-list {
+    margin: 0 0 18px;
+}
+
+.mail-key-value-row {
+    color: #171717;
+    font-size: 16px;
+    line-height: 1.55;
+    margin: 0 0 8px;
+    text-align: left;
+}
+
+.mail-key-value-row:last-child {
+    margin-bottom: 0;
+}
+
+.mail-key-value-label {
+    color: #171717;
+    font-weight: 700;
+}
+
+.mail-key-value-link {
+    color: #c81d25;
+    text-decoration: none;
+}
+
+.mail-key-value-value {
+    color: #171717;
+}
+
+.panel .mail-key-value-list {
+    margin-bottom: 0;
+}
+
 .button {
     -webkit-text-size-adjust: none;
     /* border-radius: 999px; */
@@ -360,6 +394,57 @@ img {
     border-bottom: 1px solid #e4e0dc;
 }
 
+.table th:only-child {
+    border: 0;
+    display: none;
+    font-size: 0;
+    line-height: 0;
+    padding: 0;
+}
+
 .table td {
     color: #3a271c;
+}
+
+.table .order-item-name {
+    color: #0F6A24;
+    display: block;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+.table .order-item-sku {
+    color: #737373;
+    display: block;
+    font-size: 12px;
+    line-height: 1.5;
+    margin-top: 4px;
+}
+
+.table .order-item-facts {
+    display: block;
+    margin-top: 10px;
+}
+
+.table .order-item-fact {
+    display: inline-block;
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0 16px 6px 0;
+    vertical-align: top;
+}
+
+.table .order-item-fact:last-child {
+    margin-right: 0;
+}
+
+.table .order-item-fact-label {
+    color: #737373;
+    font-weight: 600;
+}
+
+.table .order-item-fact-value {
+    color: #171717;
+    font-weight: 700;
 }

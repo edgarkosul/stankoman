@@ -37,6 +37,8 @@ test('mail theme partials render configured company brand and contacts', functio
         ->not->toContain('https://fallback.example.com');
 
     expect($footer)
+        ->toContain('class="mail-shell footer-shell"')
+        ->toContain('style="width: 640px; max-width: 640px;"')
         ->toContain('Test Brand')
         ->toContain('ООО Тестовая компания')
         ->toContain('г. Краснодар, ул. Тестовая, 10')

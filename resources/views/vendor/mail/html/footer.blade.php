@@ -12,7 +12,7 @@
 
 <tr>
 <td>
-<table class="footer-shell" align="center" width="640" cellpadding="0" cellspacing="0" role="presentation">
+<table class="mail-shell footer-shell" align="center" width="640" cellpadding="0" cellspacing="0" role="presentation" style="width: 640px; max-width: 640px;">
 <tr>
 <td class="footer-content">
 <p class="footer-heading">{{ filled($brandLine) ? $brandLine : $shopName }}</p>

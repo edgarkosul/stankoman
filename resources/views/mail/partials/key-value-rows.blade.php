@@ -1,4 +1,12 @@
+<div class="mail-key-value-list">
 @foreach ($rows as $row)
-**{{ $row['label'] }}:** @if (! empty($row['url']))[{{ $row['value'] }}]({{ $row['url'] }})@else{{ $row['value'] }}@endif
-
+<p class="mail-key-value-row">
+    <span class="mail-key-value-label">{{ $row['label'] }}:</span>
+    @if (! empty($row['url']))
+        <a href="{{ $row['url'] }}" class="mail-key-value-link">{{ $row['value'] }}</a>
+    @else
+        <span class="mail-key-value-value">{{ $row['value'] }}</span>
+    @endif
+</p>
 @endforeach
+</div>
