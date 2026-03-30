@@ -124,6 +124,10 @@
                 activeCatalogRootId: initialRootId,
                 pendingRootId: null,
                 hoverTimer: null,
+                touchFocusRootId: null,
+                touchFocusStartedAt: 0,
+                armedRootId: null,
+                preventedClickRootId: null,
                 setActive(id, delay = 140) {
                     if (this.activeCatalogRootId === id) {
                         this.pendingRootId = null;
@@ -150,6 +154,96 @@
                     clearTimeout(this.hoverTimer);
                     this.pendingRootId = null;
                     this.activeCatalogRootId = id;
+                },
+                isTouchEnvironment() {
+                    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+                        return false;
+                    }
+
+                    return window.matchMedia('(hover: none), (pointer: coarse)').matches || (navigator.maxTouchPoints || 0) > 0;
+                },
+                isBelowXsNavigationBreakpoint() {
+                    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+                        return false;
+                    }
+
+                    return window.matchMedia('(max-width: 479px)').matches;
+                },
+                isTouchEvent(event) {
+                    if (! event) {
+                        return false;
+                    }
+
+                    if (event.type.startsWith('touch')) {
+                        return true;
+                    }
+
+                    if (typeof event.pointerType === 'string') {
+                        return event.pointerType === 'touch' || this.isTouchEnvironment();
+                    }
+
+                    return this.isTouchEnvironment();
+                },
+                prepareTouchActivation(event, id) {
+                    if (! this.isTouchEvent(event)) {
+                        return;
+                    }
+
+                    if (this.isBelowXsNavigationBreakpoint()) {
+                        this.resetTouchInteraction();
+
+                        return;
+                    }
+
+                    const now = Date.now();
+                    if (this.touchFocusRootId === id && now - this.touchFocusStartedAt < 64) {
+                        return;
+                    }
+
+                    this.touchFocusRootId = id;
+                    this.touchFocusStartedAt = now;
+                    this.preventedClickRootId = this.armedRootId === id ? null : id;
+                    this.armedRootId = id;
+                    this.setActiveInstant(id);
+                },
+                handleFocus(id) {
+                    if (this.isBelowXsNavigationBreakpoint()) {
+                        return;
+                    }
+
+                    if (this.touchFocusRootId === id && Date.now() - this.touchFocusStartedAt < 500) {
+                        return;
+                    }
+
+                    this.setActiveInstant(id);
+                },
+                handleRootClick(event, id) {
+                    if (this.isBelowXsNavigationBreakpoint()) {
+                        this.resetTouchInteraction();
+
+                        return;
+                    }
+
+                    if (this.preventedClickRootId === id) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+
+                    this.resetTouchInteraction(id);
+                },
+                resetTouchInteraction(id = null) {
+                    if (id === null || this.touchFocusRootId === id) {
+                        this.touchFocusRootId = null;
+                        this.touchFocusStartedAt = 0;
+                    }
+
+                    if (id === null || this.preventedClickRootId === id) {
+                        this.preventedClickRootId = null;
+                    }
+
+                    if (id === null) {
+                        this.armedRootId = null;
+                    }
                 },
                 clearTimer() {
                     clearTimeout(this.hoverTimer);

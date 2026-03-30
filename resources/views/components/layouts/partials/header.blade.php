@@ -6,7 +6,7 @@
 
 <header class="sticky top-0 z-50 shadow-md"
     x-data="catalogMenu(@js($catalogMenuActiveRootId))"
-    @keydown.escape.window="catalogOpen = false"
+    @keydown.escape.window="catalogOpen = false; resetTouchInteraction()"
 >
 
     <div class="bg-zinc-100 ">
@@ -121,7 +121,7 @@
         </div>
     </div>
     {{-- CATEGORIES MENU --}}
-    <nav id="catalog-nav" x-show="catalogOpen" x-cloak @click.outside="catalogOpen = false"
+    <nav id="catalog-nav" x-show="catalogOpen" x-cloak @click.outside="catalogOpen = false; resetTouchInteraction()"
         class="absolute inset-x-0 z-50">
         <div class="max-w-7xl mx-auto bg-zinc-50">
             <!-- Общая высота меню -->
@@ -136,9 +136,12 @@
                             <a
                                 href="{{ route('catalog.leaf', ['path' => $root['menu_path']]) }}"
                                 class="block px-6 py-3 hover:text-brand-gray hover:bg-zinc-50"
+                                @pointerdown="prepareTouchActivation($event, {{ $root['id'] }})"
+                                @touchstart.passive="prepareTouchActivation($event, {{ $root['id'] }})"
                                 @mouseenter="setActive({{ $root['id'] }})"
                                 @mouseleave="cancelPending({{ $root['id'] }})"
-                                @focus="setActiveInstant({{ $root['id'] }})"
+                                @focus="handleFocus({{ $root['id'] }})"
+                                @click="handleRootClick($event, {{ $root['id'] }})"
                                 :class="activeCatalogRootId === {{ $root['id'] }} ? 'text-brand-gray bg-zinc-50' : ''"
                             >
                                 {{ $root['name'] }}
@@ -150,7 +153,7 @@
 
                     <!-- ПРАВАЯ ОБЛАСТЬ (остаток + свой скролл) -->
                     <section
-                        class="min-h-0 min-w-0 overflow-y-auto px-3 py-6 overscroll-contain scrollbar-w-0.5 scrollbar scrollbar-thumb-brand-green/70 scrollbar-track-zinc-50">
+                        class="min-h-0 min-w-0 overflow-y-auto px-3 py-6 overscroll-contain scrollbar-w-0.5 scrollbar scrollbar-thumb-brand-green/70 scrollbar-track-zinc-50 max-xs:!hidden">
                         @forelse ($catalogMenuRoots as $root)
                             <div x-show="activeCatalogRootId === {{ $root['id'] }}" x-cloak>
                                 <!-- Автоколонки: 1 -> 2 -> 3 -> 4 -->
