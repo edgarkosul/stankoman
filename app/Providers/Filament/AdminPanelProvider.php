@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Resources\Products\Pages\EditProduct;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -75,6 +76,11 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::PAGE_HEADER_ACTIONS_AFTER,
                 fn (): View => view('filament.components.help-center-link'),
+            )
+            ->renderHook(
+                PanelsRenderHook::PAGE_END,
+                fn (): View => view('filament.components.product-edit-scroll-top'),
+                scopes: EditProduct::class,
             )
             ->navigationGroups([
                 NavigationGroup::make('Категории')->collapsed(),

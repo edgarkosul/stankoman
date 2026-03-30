@@ -21,6 +21,8 @@ class EditProduct extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            $this->getSaveFormAction()
+                ->formId('form'),
             Action::make('generate_webp_derivatives')
                 ->label('Сгенерировать WebP')
                 ->icon('heroicon-o-photo')
