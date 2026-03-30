@@ -145,6 +145,8 @@ test('app js includes product slider initialization hooks', function (): void {
 
     expect($appJs)
         ->toContain('const equalizeProductSliderHeights = (slider) =>')
+        ->toContain("slider.querySelectorAll(':scope > .swiper-wrapper > .swiper-slide > *')")
+        ->not->toContain("slider.querySelectorAll('.swiper-slide > *')")
         ->toContain('card.style.minHeight = normalizedHeight;')
         ->not->toContain('card.style.height = normalizedHeight;')
         ->toContain('scheduleProductSliderEqualize(slider);')

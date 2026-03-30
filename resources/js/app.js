@@ -179,7 +179,7 @@ const equalizeProductSliderHeights = (slider) => {
         return;
     }
 
-    const cards = Array.from(slider.querySelectorAll('.swiper-slide > *'))
+    const cards = Array.from(slider.querySelectorAll(':scope > .swiper-wrapper > .swiper-slide > *'))
         .filter((node) => node instanceof HTMLElement);
 
     if (!cards.length) {
