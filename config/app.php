@@ -54,6 +54,8 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'robots_allow_indexing' => env('APP_ROBOTS_ALLOW_INDEXING'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

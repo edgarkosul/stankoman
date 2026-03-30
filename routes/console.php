@@ -19,6 +19,18 @@ Schedule::command('products:search-reindex')
     ->dailyAt('06:30')
     ->withoutOverlapping(180);
 
+Schedule::command('seo:generate-sitemap')
+    ->dailyAt('04:30')
+    ->withoutOverlapping(180)
+    ->evenInMaintenanceMode()
+    ->appendOutputTo(storage_path('logs/seo-sitemap.log'));
+
+Schedule::command('feeds:generate-market')
+    ->dailyAt('04:40')
+    ->withoutOverlapping(180)
+    ->evenInMaintenanceMode()
+    ->appendOutputTo(storage_path('logs/market-feed.log'));
+
 $catalogImportSchedule = config('catalog-import.schedule', []);
 $catalogScheduleEnabled = (bool) ($catalogImportSchedule['enabled'] ?? false);
 $catalogScheduleTimezone = (string) ($catalogImportSchedule['timezone'] ?? 'Europe/Moscow');

@@ -133,6 +133,17 @@ Route::prefix('user')->middleware(['auth'])->group(function (): void {
         ->name('user.orders.show');
 });
 
+Route::get('/market.xml', function () {
+    $disk = Storage::disk('public');
+    $relativePath = 'feeds/yandex-market.xml';
+
+    abort_unless($disk->exists($relativePath), 404);
+
+    return response()->file($disk->path($relativePath), [
+        'Content-Type' => 'text/xml; charset=utf-8',
+    ]);
+})->name('feeds.yandex-market');
+
 Route::middleware(['web', 'auth'])
     ->get('/admin/tools/download-export/{token}/{name}', function (string $token, string $name) {
         abort_unless(preg_match('/^[a-f0-9]{16}$/i', $token) === 1, 404);
