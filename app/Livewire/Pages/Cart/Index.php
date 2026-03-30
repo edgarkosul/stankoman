@@ -11,7 +11,7 @@ use Livewire\Component;
 class Index extends Component
 {
     /**
-     * @var \Illuminate\Support\Collection<int, array{
+     * @var Collection<int, array{
      *     cart_item_id:int,
      *     id:int,
      *     name:string,
@@ -64,7 +64,7 @@ class Index extends Component
 
     public function decOrSoftRemove(int $cartItemId, CartService $cart): void
     {
-        $item = $cart->getCart()->items()->whereKey($cartItemId)->first();
+        $item = $this->resolveCartItem($cart, $cartItemId);
 
         if (! $item instanceof CartItem) {
             return;
@@ -77,12 +77,23 @@ class Index extends Component
             return;
         }
 
-        $this->dispatch('cart:soft-remove', id: $item->id);
+        $this->dispatchSoftRemove($item);
+    }
+
+    public function removeItem(int $cartItemId, CartService $cart): void
+    {
+        $item = $this->resolveCartItem($cart, $cartItemId);
+
+        if (! $item instanceof CartItem) {
+            return;
+        }
+
+        $this->dispatchSoftRemove($item);
     }
 
     public function finalizeRemove(int $cartItemId, CartService $cart): void
     {
-        $item = $cart->getCart()->items()->whereKey($cartItemId)->first();
+        $item = $this->resolveCartItem($cart, $cartItemId);
 
         if ($item instanceof CartItem) {
             $item->delete();
@@ -139,6 +150,18 @@ class Index extends Component
             $this->rows->sum(fn (array $row): float => max(0, $row['subtotal'] - $row['line_total'])),
             2
         );
+    }
+
+    protected function resolveCartItem(CartService $cart, int $cartItemId): ?CartItem
+    {
+        $item = $cart->getCart()->items()->whereKey($cartItemId)->first();
+
+        return $item instanceof CartItem ? $item : null;
+    }
+
+    protected function dispatchSoftRemove(CartItem $item): void
+    {
+        $this->dispatch('cart:soft-remove', id: $item->id);
     }
 
     protected function afterQtyChange(CartService $cart): void

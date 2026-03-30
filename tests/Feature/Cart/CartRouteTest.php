@@ -17,7 +17,8 @@ it('uses custom trash icon with accent hover state on clear cart button', functi
     expect($cartPage)
         ->not->toBeFalse()
         ->toContain('name="trash"')
-        ->toContain('[&_.icon-base]:text-red-600')
-        ->toContain('[&_.icon-accent]:text-red-500')
-        ->toContain('group-hover:[&_.icon-accent]:text-brand-red');
+        ->toContain('[&_.icon-base]:text-gray-800')
+        ->toContain('[&_.icon-accent]:text-brand-red')
+        ->toContain('group-hover:[&_.icon-accent]:text-brand-red/50')
+        ->toContain('group-hover:[&_.icon-base]:text-gray-100');
 });

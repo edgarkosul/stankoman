@@ -1,5 +1,5 @@
 <div class="bg-zinc-200 flex-1 py-10">
-    <div class="max-w-5xl mx-auto px-8 py-6">
+    <div class="max-w-5xl mx-auto px-4 py-2 xs:px-8 xs:py-6">
         <div class="flex justify-between">
             <h1 class="text-3xl font-bold mb-6">Корзина</h1>
 
@@ -37,7 +37,7 @@
                         "
                         class="p-4 flex flex-col gap-4"
                     >
-                        <div class="flex gap-4 items-center">
+                        <div class="flex items-start gap-4">
                             <div class="w-20 h-20 shrink-0  bg-white grid place-items-center overflow-hidden">
                                 @if ($row['image'])
                                     <x-product.image :src="$row['image']" :alt="$row['name']" class="object-contain w-full h-full" sizes="80px" />
@@ -57,9 +57,22 @@
 
                                 <div class="text-sm text-zinc-500">ID: {{ $row['id'] }}</div>
                             </div>
+
+                            <button
+                                type="button"
+                                wire:click="removeItem({{ $row['cart_item_id'] }})"
+                                wire:loading.attr="disabled"
+                                wire:target="removeItem({{ $row['cart_item_id'] }})"
+                                :disabled="removing"
+                                class="shrink-0 rounded-full p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-red-500"
+                                title="Удалить товар из корзины"
+                                aria-label="Удалить товар из корзины"
+                            >
+                                <x-heroicon-o-x-mark class="size-5" />
+                            </button>
                         </div>
 
-                        <div class="flex items-end justify-between gap-4">
+                        <div class="flex items-end justify-between gap-4 max-xs:flex-col max-xs:items-stretch">
                             <div>
                                 <div class="text-sm text-zinc-500">Кол-во</div>
 
@@ -92,22 +105,30 @@
                                 </div>
                             </div>
 
-                            <div class="text-right">
+                            <div class="text-right max-xs:w-full">
                                 @auth
-                                    <div class="flex gap-3 items-baseline">
-                                        <span class="text-sm text-zinc-700 font-semibold">Сумма:</span>
-                                        @if ($row['has_discount'])
-                                            <span class="text-zinc-500 line-through">{{ price($row['subtotal']) }}</span>
-                                        @endif
-                                        <span class="font-bold text-lg">{{ price($row['line_total']) }}</span>
+                                    <div class="flex flex-col items-end gap-1">
+                                        <div class="flex items-baseline gap-3 max-xs:flex-col max-xs:items-end max-xs:gap-1">
+                                            <span class="text-sm font-semibold text-zinc-700">Сумма:</span>
+
+                                            <div class="flex flex-wrap items-baseline justify-end gap-x-3 gap-y-1">
+                                                @if ($row['has_discount'])
+                                                    <span class="text-zinc-500 line-through">{{ price($row['subtotal']) }}</span>
+                                                @endif
+
+                                                <span class="text-lg font-bold">{{ price($row['line_total']) }}</span>
+                                            </div>
+                                        </div>
+
+                                        <span class="text-xs">{{ $row['with_dns'] }}</span>
                                     </div>
-                                    <span class="text-xs">{{ $row['with_dns'] }}</span>
                                 @else
                                     <div class="flex flex-col items-end">
-                                        <div class="flex gap-3 items-center">
-                                            <span class="text-sm text-zinc-700 font-semibold">Сумма:</span>
-                                            <span class="font-bold text-lg">{{ price($row['subtotal']) }}</span>
+                                        <div class="flex items-baseline gap-3 max-xs:flex-col max-xs:items-end max-xs:gap-1">
+                                            <span class="text-sm font-semibold text-zinc-700">Сумма:</span>
+                                            <span class="text-lg font-bold">{{ price($row['subtotal']) }}</span>
                                         </div>
+
                                         <span class="text-xs">{{ $row['with_dns'] }}</span>
                                     </div>
                                 @endauth
