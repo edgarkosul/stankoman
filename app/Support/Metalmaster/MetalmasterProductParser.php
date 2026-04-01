@@ -2,6 +2,7 @@
 
 namespace App\Support\Metalmaster;
 
+use App\Support\Seo\SeoTextExtractor;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
@@ -18,6 +19,8 @@ class MetalmasterProductParser
 
     private function parseProductPage(string $html, string $url, string $bucket): array
     {
+        $seoTextExtractor = new SeoTextExtractor;
+
         [, $xpath] = $this->makeDom($html);
 
         $jsonLdObjects = $this->extractJsonLdObjects($xpath);
@@ -85,7 +88,7 @@ class MetalmasterProductParser
             'gallery' => $gallery === [] ? null : $gallery,
 
             'meta_title' => $metaTitle ?: $title,
-            'meta_description' => $metaDescription ?: ($description ? Str::limit(trim(strip_tags($description)), 250) : null),
+            'meta_description' => $metaDescription ?: $seoTextExtractor->extractDescriptionFromHtml($description, 250, 160),
         ];
     }
 

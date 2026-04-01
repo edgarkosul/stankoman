@@ -20,25 +20,39 @@ class SeoTextExtractor
         int $softMin = 110,
         array $stripTags = ['table']
     ): ?string {
-        $html = (string)($html ?? '');
+        $html = (string) ($html ?? '');
+
         if ($html === '') {
             return null;
         }
+
         $clean = $this->removeTags($html, $stripTags);
 
         $paragraph = $this->firstParagraphText($clean);
-        if ($paragraph === null || $paragraph === '') {
-            $paragraph = $this->allText($clean);
-        }
+        $usedListFallback = false;
 
-        if (mb_strlen($this->squash($paragraph)) < 90) {
-            $bullets = $this->firstListItems($clean, 3);
-            if ($bullets !== '') {
-                $paragraph = trim($paragraph . ' ' . $bullets);
+        if ($paragraph === null || $paragraph === '') {
+            $paragraph = $this->listText($clean);
+
+            if ($paragraph !== '') {
+                $usedListFallback = true;
+            } else {
+                $paragraph = $this->allText($clean);
             }
         }
 
         $paragraph = $this->squash($paragraph);
+
+        if (! $usedListFallback && mb_strlen($paragraph) < 90) {
+            $bullets = $this->listText($clean, 3);
+
+            if ($bullets !== '') {
+                $paragraph = trim($paragraph.' '.$bullets);
+            }
+        }
+
+        $paragraph = $this->squash($paragraph);
+
         if ($paragraph === '') {
             return null;
         }
@@ -46,23 +60,34 @@ class SeoTextExtractor
         return $this->truncateSmart($paragraph, $softMax, $softMin);
     }
 
+    public function truncateText(?string $text, int $softMax = 165, int $softMin = 110): ?string
+    {
+        $text = $this->squash((string) ($text ?? ''));
+
+        if ($text === '') {
+            return null;
+        }
+
+        return $this->truncateSmart($text, $softMax, $softMin);
+    }
+
     /* ======================== DOM helpers ======================== */
 
     private function dom(string $html): array
     {
-        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $dom = new DOMDocument('1.0', 'UTF-8');
         libxml_use_internal_errors(true);
 
         // Явно создаём нормальную HTML-структуру и свой корневой контейнер
         $dom->loadHTML(
-            '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>' .
-                '<div id="__root__">' . $html . '</div>' .
+            '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>'.
+                '<div id="__root__">'.$html.'</div>'.
                 '</body></html>'
         );
 
         libxml_clear_errors();
 
-        $xp   = new \DOMXPath($dom);
+        $xp = new DOMXPath($dom);
         $root = $xp->query('//*[@id="__root__"]')->item(0);
 
         return [$dom, $xp, $root];
@@ -74,6 +99,7 @@ class SeoTextExtractor
         foreach (iterator_to_array($node->childNodes) as $child) {
             $out .= $node->ownerDocument->saveHTML($child);
         }
+
         return $out;
     }
 
@@ -81,13 +107,13 @@ class SeoTextExtractor
     {
         [$dom, $xp, $root] = $this->dom($html);
 
-        if (!$root) {
+        if (! $root) {
             return $html; // fallback — на всякий
         }
 
         foreach ($tagNames as $tag) {
             /** @var \DOMNode $node */
-            foreach ($xp->query('.//' . $tag, $root) as $node) {
+            foreach ($xp->query('.//'.$tag, $root) as $node) {
                 $node->parentNode?->removeChild($node);
             }
         }
@@ -95,7 +121,6 @@ class SeoTextExtractor
         // Возвращаем именно innerHTML нашего контейнера, без <html>/<body>/<meta>
         return $this->innerHTML($root);
     }
-
 
     private function firstParagraphText(string $html): ?string
     {
@@ -107,26 +132,34 @@ class SeoTextExtractor
                 return $text;
             }
         }
+
         return null;
     }
 
-    private function firstListItems(string $html, int $limit = 3): string
+    private function listText(string $html, ?int $limit = null): string
     {
         [, $xp] = $this->dom($html);
         $items = [];
+
         foreach ($xp->query('//ul/li|//ol/li') as $li) {
             $t = $this->squash($li->textContent ?? '');
+
             if ($t !== '') {
-                $items[] = $t;
+                $items[] = $this->finishSentence($t);
             }
-            if (count($items) >= $limit) break;
+
+            if ($limit !== null && count($items) >= $limit) {
+                break;
+            }
         }
-        return $items ? implode('; ', $items) . '.' : '';
+
+        return $items === [] ? '' : implode(' ', $items);
     }
 
     private function allText(string $html): string
     {
-        [$dom,] = $this->dom($html);
+        [$dom] = $this->dom($html);
+
         return $this->squash($dom->textContent ?? '');
     }
 
@@ -136,13 +169,33 @@ class SeoTextExtractor
         $text = str_replace(["\xC2\xA0", '&nbsp;'], ' ', $text);
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $text = preg_replace('/\s+/u', ' ', $text) ?? '';
+
         return trim($text);
+    }
+
+    private function finishSentence(string $text): string
+    {
+        $text = trim($text);
+        $text = preg_replace('/\s*[,;:]+\s*$/u', '', $text) ?? $text;
+
+        if ($text === '') {
+            return '';
+        }
+
+        if (preg_match('/[.!?…]$/u', $text) === 1) {
+            return $text;
+        }
+
+        return $text.'.';
     }
 
     private function truncateSmart(string $text, int $softMax, int $softMin): string
     {
         $len = mb_strlen($text);
-        if ($len <= $softMax) return $text;
+
+        if ($len <= $softMax) {
+            return $text;
+        }
 
         $window = mb_substr($text, 0, $softMax + 1);
 
@@ -152,17 +205,19 @@ class SeoTextExtractor
             mb_strrpos($window, '!'),
             mb_strrpos($window, '?')
         );
+
         if ($punctPos !== false && $punctPos >= $softMin) {
             return rtrim(mb_substr($window, 0, $punctPos + 1));
         }
 
         // иначе — по последнему пробелу
         $spacePos = mb_strrpos($window, ' ');
+
         if ($spacePos !== false && $spacePos >= $softMin) {
-            return rtrim(mb_substr($window, 0, $spacePos)) . '…';
+            return rtrim(mb_substr($window, 0, $spacePos)).'…';
         }
 
         // крайний случай
-        return rtrim(mb_substr($text, 0, $softMax)) . '…';
+        return rtrim(mb_substr($text, 0, $softMax)).'…';
     }
 }

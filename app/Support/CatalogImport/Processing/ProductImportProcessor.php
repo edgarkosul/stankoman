@@ -15,6 +15,7 @@ use App\Support\CatalogImport\Media\ProductImportMediaService;
 use App\Support\CatalogImport\Runs\ImportRunEventData;
 use App\Support\CatalogImport\Suppliers\SupplierEntityResolver;
 use App\Support\Products\ProductSearchSync;
+use App\Support\Seo\SeoTextExtractor;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -76,6 +77,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
         private readonly ProductImportMediaService $mediaService = new ProductImportMediaService,
         private readonly SupplierEntityResolver $supplierResolver = new SupplierEntityResolver,
         private readonly ProductSearchSync $searchSync = new ProductSearchSync,
+        private readonly SeoTextExtractor $seoTextExtractor = new SeoTextExtractor,
     ) {}
 
     public function process(ProductPayload $payload, array $options = []): ImportProcessResult
@@ -653,7 +655,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
             'meta_title' => $this->limit($payload->metaTitle, 255)
                 ?? $this->limit($payload->title, 255)
                 ?? $this->limit($payload->name, 255),
-            'meta_description' => $this->limit($payload->metaDescription, 255) ?? $this->metaDescriptionFromText($description),
+            'meta_description' => $this->resolveMetaDescription($payload->metaDescription, $description),
         ];
 
         if ($isNew) {
@@ -779,19 +781,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
     private function metaDescriptionFromText(?string $description): ?string
     {
-        if (! is_string($description) || trim($description) === '') {
-            return null;
-        }
-
-        $plain = strip_tags($description);
-        $plain = preg_replace('/\s+/u', ' ', $plain) ?? $plain;
-        $plain = trim($plain);
-
-        if ($plain === '') {
-            return null;
-        }
-
-        return (string) Str::limit($plain, 255, '');
+        return $this->seoTextExtractor->extractDescriptionFromHtml($description, 255, 160);
     }
 
     private function limit(mixed $value, int $length): ?string
@@ -807,6 +797,36 @@ final class ProductImportProcessor implements ImportProcessorInterface
         }
 
         return (string) Str::limit($value, $length, '');
+    }
+
+    private function resolveMetaDescription(?string $metaDescription, ?string $description): ?string
+    {
+        $metaDescription = $this->normalizeMetaDescription($metaDescription);
+
+        if ($metaDescription !== null) {
+            return $metaDescription;
+        }
+
+        return $this->metaDescriptionFromText($description);
+    }
+
+    private function normalizeMetaDescription(?string $metaDescription): ?string
+    {
+        if (! is_string($metaDescription)) {
+            return null;
+        }
+
+        $metaDescription = trim($metaDescription);
+
+        if ($metaDescription === '') {
+            return null;
+        }
+
+        if (str_contains($metaDescription, '<') && str_contains($metaDescription, '>')) {
+            return $this->seoTextExtractor->extractDescriptionFromHtml($metaDescription, 255, 160);
+        }
+
+        return $this->seoTextExtractor->truncateText($metaDescription, 255, 160);
     }
 
     private function attachToStagingCategory(Product $product): void

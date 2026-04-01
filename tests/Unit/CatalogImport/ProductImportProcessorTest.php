@@ -103,6 +103,37 @@ it('normalizes payload and creates product with stable supplier reference', func
         ->and($reference?->last_seen_run_id)->toBe($run->id);
 });
 
+it('generates list-aware meta description from html description', function (): void {
+    $run = createImportRun('catalog_import_yml');
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $processor->processBatch([
+        new ProductPayload(
+            externalId: 'SEO-1',
+            name: 'JIB MBS-350',
+            description: '<ul>'
+                .'<li>Прочный и жесткий стальной корпус с усилителями.</li>'
+                .'<li>Высота продольной распиловки 230 мм.</li>'
+                .'<li>Максимальная ширина заготовки (слева от пилы) 340 мм.</li>'
+                .'<li>Направляющие сухари для обеспечения дополнительной точности и длительного срока службы.</li>'
+                .'<li>Мощный асинхронный двигатель выходной мощностью 1,1 кВт.</li>'
+                .'</ul>',
+        ),
+    ], [
+        'supplier' => 'yandex_market_feed',
+        'run_id' => $run->id,
+    ]);
+
+    $product = Product::query()->first();
+
+    expect($product?->meta_description)->toBe(
+        'Прочный и жесткий стальной корпус с усилителями. Высота продольной распиловки 230 мм. Максимальная ширина заготовки (слева от пилы) 340 мм. Направляющие сухари для обеспечения дополнительной точности и длительного срока службы.'
+    )
+        ->and($product?->meta_description)->not->toContain('усилителями.Высота')
+        ->and($product?->meta_description)->not->toEndWith('вы');
+});
+
 it('updates existing product by supplier and external id without changing categories', function (): void {
     $firstRun = createImportRun('catalog_import_yml');
     $secondRun = createImportRun('catalog_import_yml');

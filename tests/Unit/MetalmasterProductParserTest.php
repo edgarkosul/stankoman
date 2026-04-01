@@ -281,6 +281,49 @@ it('uses blp_3 block html as description when it is present on page', function (
     expect((string) ($parsed['short'] ?? ''))->toContain('Листогиб Metal Master LBA 2015');
 });
 
+it('builds list-aware meta description from html description when meta tags are absent', function () {
+    $jsonLd = json_encode([
+        '@context' => 'https://schema.org',
+        '@type' => 'Product',
+        'name' => 'Ленточнопильный станок JIB MBS-350',
+        'description' => 'Краткое описание из JSON-LD',
+        'brand' => [
+            '@type' => 'Brand',
+            'name' => 'JIB',
+        ],
+        'offers' => [
+            '@type' => 'Offer',
+            'priceCurrency' => 'RUB',
+            'price' => 319000,
+            'availability' => 'https://schema.org/InStock',
+        ],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    $html = '<html><head>'
+        .'<title>Ленточнопильный станок JIB MBS-350</title>'
+        .'<script type="application/ld+json">'.$jsonLd.'</script>'
+        .'</head><body>'
+        .'<h1>Ленточнопильный станок JIB MBS-350</h1>'
+        .'<div id="blp_3">'
+        .'  <ul>'
+        .'    <li>Прочный и жесткий стальной корпус с усилителями.</li>'
+        .'    <li>Высота продольной распиловки 230 мм.</li>'
+        .'    <li>Максимальная ширина заготовки (слева от пилы) 340 мм.</li>'
+        .'    <li>Направляющие сухари для обеспечения дополнительной точности и длительного срока службы.</li>'
+        .'    <li>Мощный асинхронный двигатель выходной мощностью 1,1 кВт.</li>'
+        .'  </ul>'
+        .'</div>'
+        .'</body></html>';
+
+    $parsed = (new MetalmasterProductParser)->parse($html, 'https://metalmaster.ru/lentochnopilnye/jib-mbs-350/', 'lentochnopilnye');
+
+    expect($parsed['meta_description'] ?? null)->toBe(
+        'Прочный и жесткий стальной корпус с усилителями. Высота продольной распиловки 230 мм. Максимальная ширина заготовки (слева от пилы) 340 мм. Направляющие сухари для обеспечения дополнительной точности и длительного срока службы.'
+    )
+        ->and($parsed['meta_description'] ?? null)->not->toContain('усилителями.Высота')
+        ->and($parsed['meta_description'] ?? null)->not->toEndWith('вы');
+});
+
 /**
  * @param  array<int, array{name?: mixed, value?: mixed}>  $specs
  * @return array<string, string>
