@@ -437,8 +437,15 @@ it('sets selected category as primary in categories mass edit mode', function ()
         DB::table('product_categories')
             ->where('product_id', $product->id)
             ->where('category_id', $oldCategory->id)
-            ->value('is_primary')
-    )->toBe(0);
+            ->exists()
+    )->toBeFalse();
+
+    expect(
+        DB::table('product_categories')
+            ->where('product_id', $product->id)
+            ->where('category_id', $stagingCategory->id)
+            ->exists()
+    )->toBeTrue();
 });
 
 it('shows a limited list of leaf categories and searches across all leaf categories for primary category selection', function () {

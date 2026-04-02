@@ -961,12 +961,7 @@ class ProductsTable
                                         switch ($data['cat_op']) {
                                             case 'set_primary':
                                                 $categoryId = (int) $data['primary_category_id'];
-
-                                                if (! $rel->where('category_id', $categoryId)->exists()) {
-                                                    $rel->attach($categoryId, ['is_primary' => false]);
-                                                }
-
-                                                $product->setPrimaryCategory($categoryId);
+                                                self::replacePrimaryCategoryForBulkEdit($product, $categoryId);
                                                 break;
 
                                             case 'attach_extra':
@@ -1376,6 +1371,33 @@ class ProductsTable
             ->limit(self::CATEGORY_OPTIONS_LIMIT)
             ->pluck('name', 'id')
             ->all();
+    }
+
+    private static function replacePrimaryCategoryForBulkEdit(Product $product, int $categoryId): void
+    {
+        if ($categoryId <= 0) {
+            return;
+        }
+
+        $currentPrimaryCategoryIds = $product->categories()
+            ->wherePivot('is_primary', true)
+            ->pluck('categories.id')
+            ->map(fn ($id): int => (int) $id)
+            ->reject(fn (int $id): bool => $id === $categoryId)
+            ->values()
+            ->all();
+
+        if (! $product->categories()->whereKey($categoryId)->exists()) {
+            $product->categories()->attach($categoryId, ['is_primary' => false]);
+        }
+
+        $product->setPrimaryCategory($categoryId);
+
+        if ($currentPrimaryCategoryIds !== []) {
+            $product->categories()->detach($currentPrimaryCategoryIds);
+        }
+
+        $product->unsetRelation('categories');
     }
 
     /**
