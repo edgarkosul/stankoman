@@ -26,8 +26,8 @@ class ProductPrintController extends Controller
                 $cover = public_path(ltrim($coverPath, '/'));
             } elseif (Str::startsWith($coverPath, 'storage/')) {
                 $cover = public_path($coverPath);
-            } elseif (! Str::startsWith($coverPath, ['http://', 'https://', '/'])) {
-                $cover = public_path('storage/'.ltrim($coverPath, '/'));
+            } elseif (!Str::startsWith($coverPath, ['http://', 'https://', '/'])) {
+                $cover = public_path('storage/' . ltrim($coverPath, '/'));
             }
         }
 
@@ -37,8 +37,9 @@ class ProductPrintController extends Controller
             'product' => $product,
             'cover' => $cover,
             'sku' => $product->sku ?? $product->id,
-            'price' => number_format((float) ($product->price_amount ?? 0), 0, ',', ' ').' ₽',
+            'price' => number_format((float) ($product->price_amount ?? 0), 0, ',', ' ') . ' ₽',
             'attributes' => $this->attributesForPdf($product),
+            'specs' => $this->specsForPdf($product),
             'descriptionHtml' => $descriptionHtml,
         ];
 
@@ -53,14 +54,13 @@ class ProductPrintController extends Controller
                 'defaultFont' => 'RobotoCondensed',
             ]);
 
-        $filename = 'InterTooler_'.preg_replace('/[^\p{L}\p{N}\-_]+/u', '_', $product->name).'.pdf';
+        $filename = 'InterTooler_' . preg_replace('/[^\p{L}\p{N}\-_]+/u', '_', $product->name) . '.pdf';
 
         return $request->boolean('dl') ? $pdf->download($filename) : $pdf->stream($filename);
     }
 
     private function attributesForPdf(Product $product): array
     {
-
         $product->loadMissing([
             'attributeValues.attribute.unit',
             'attributeOptions.attribute.unit',
@@ -93,6 +93,83 @@ class ProductPrintController extends Controller
         return $rows;
     }
 
+    /**
+     * Берём те же данные, что и вкладка specs на витрине.
+     *
+     * @return array<int, array{name: string, value: string, source: string|null}>
+     */
+    private function specsForPdf(Product $product): array
+    {
+        $rawSpecs = $product->specs;
+
+        if (is_string($rawSpecs)) {
+            $decoded = json_decode($rawSpecs, true);
+
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $rawSpecs = $decoded;
+            }
+        }
+
+        if (!is_array($rawSpecs)) {
+            return [];
+        }
+
+        return collect($rawSpecs)
+            ->map(function (mixed $row, mixed $key): ?array {
+                if (is_array($row)) {
+                    return $this->normalizeSpecRowForPdf(
+                        $row['name'] ?? $key,
+                        $row['value'] ?? null,
+                        $row['source'] ?? null,
+                    );
+                }
+
+                return $this->normalizeSpecRowForPdf($key, $row);
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array{name: string, value: string, source: string|null}|null
+     */
+    private function normalizeSpecRowForPdf(mixed $nameRaw, mixed $valueRaw, mixed $sourceRaw = null): ?array
+    {
+        $name = $this->normalizeSpecStringForPdf($nameRaw);
+        $value = $this->normalizeSpecValueForPdf($valueRaw);
+
+        if ($name === null || $value === null) {
+            return null;
+        }
+
+        return [
+            'name' => $name,
+            'value' => $value,
+            'source' => $this->normalizeSpecStringForPdf($sourceRaw),
+        ];
+    }
+
+    private function normalizeSpecStringForPdf(mixed $value): ?string
+    {
+        if ($value === null || is_array($value) || is_object($value)) {
+            return null;
+        }
+
+        $string = trim((string) $value);
+
+        return $string !== '' ? $string : null;
+    }
+
+    private function normalizeSpecValueForPdf(mixed $value): ?string
+    {
+        if (is_bool($value)) {
+            return $value ? 'Да' : 'Нет';
+        }
+
+        return $this->normalizeSpecStringForPdf($value);
+    }
+
     private function normalizeHtmlForPdf(string $html): string
     {
         if ($html === '') {
@@ -101,18 +178,15 @@ class ProductPrintController extends Controller
 
         $basePics = rtrim(public_path('pics'), '/');
 
-        // 1) /pics/... → абсолютный файловый путь
-        //    src="/pics/..."
         $html = preg_replace(
             '#(<img[^>]+src=)(["\'])/pics/([^"\']+)\2#i',
-            '$1$2'.$basePics.'/$3$2',
+            '$1$2' . $basePics . '/$3$2',
             $html
         );
 
-        //    src="pics/..."
         $html = preg_replace(
             '#(<img[^>]+src=)(["\'])pics/([^"\']+)\2#i',
-            '$1$2'.$basePics.'/$3$2',
+            '$1$2' . $basePics . '/$3$2',
             $html
         );
 

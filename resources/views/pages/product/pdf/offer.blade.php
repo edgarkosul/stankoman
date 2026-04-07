@@ -266,7 +266,6 @@
         color: #444;
         font-weight: 700;
     }
-
 </style>
 
 <table class="company-header">
@@ -278,7 +277,9 @@
             </div>
 
             <div class="ch-innkpp">
-                ИНН {{ $c('inn') }}&nbsp;&nbsp;@if($c('kpp')) КПП {{ $c('kpp') }} @endif
+                ИНН {{ $c('inn') }}&nbsp;&nbsp;@if ($c('kpp'))
+                    КПП {{ $c('kpp') }}
+                @endif
             </div>
 
             <div class="ch-hr"></div>
@@ -348,6 +349,17 @@
         @endif --}}
     </div>
 </div>
+@if (!empty($specs))
+    <h2>Технические характеристики</h2>
+    <table class="spec">
+        @foreach ($specs as $spec)
+            <tr>
+                <th>{{ $spec['name'] }}</th>
+                <td>{{ $spec['value'] }}</td>
+            </tr>
+        @endforeach
+    </table>
+@endif
 <h2>КОНТАКТЫ И РЕКВИЗИТЫ</h2>
 <table class="requisites">
     <tr>
