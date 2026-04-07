@@ -410,25 +410,43 @@ it('sets selected category as primary in categories mass edit mode', function ()
         'price_amount' => 1500,
     ]);
 
+    $secondProduct = Product::query()->create([
+        'name' => 'Второй товар для смены категории',
+        'slug' => 'primary-category-switch-product-2',
+        'price_amount' => 1600,
+    ]);
+
     $product->categories()->attach($oldCategory->id, ['is_primary' => true]);
-    $product->categories()->attach($newCategory->id, ['is_primary' => false]);
     $product->categories()->attach($stagingCategory->id, ['is_primary' => false]);
 
+    $secondProduct->categories()->attach($oldCategory->id, ['is_primary' => true]);
+    $secondProduct->categories()->attach($newCategory->id, ['is_primary' => false]);
+    $secondProduct->categories()->attach($stagingCategory->id, ['is_primary' => false]);
+
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
-        ->callTableBulkAction('massEdit', [$product], [
+        ->assertCanSeeTableRecords([$product, $secondProduct])
+        ->callTableBulkAction('massEdit', [$product, $secondProduct], [
             'mode' => 'categories',
             'cat_op' => 'set_primary',
             'primary_category_id' => $newCategory->id,
         ]);
 
     $product->refresh();
+    $secondProduct->refresh();
 
     expect($product->primaryCategory()?->id)->toBe($newCategory->id);
+    expect($secondProduct->primaryCategory()?->id)->toBe($newCategory->id);
 
     expect(
         DB::table('product_categories')
             ->where('product_id', $product->id)
+            ->where('category_id', $newCategory->id)
+            ->value('is_primary')
+    )->toBe(1);
+
+    expect(
+        DB::table('product_categories')
+            ->where('product_id', $secondProduct->id)
             ->where('category_id', $newCategory->id)
             ->value('is_primary')
     )->toBe(1);
@@ -442,7 +460,21 @@ it('sets selected category as primary in categories mass edit mode', function ()
 
     expect(
         DB::table('product_categories')
+            ->where('product_id', $secondProduct->id)
+            ->where('category_id', $oldCategory->id)
+            ->exists()
+    )->toBeFalse();
+
+    expect(
+        DB::table('product_categories')
             ->where('product_id', $product->id)
+            ->where('category_id', $stagingCategory->id)
+            ->exists()
+    )->toBeTrue();
+
+    expect(
+        DB::table('product_categories')
+            ->where('product_id', $secondProduct->id)
             ->where('category_id', $stagingCategory->id)
             ->exists()
     )->toBeTrue();

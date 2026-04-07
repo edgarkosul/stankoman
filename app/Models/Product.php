@@ -450,6 +450,38 @@ class Product extends Model
     }
 
     /**
+     * Полностью заменить основную категорию и удалить прежние primary-привязки.
+     */
+    public function replacePrimaryCategory(int|Category $category): void
+    {
+        $categoryId = $category instanceof Category ? $category->getKey() : $category;
+
+        if ($categoryId <= 0) {
+            return;
+        }
+
+        $currentPrimaryCategoryIds = $this->categories()
+            ->wherePivot('is_primary', true)
+            ->pluck('categories.id')
+            ->map(fn ($id): int => (int) $id)
+            ->reject(fn (int $id): bool => $id === $categoryId)
+            ->values()
+            ->all();
+
+        if (! $this->categories()->whereKey($categoryId)->exists()) {
+            $this->categories()->attach($categoryId, ['is_primary' => false]);
+        }
+
+        $this->setPrimaryCategory($categoryId);
+
+        if ($currentPrimaryCategoryIds !== []) {
+            $this->categories()->detach($currentPrimaryCategoryIds);
+        }
+
+        $this->unsetRelation('categories');
+    }
+
+    /**
      * Набор атрибутов основной категории (если задана).
      *
      * @return Collection<int,AttributeDef>
