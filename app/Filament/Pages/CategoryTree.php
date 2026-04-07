@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Resources\Categories\CategoryResource;
+use App\Filament\Resources\Categories\Schemas\CategoryForm;
 use App\Models\Category;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
@@ -105,13 +106,7 @@ class CategoryTree extends TreePage
                     $set('slug', Str::slug($state));
                 }),
 
-            TextInput::make('slug')
-                ->label('Slug')
-                ->required()
-                ->afterStateUpdated(function (Set $set) {
-                    // как только тронули slug руками — перестаём автогенерить (для create)
-                    $set('slug_manually_changed', true);
-                }),
+            CategoryForm::slugField(),
 
             FileUpload::make('img')
                 ->label('Изображение для категории')

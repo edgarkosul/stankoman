@@ -12,6 +12,7 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
 class CategoryForm
@@ -60,13 +61,7 @@ class CategoryForm
                         $set('slug', Str::slug($state));
                     }),
 
-                TextInput::make('slug')
-                    ->label('Slug')
-                    ->required()
-                    ->afterStateUpdated(function (Set $set) {
-                        // как только тронули slug руками — перестаём автогенерить (для create)
-                        $set('slug_manually_changed', true);
-                    }),
+                self::slugField(),
 
                 TextInput::make('meta_title')
                     ->label('Meta title')
@@ -110,5 +105,26 @@ class CategoryForm
         $walk($rootKey, 0);
 
         return $out;
+    }
+
+    public static function slugField(): TextInput
+    {
+        return TextInput::make('slug')
+            ->label('Slug')
+            ->required()
+            ->scopedUnique(modifyQueryUsing: function (Builder $query, Get $get): Builder {
+                $parentId = filled($get('parent_id'))
+                    ? (int) $get('parent_id')
+                    : Category::defaultParentKey();
+
+                return $query->where('parent_id', $parentId);
+            })
+            ->validationMessages([
+                'unique' => 'Категория с таким slug уже существует в выбранном родителе.',
+            ])
+            ->afterStateUpdated(function (Set $set) {
+                // как только тронули slug руками — перестаём автогенерить (для create)
+                $set('slug_manually_changed', true);
+            });
     }
 }
