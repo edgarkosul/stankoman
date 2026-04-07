@@ -1,4 +1,4 @@
 [mcp_servers.laravel-boost]
 command = "php"
 args = ["artisan", "boost:mcp"]
-cwd = "/opt/dev/stankoman"
+cwd = "/home/edgar/projects/stankoman"

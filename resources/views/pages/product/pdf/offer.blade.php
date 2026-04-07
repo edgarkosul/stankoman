@@ -13,35 +13,35 @@
 
     /* статические TTF (не variable) */
     @font-face {
-        font-family: "Inter";
+        font-family: "RobotoCondensed";
         src: url("{{ storage_path('fonts/RobotoCondensed-Regular.ttf') }}") format("truetype");
         font-weight: 400;
         font-style: normal;
     }
 
     @font-face {
-        font-family: "Inter";
+        font-family: "RobotoCondensed";
         src: url("{{ storage_path('fonts/RobotoCondensed-Bold.ttf') }}") format("truetype");
         font-weight: 700;
         font-style: normal;
     }
 
     @font-face {
-        font-family: "Inter";
+        font-family: "RobotoCondensed";
         src: url("{{ storage_path('fonts/RobotoCondensed-Italic.ttf') }}") format("truetype");
         font-weight: 400;
         font-style: italic;
     }
 
     @font-face {
-        font-family: "Inter";
+        font-family: "RobotoCondensed";
         src: url("{{ storage_path('fonts/RobotoCondensed-BoldItalic.ttf') }}") format("truetype");
         font-weight: 700;
         font-style: italic;
     }
 
     body {
-        font-family: Inter, sans-serif;
+        font-family: RobotoCondensed, sans-serif;
         color: #111;
         font-size: 12px;
         line-height: 1.45;

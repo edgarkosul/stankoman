@@ -7,11 +7,12 @@ use App\Models\Product;
 use App\Support\ViewModels\ProductPageViewModel;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Str;
 
 class ProductPrintController extends Controller
 {
-    public function __invoke(Request $request, Product $product)
+    public function __invoke(Request $request, Product $product): Response
     {
         $vm = new ProductPageViewModel($product);
 
@@ -44,8 +45,12 @@ class ProductPrintController extends Controller
         $pdf = Pdf::loadView('pages.product.pdf.offer', $data)
             ->setPaper('a4', 'portrait')
             ->setOption([
+                'chroot' => [
+                    base_path(),
+                    storage_path(),
+                ],
                 'isRemoteEnabled' => true,
-                'defaultFont' => 'Inter',
+                'defaultFont' => 'RobotoCondensed',
             ]);
 
         $filename = 'InterTooler_'.preg_replace('/[^\p{L}\p{N}\-_]+/u', '_', $product->name).'.pdf';

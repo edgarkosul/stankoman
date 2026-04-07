@@ -42,6 +42,15 @@ yarn-error.log*
 /storage/app/public/
 /bootstrap/cache/
 
+# Dompdf runtime font cache. Keep source font files tracked explicitly.
+/storage/fonts/installed-fonts.json
+/storage/fonts/*.afm.json
+/storage/fonts/*.ufm
+/storage/fonts/*.ufm.json
+/storage/fonts/*_normal_*.ttf
+/storage/fonts/*_bold_*.ttf
+/storage/fonts/*_italic_*.ttf
+
 # .env и его варианты. Не игнорим .env.example намеренно.
 /.env
 /.env.*

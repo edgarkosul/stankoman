@@ -26,10 +26,20 @@ it('downloads product pdf when dl query parameter is set', function (): void {
         'price_amount' => 90_000,
     ]);
 
-    $this->get(route('product.print', ['product' => $product, 'dl' => 1]))
+    $response = $this->get(route('product.print', ['product' => $product, 'dl' => 1]));
+
+    $response
         ->assertOk()
         ->assertDownload()
         ->assertHeader('content-type', 'application/pdf');
+
+    $pdf = $response->getContent();
+
+    expect($pdf)
+        ->toStartWith('%PDF-')
+        ->toContain('/FontName /RobotoCondensed-Regular')
+        ->toContain('/FontName /RobotoCondensed-Bold')
+        ->not->toContain('/BaseFont /inter_');
 });
 
 it('renders configured company contacts and bank details in product pdf offer view', function (): void {
@@ -59,6 +69,10 @@ it('renders configured company contacts and bank details in product pdf offer vi
     ])->render();
 
     expect($html)
+        ->toContain('font-family: "RobotoCondensed"')
+        ->toContain('font-family: RobotoCondensed, sans-serif')
+        ->not->toContain('font-family: "Inter"')
+        ->not->toContain('font-family: Inter, sans-serif')
         ->toContain('КОНТАКТЫ И РЕКВИЗИТЫ')
         ->toContain('https://settings.example.com')
         ->toContain('docs.settings.example.com')
