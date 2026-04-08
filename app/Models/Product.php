@@ -31,6 +31,12 @@ use Laravel\Scout\Searchable;
  * @property int $price_amount
  * @property int|null $discount_price
  * @property string $currency
+ * @property string|null $wholesale_price
+ * @property string|null $wholesale_currency
+ * @property string|null $exchange_rate
+ * @property string|null $wholesale_price_rub
+ * @property string|null $markup_multiplier
+ * @property string|null $margin_amount_rub
  * @property bool $in_stock
  * @property int|null $qty
  * @property int $popularity
@@ -71,6 +77,12 @@ class Product extends Model
         'price_amount',
         'currency',
         'discount_price',
+        'wholesale_price',
+        'wholesale_currency',
+        'exchange_rate',
+        'wholesale_price_rub',
+        'markup_multiplier',
+        'margin_amount_rub',
         'in_stock',
         'qty',
         'popularity',
@@ -96,6 +108,11 @@ class Product extends Model
     protected $casts = [
         'price_amount' => 'int',
         'discount_price' => 'int',
+        'wholesale_price' => 'decimal:4',
+        'exchange_rate' => 'decimal:6',
+        'wholesale_price_rub' => 'decimal:2',
+        'markup_multiplier' => 'decimal:4',
+        'margin_amount_rub' => 'decimal:2',
         'qty' => 'int',
         'popularity' => 'int',
         'in_stock' => 'bool',
@@ -143,6 +160,63 @@ class Product extends Model
     public function shouldBeSearchable(): bool
     {
         return (bool) ($this->is_active ?? true);
+    }
+
+    public static function calculateWholesalePriceRub(mixed $wholesalePrice, mixed $exchangeRate): ?float
+    {
+        $wholesalePrice = self::nullableFloat($wholesalePrice);
+        $exchangeRate = self::nullableFloat($exchangeRate);
+
+        if ($wholesalePrice === null || $exchangeRate === null) {
+            return null;
+        }
+
+        return round($wholesalePrice * $exchangeRate, 2);
+    }
+
+    public static function calculateSitePriceAmount(mixed $wholesalePriceRub, mixed $markupMultiplier): ?int
+    {
+        $wholesalePriceRub = self::nullableFloat($wholesalePriceRub);
+        $markupMultiplier = self::nullableFloat($markupMultiplier);
+
+        if ($wholesalePriceRub === null || $markupMultiplier === null) {
+            return null;
+        }
+
+        return max(0, (int) round($wholesalePriceRub * $markupMultiplier));
+    }
+
+    public static function calculateMarginAmountRub(mixed $sitePriceAmount, mixed $wholesalePriceRub): ?float
+    {
+        $sitePriceAmount = self::nullableFloat($sitePriceAmount);
+        $wholesalePriceRub = self::nullableFloat($wholesalePriceRub);
+
+        if ($sitePriceAmount === null || $wholesalePriceRub === null) {
+            return null;
+        }
+
+        return round($sitePriceAmount - $wholesalePriceRub, 2);
+    }
+
+    public static function nullableFloat(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_string($value)) {
+            $value = str_replace(',', '.', trim($value));
+
+            if ($value === '') {
+                return null;
+            }
+        }
+
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        return (float) $value;
     }
 
     /* ======================================================================
