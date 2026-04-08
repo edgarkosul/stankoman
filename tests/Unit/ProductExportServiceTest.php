@@ -26,6 +26,12 @@ beforeEach(function () {
         $table->unsignedInteger('price_amount')->default(0);
         $table->unsignedInteger('discount_price')->nullable();
         $table->char('currency', 3)->default('RUB');
+        $table->decimal('wholesale_price', 14, 4)->nullable();
+        $table->char('wholesale_currency', 3)->nullable();
+        $table->decimal('exchange_rate', 14, 6)->nullable();
+        $table->decimal('wholesale_price_rub', 14, 2)->nullable();
+        $table->decimal('markup_multiplier', 8, 4)->nullable();
+        $table->decimal('margin_amount_rub', 14, 2)->nullable();
         $table->boolean('in_stock')->default(true);
         $table->unsignedInteger('qty')->nullable();
         $table->unsignedInteger('popularity')->default(0);
@@ -112,6 +118,54 @@ it('exports enum-casted warranty field as scalar value', function () {
     expect($sheet->getCell('A1')->getValue())->toBe('Наименование');
     expect($sheet->getCell('B1')->getValue())->toBe('Гарантия');
     expect((string) $sheet->getCell('B2')->getValue())->toBe('24');
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($result['path']);
+});
+
+it('exports pricing parameters with site price from price amount', function () {
+    Product::query()->create([
+        'name' => 'Pricing Export Tool',
+        'wholesale_price' => '100.5000',
+        'wholesale_currency' => 'USD',
+        'exchange_rate' => '90.000000',
+        'wholesale_price_rub' => '9045.00',
+        'markup_multiplier' => '1.2000',
+        'price_amount' => 10854,
+        'margin_amount_rub' => '1809.00',
+    ]);
+
+    $service = new ProductExportService;
+    $result = $service->exportToXlsx(Product::query(), [
+        'wholesale_price',
+        'wholesale_currency',
+        'exchange_rate',
+        'wholesale_price_rub',
+        'markup_multiplier',
+        'price_amount',
+        'margin_amount_rub',
+    ]);
+
+    expect($result['path'])->toBeFile();
+
+    $spreadsheet = IOFactory::createReader('Xlsx')->load($result['path']);
+    $sheet = $spreadsheet->getActiveSheet();
+
+    expect($sheet->getCell('B1')->getValue())->toBe('Цена опт');
+    expect($sheet->getCell('C1')->getValue())->toBe('Валюта');
+    expect($sheet->getCell('D1')->getValue())->toBe('Курс валюты');
+    expect($sheet->getCell('E1')->getValue())->toBe('Опт, руб');
+    expect($sheet->getCell('F1')->getValue())->toBe('Наценка');
+    expect($sheet->getCell('G1')->getValue())->toBe('Цена на сайт, руб');
+    expect($sheet->getCell('H1')->getValue())->toBe('Маржа, руб');
+
+    expect((float) $sheet->getCell('B2')->getValue())->toBe(100.5);
+    expect((string) $sheet->getCell('C2')->getValue())->toBe('USD');
+    expect((float) $sheet->getCell('D2')->getValue())->toBe(90.0);
+    expect((float) $sheet->getCell('E2')->getValue())->toBe(9045.0);
+    expect((float) $sheet->getCell('F2')->getValue())->toBe(1.2);
+    expect((int) $sheet->getCell('G2')->getValue())->toBe(10854);
+    expect((float) $sheet->getCell('H2')->getValue())->toBe(1809.0);
 
     $spreadsheet->disconnectWorksheets();
     unlink($result['path']);

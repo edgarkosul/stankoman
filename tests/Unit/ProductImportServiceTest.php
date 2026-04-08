@@ -31,6 +31,12 @@ beforeEach(function () {
         $table->unsignedInteger('price_amount')->default(0);
         $table->unsignedInteger('discount_price')->nullable();
         $table->char('currency', 3)->default('RUB');
+        $table->decimal('wholesale_price', 14, 4)->nullable();
+        $table->char('wholesale_currency', 3)->nullable();
+        $table->decimal('exchange_rate', 14, 6)->nullable();
+        $table->decimal('wholesale_price_rub', 14, 2)->nullable();
+        $table->decimal('markup_multiplier', 8, 4)->nullable();
+        $table->decimal('margin_amount_rub', 14, 2)->nullable();
         $table->boolean('in_stock')->default(true);
         $table->unsignedInteger('qty')->nullable();
         $table->unsignedInteger('popularity')->default(0);
@@ -506,6 +512,64 @@ it('rejects unknown warranty labels during dry-run and apply', function () {
 
     expect($product->fresh()->warranty)->toBeNull()
         ->and($run->fresh()->issues()->latest('id')->value('message'))->toBe('Invalid value for warranty: 6 мес.');
+
+    unlink($path);
+});
+
+it('imports pricing parameters and recalculates site price and margin', function () {
+    $product = Product::query()->create([
+        'name' => 'Pricing Import Product',
+        'sku' => 'PRICE-1',
+        'price_amount' => 1000,
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'wholesale_price', 'wholesale_currency', 'exchange_rate', 'markup_multiplier', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        '100,5',
+        'USD',
+        '90',
+        '1,2',
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service = new ProductImportService;
+
+    $dryRun = $service->dryRunFromXlsx($run, $path);
+    $apply = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($dryRun['totals'])->toMatchArray([
+        'create' => 0,
+        'update' => 1,
+        'same' => 0,
+        'conflict' => 0,
+        'error' => 0,
+        'scanned' => 1,
+    ]);
+
+    expect($apply)->toMatchArray([
+        'created' => 0,
+        'updated' => 1,
+        'same' => 0,
+        'conflict' => 0,
+        'error' => 0,
+        'scanned' => 1,
+    ]);
+
+    $product->refresh();
+
+    expect($product->wholesale_price)->toBe('100.5000')
+        ->and($product->wholesale_currency)->toBe('USD')
+        ->and($product->exchange_rate)->toBe('90.000000')
+        ->and($product->wholesale_price_rub)->toBe('9045.00')
+        ->and($product->markup_multiplier)->toBe('1.2000')
+        ->and($product->price_amount)->toBe(10854)
+        ->and($product->margin_amount_rub)->toBe('1809.00');
 
     unlink($path);
 });

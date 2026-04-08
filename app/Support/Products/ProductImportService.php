@@ -48,6 +48,12 @@ class ProductImportService
             if ($label !== '') {
                 $headerToKey[$label] = $key;
             }
+            foreach ((array) ($meta['aliases'] ?? []) as $alias) {
+                $alias = trim((string) $alias);
+                if ($alias !== '') {
+                    $headerToKey[$alias] = $key;
+                }
+            }
             // Для обратной совместимости: допускаем, что в шапке может быть сам key
             $headerToKey[$key] = $key;
         }
@@ -483,7 +489,7 @@ class ProductImportService
             $type = $meta['type'] ?? 'string';
 
             $ok = match (true) {
-                str_starts_with($type, 'decimal') => is_numeric($raw),
+                str_starts_with($type, 'decimal') => $this->isNumericInput($raw),
                 $type === 'integer' => filter_var($raw, FILTER_VALIDATE_INT) !== false || is_numeric($raw),
                 $type === 'boolean' => true, // любое приведём через canonicalBoolean()
                 default => true,
@@ -579,6 +585,9 @@ class ProductImportService
         if ($v === null || $v === '') {
             return null;
         }
+        if (is_string($v)) {
+            $v = str_replace(',', '.', trim($v));
+        }
         if (! is_numeric($v)) {
             return (string) $v;
         }
@@ -589,6 +598,15 @@ class ProductImportService
         }
 
         return number_format((float) $v, $scale, '.', '');
+    }
+
+    protected function isNumericInput(mixed $value): bool
+    {
+        if (is_string($value)) {
+            $value = str_replace(',', '.', trim($value));
+        }
+
+        return is_numeric($value);
     }
 
     protected function canonicalInteger($v)
@@ -685,6 +703,70 @@ class ProductImportService
         };
     }
 
+    protected function applyPricingCalculationsToPayload(array $payload, ?Product $product, array $data, array $headers, array $whitelist): array
+    {
+        $wholesalePrice = $this->pricingValue('wholesale_price', $payload, $product, $data, $headers, $whitelist);
+        $exchangeRate = $this->pricingValue('exchange_rate', $payload, $product, $data, $headers, $whitelist);
+        $wholesalePriceRub = $this->pricingValue('wholesale_price_rub', $payload, $product, $data, $headers, $whitelist);
+        $markupMultiplier = $this->pricingValue('markup_multiplier', $payload, $product, $data, $headers, $whitelist);
+        $sitePriceAmount = $this->pricingValue('price_amount', $payload, $product, $data, $headers, $whitelist);
+
+        $calculatedWholesalePriceRub = Product::calculateWholesalePriceRub($wholesalePrice, $exchangeRate);
+
+        if ($calculatedWholesalePriceRub !== null) {
+            $wholesalePriceRub = $calculatedWholesalePriceRub;
+            $this->putCalculatedPayloadValue($payload, $product, 'wholesale_price_rub', $wholesalePriceRub, $whitelist);
+        }
+
+        $calculatedSitePriceAmount = Product::calculateSitePriceAmount($wholesalePriceRub, $markupMultiplier);
+
+        if ($calculatedSitePriceAmount !== null) {
+            $sitePriceAmount = $calculatedSitePriceAmount;
+            $this->putCalculatedPayloadValue($payload, $product, 'price_amount', $calculatedSitePriceAmount, $whitelist);
+        }
+
+        $calculatedMarginAmountRub = Product::calculateMarginAmountRub($sitePriceAmount, $wholesalePriceRub);
+
+        if ($calculatedMarginAmountRub !== null) {
+            $this->putCalculatedPayloadValue($payload, $product, 'margin_amount_rub', $calculatedMarginAmountRub, $whitelist);
+        }
+
+        return $payload;
+    }
+
+    protected function putCalculatedPayloadValue(array &$payload, ?Product $product, string $field, mixed $value, array $whitelist): void
+    {
+        $type = $whitelist[$field]['type'] ?? 'string';
+        $calculatedCanonical = $this->canonical($value, $type, $field);
+
+        if ($product !== null) {
+            $databaseCanonical = $this->canonical($product->getAttribute($field), $type, $field);
+
+            if ($databaseCanonical === $calculatedCanonical && ! array_key_exists($field, $payload)) {
+                return;
+            }
+        }
+
+        $payload[$field] = $this->toDatabaseValue($calculatedCanonical, $type);
+    }
+
+    protected function pricingValue(string $field, array $payload, ?Product $product, array $data, array $headers, array $whitelist): mixed
+    {
+        if (array_key_exists($field, $payload)) {
+            return $payload[$field];
+        }
+
+        if (in_array($field, $headers, true)) {
+            return $this->canonical(
+                $data[$field] ?? null,
+                $whitelist[$field]['type'] ?? 'string',
+                $field,
+            );
+        }
+
+        return $product?->getAttribute($field);
+    }
+
     /** Сформировать payload изменённых полей для UPDATE (только importable, присутствующих в XLSX, реально отличающихся) */
     protected function buildUpdatePayload(Product $product, array $data, array $headers, array $whitelist): array
     {
@@ -710,6 +792,8 @@ class ProductImportService
                 $payload[$h] = $this->toDatabaseValue($xlsCanon, $type);
             }
         }
+
+        $payload = $this->applyPricingCalculationsToPayload($payload, $product, $data, $headers, $whitelist);
 
         // безопасное переименование ключа через new_name
         $newName = trim((string) ($data['new_name'] ?? ''));
@@ -749,6 +833,8 @@ class ProductImportService
 
             $payload[$h] = $this->toDatabaseValue($xlsCanon, $type);
         }
+
+        $payload = $this->applyPricingCalculationsToPayload($payload, null, $data, $headers, $whitelist);
 
         // ключевые поля
         $payload['name'] = (string) ($data['name'] ?? '');
