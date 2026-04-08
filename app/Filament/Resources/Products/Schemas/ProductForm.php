@@ -21,6 +21,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -98,17 +99,6 @@ class ProductForm
                     ->afterStateUpdated(function (Set $set) {
                         $set('slug_manually_changed', true);
                     }),
-                TextInput::make('price_amount')
-                    ->label('Цена')
-                    ->suffix('₽')
-                    ->required()
-                    ->default(0)
-                    ->numeric()
-                    ->inputMode('decimal')
-                    ->step(1)
-                    ->minValue(0)
-                    ->columnSpan(['default' => 2, 'lg' => 1])
-                    ->maxValue(4_294_967_295),
                 TextInput::make('discount_price')
                     ->label('Цена со скидкой')
                     ->suffix('₽')
@@ -165,6 +155,88 @@ class ProductForm
                     ->belowContent('Используется для фильтра по популярности. Товар с меньшим индексом будет расположен выше')
                     ->columnSpanFull()
                     ->numeric(),
+
+                Section::make('Параметры')
+                    ->columns(['default' => 2, 'lg' => 7])
+                    ->columnSpanFull()
+                    ->schema([
+                        TextInput::make('wholesale_price')
+                            ->label('Цена опт')
+                            ->numeric()
+                            ->inputMode('decimal')
+                            ->step('0.0001')
+                            ->minValue(0)
+                            ->columnSpan(['default' => 1, 'lg' => 1])
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (Get $get, Set $set): void {
+                                self::recalculatePricingFromSource($get, $set);
+                            }),
+                        TextInput::make('wholesale_currency')
+                            ->label('Валюта')
+                            ->maxLength(3)
+                            ->default('RUB')
+                            ->columnSpan(['default' => 1, 'lg' => 1])
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (?string $state, Set $set): void {
+                                $set('wholesale_currency', filled($state) ? Str::upper($state) : null);
+                            }),
+                        TextInput::make('exchange_rate')
+                            ->label('Курс валюты')
+                            ->numeric()
+                            ->inputMode('decimal')
+                            ->step('0.000001')
+                            ->minValue(0)
+                            ->columnSpan(['default' => 1, 'lg' => 1])
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (Get $get, Set $set): void {
+                                self::recalculatePricingFromSource($get, $set);
+                            }),
+                        TextInput::make('wholesale_price_rub')
+                            ->label('Опт, руб')
+                            ->suffix('₽')
+                            ->numeric()
+                            ->inputMode('decimal')
+                            ->step('0.01')
+                            ->minValue(0)
+                            ->columnSpan(['default' => 1, 'lg' => 1])
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (Get $get, Set $set): void {
+                                self::recalculateSitePriceAndMargin($get, $set);
+                            }),
+                        TextInput::make('markup_multiplier')
+                            ->label('Наценка')
+                            ->numeric()
+                            ->inputMode('decimal')
+                            ->step('0.0001')
+                            ->minValue(0)
+                            ->columnSpan(['default' => 1, 'lg' => 1])
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (Get $get, Set $set): void {
+                                self::recalculatePricingFromSource($get, $set);
+                            }),
+                        TextInput::make('price_amount')
+                            ->label('Цена на сайт, руб')
+                            ->suffix('₽')
+                            ->required()
+                            ->default(0)
+                            ->numeric()
+                            ->inputMode('decimal')
+                            ->step(1)
+                            ->minValue(0)
+                            ->maxValue(4_294_967_295)
+                            ->columnSpan(['default' => 1, 'lg' => 1])
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (Get $get, Set $set): void {
+                                self::recalculatePricingMargin($get, $set);
+                            }),
+                        TextInput::make('margin_amount_rub')
+                            ->label('Маржа, руб')
+                            ->suffix('₽')
+                            ->numeric()
+                            ->inputMode('decimal')
+                            ->step('0.01')
+                            ->columnSpan(['default' => 1, 'lg' => 1]),
+                    ]),
 
                 Tabs::make('description_tabs')
                     ->columnSpanFull()
@@ -332,6 +404,52 @@ class ProductForm
         }
 
         return $normalized === [] ? null : $normalized;
+    }
+
+    private static function recalculatePricingFromSource(Get $get, Set $set): void
+    {
+        $wholesalePriceRub = Product::calculateWholesalePriceRub(
+            $get('wholesale_price'),
+            $get('exchange_rate'),
+        );
+
+        $set('wholesale_price_rub', $wholesalePriceRub);
+
+        $sitePriceAmount = Product::calculateSitePriceAmount(
+            $wholesalePriceRub,
+            $get('markup_multiplier'),
+        );
+
+        if ($sitePriceAmount !== null) {
+            $set('price_amount', $sitePriceAmount);
+        }
+
+        $set('margin_amount_rub', Product::calculateMarginAmountRub(
+            $sitePriceAmount ?? $get('price_amount'),
+            $wholesalePriceRub,
+        ));
+    }
+
+    private static function recalculateSitePriceAndMargin(Get $get, Set $set): void
+    {
+        $sitePriceAmount = Product::calculateSitePriceAmount(
+            $get('wholesale_price_rub'),
+            $get('markup_multiplier'),
+        );
+
+        if ($sitePriceAmount !== null) {
+            $set('price_amount', $sitePriceAmount);
+        }
+
+        self::recalculatePricingMargin($get, $set);
+    }
+
+    private static function recalculatePricingMargin(Get $get, Set $set): void
+    {
+        $set('margin_amount_rub', Product::calculateMarginAmountRub(
+            $get('price_amount'),
+            $get('wholesale_price_rub'),
+        ));
     }
 
     private static function sanitizeSpecsString(mixed $value): ?string

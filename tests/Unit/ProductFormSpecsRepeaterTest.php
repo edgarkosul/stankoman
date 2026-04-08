@@ -8,6 +8,7 @@ use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Tests\TestCase;
 
@@ -92,9 +93,36 @@ it('uses meta_title as the editable seo title field', function (): void {
 
     expect($metaTitleField)->toBeInstanceOf(TextInput::class)
         ->and($metaTitleField->getLabel())->toBe('META Title')
-        ->and($legacyTitleField)->toBeInstanceOf(TextInput::class)
-        ->and($legacyTitleField->getLabel())->toBe('Legacy title')
-        ->and($legacyTitleField->isDisabled())->toBeTrue();
+        ->and($legacyTitleField)->toBeNull();
+});
+
+it('configures pricing parameters with site price backed by price amount', function (): void {
+    $page = new CreateProduct;
+    $schema = $page->form(Schema::make($page));
+
+    $pricingFields = [
+        'wholesale_price' => 'Цена опт',
+        'wholesale_currency' => 'Валюта',
+        'exchange_rate' => 'Курс валюты',
+        'wholesale_price_rub' => 'Опт, руб',
+        'markup_multiplier' => 'Наценка',
+        'price_amount' => 'Цена на сайт, руб',
+        'margin_amount_rub' => 'Маржа, руб',
+    ];
+
+    foreach ($pricingFields as $statePath => $label) {
+        $field = $schema->getComponentByStatePath($statePath, withHidden: true);
+
+        expect($field)->toBeInstanceOf(TextInput::class)
+            ->and($field->getLabel())->toBe($label);
+    }
+
+    $sections = array_filter(
+        $schema->getFlatComponents(withActions: false, withHidden: true),
+        fn (mixed $component): bool => $component instanceof Section && $component->getHeading() === 'Параметры',
+    );
+
+    expect($sections)->not->toBeEmpty();
 });
 
 it('configures instructions and video as separate rich editors', function (): void {
