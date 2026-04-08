@@ -99,16 +99,6 @@ class ProductForm
                     ->afterStateUpdated(function (Set $set) {
                         $set('slug_manually_changed', true);
                     }),
-                TextInput::make('discount_price')
-                    ->label('Цена со скидкой')
-                    ->suffix('₽')
-                    ->numeric()
-                    ->inputMode('decimal')
-                    ->step(1)
-                    ->minValue(0)
-                    ->columnSpan(['default' => 2, 'lg' => 1])
-                    ->maxValue(4_294_967_295)
-                    ->helperText('Показывается только авторизованным. Должна быть меньше обычной цены.'),
                 Toggle::make('with_dns')
                     ->label('С НДС')
                     ->columnSpan(['default' => 1, 'lg' => 1])
@@ -156,8 +146,8 @@ class ProductForm
                     ->columnSpanFull()
                     ->numeric(),
 
-                Section::make('Параметры')
-                    ->columns(['default' => 2, 'lg' => 7])
+                Section::make('Ценообразование')
+                    ->columns(['default' => 2, 'lg' => 3])
                     ->columnSpanFull()
                     ->schema([
                         TextInput::make('wholesale_price')
@@ -236,6 +226,16 @@ class ProductForm
                             ->inputMode('decimal')
                             ->step('0.01')
                             ->columnSpan(['default' => 1, 'lg' => 1]),
+                        TextInput::make('discount_price')
+                            ->label('Цена со скидкой')
+                            ->suffix('₽')
+                            ->numeric()
+                            ->inputMode('decimal')
+                            ->step(1)
+                            ->minValue(0)
+                            ->columnSpan(['default' => 2, 'lg' => 1])
+                            ->maxValue(4_294_967_295)
+                            ->helperText('Показывается только авторизованным. Должна быть меньше обычной цены.'),
                     ]),
 
                 Tabs::make('description_tabs')

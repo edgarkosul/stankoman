@@ -108,6 +108,7 @@ it('configures pricing parameters with site price backed by price amount', funct
         'markup_multiplier' => 'Наценка',
         'price_amount' => 'Цена на сайт, руб',
         'margin_amount_rub' => 'Маржа, руб',
+        'discount_price' => 'Цена со скидкой',
     ];
 
     foreach ($pricingFields as $statePath => $label) {
@@ -117,12 +118,17 @@ it('configures pricing parameters with site price backed by price amount', funct
             ->and($field->getLabel())->toBe($label);
     }
 
-    $sections = array_filter(
+    $pricingSections = array_filter(
         $schema->getFlatComponents(withActions: false, withHidden: true),
-        fn (mixed $component): bool => $component instanceof Section && $component->getHeading() === 'Параметры',
+        fn (mixed $component): bool => $component instanceof Section && $component->getHeading() === 'Ценообразование',
     );
 
-    expect($sections)->not->toBeEmpty();
+    /** @var Section $pricingSection */
+    $pricingSection = array_values($pricingSections)[0] ?? null;
+
+    expect($pricingSection)->toBeInstanceOf(Section::class)
+        ->and($pricingSection->getColumns('default'))->toBe(2)
+        ->and($pricingSection->getColumns('lg'))->toBe(3);
 });
 
 it('configures instructions and video as separate rich editors', function (): void {
