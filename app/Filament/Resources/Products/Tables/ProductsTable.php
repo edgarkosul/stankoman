@@ -148,6 +148,11 @@ class ProductsTable
                     ->searchable()
                     ->preload(),
 
+                SelectFilter::make('brand')
+                    ->label('Бренд')
+                    ->options(fn (): array => self::brandOptions())
+                    ->searchable(),
+
                 // Товары вообще без категорий
                 Filter::make('without_categories')
                     ->label('Без категорий')
@@ -166,7 +171,6 @@ class ProductsTable
                             return $q->where('slug', 'staging');
                         })
                     ),
-
             ])
             ->recordActions([
                 EditAction::make()
@@ -1430,6 +1434,20 @@ class ProductsTable
         return Category::query()
             ->whereIn('id', $categoryIds)
             ->pluck('name', 'id')
+            ->all();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function brandOptions(): array
+    {
+        return Product::query()
+            ->whereNotNull('brand')
+            ->whereRaw("TRIM(brand) <> ''")
+            ->orderBy('brand')
+            ->distinct()
+            ->pluck('brand', 'brand')
             ->all();
     }
 
