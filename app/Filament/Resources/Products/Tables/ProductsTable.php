@@ -40,6 +40,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class ProductsTable
 {
@@ -231,6 +232,9 @@ class ProductsTable
                             ->options([
                                 'brand' => 'Бренд',
                                 'country' => 'Производитель',
+                                'wholesale_currency' => 'Валюта закупки',
+                                'exchange_rate' => 'Курс валюты',
+                                'markup_multiplier' => 'Наценка',
                                 'discount_price' => 'Цена со скидкой (процент от цены)',
                                 'with_dns' => 'С НДС',
                                 'in_stock' => 'В наличии',
@@ -252,6 +256,30 @@ class ProductsTable
                             ->label('Новый производитель')
                             ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'country')
                             ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'country'),
+
+                        TextInput::make('wholesale_currency_value')
+                            ->label('Новая валюта закупки')
+                            ->maxLength(3)
+                            ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'wholesale_currency')
+                            ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'wholesale_currency'),
+
+                        TextInput::make('exchange_rate_value')
+                            ->label('Новый курс валюты')
+                            ->numeric()
+                            ->inputMode('decimal')
+                            ->step('0.000001')
+                            ->minValue(0)
+                            ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'exchange_rate')
+                            ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'exchange_rate'),
+
+                        TextInput::make('markup_multiplier_value')
+                            ->label('Новая наценка')
+                            ->numeric()
+                            ->inputMode('decimal')
+                            ->step('0.0001')
+                            ->minValue(0)
+                            ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'markup_multiplier')
+                            ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'markup_multiplier'),
 
                         TextInput::make('discount_price_percent')
                             ->label('Скидка, %')
@@ -912,6 +940,25 @@ class ProductsTable
                                     case 'country':
                                         $q->update(['country' => $data['country_value']]);
                                         break;
+                                    case 'wholesale_currency':
+                                        $q->update([
+                                            'wholesale_currency' => self::normalizeWholesaleCurrencyForBulkUpdate($data['wholesale_currency_value'] ?? null),
+                                        ]);
+                                        break;
+                                    case 'exchange_rate':
+                                        self::updatePricingLeverForBulkProducts(
+                                            $q,
+                                            'exchange_rate',
+                                            $data['exchange_rate_value'] ?? null,
+                                        );
+                                        break;
+                                    case 'markup_multiplier':
+                                        self::updatePricingLeverForBulkProducts(
+                                            $q,
+                                            'markup_multiplier',
+                                            $data['markup_multiplier_value'] ?? null,
+                                        );
+                                        break;
                                     case 'discount_price':
                                         $percent = min(100, max(0, (float) $data['discount_price_percent']));
 
@@ -1275,6 +1322,89 @@ class ProductsTable
         }
 
         return ProductWarranty::tryFrom($rawValue)?->value ?? $rawValue;
+    }
+
+    private static function normalizeWholesaleCurrencyForBulkUpdate(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $rawValue = trim((string) $value);
+
+        return $rawValue === '' ? null : Str::upper($rawValue);
+    }
+
+    /**
+     * @param  Builder<Product>  $query
+     */
+    private static function updatePricingLeverForBulkProducts(Builder $query, string $field, mixed $value): void
+    {
+        $normalizedValue = self::nullableDecimalString(
+            value: $value,
+            scale: $field === 'exchange_rate' ? 6 : 4,
+        );
+
+        $query
+            ->select([
+                'id',
+                'price_amount',
+                'wholesale_price',
+                'exchange_rate',
+                'wholesale_price_rub',
+                'markup_multiplier',
+                'margin_amount_rub',
+            ])
+            ->chunkById(200, function (EloquentCollection $chunk) use ($field, $normalizedValue): void {
+                /** @var Product $product */
+                foreach ($chunk as $product) {
+                    $payload = [
+                        $field => $normalizedValue,
+                    ];
+
+                    $exchangeRate = $field === 'exchange_rate'
+                        ? $normalizedValue
+                        : $product->exchange_rate;
+                    $markupMultiplier = $field === 'markup_multiplier'
+                        ? $normalizedValue
+                        : $product->markup_multiplier;
+                    $wholesalePriceRub = $product->wholesale_price_rub;
+
+                    $calculatedWholesalePriceRub = Product::calculateWholesalePriceRub(
+                        $product->wholesale_price,
+                        $exchangeRate,
+                    );
+
+                    if ($calculatedWholesalePriceRub !== null) {
+                        $wholesalePriceRub = self::nullableDecimalString($calculatedWholesalePriceRub, 2);
+                        $payload['wholesale_price_rub'] = $wholesalePriceRub;
+                    }
+
+                    $sitePriceAmount = Product::calculateSitePriceAmount($wholesalePriceRub, $markupMultiplier);
+
+                    if ($sitePriceAmount !== null) {
+                        $payload['price_amount'] = $sitePriceAmount;
+                    }
+
+                    $marginAmountRub = Product::calculateMarginAmountRub(
+                        $sitePriceAmount ?? $product->price_amount,
+                        $wholesalePriceRub,
+                    );
+
+                    if ($marginAmountRub !== null) {
+                        $payload['margin_amount_rub'] = self::nullableDecimalString($marginAmountRub, 2);
+                    }
+
+                    $product->update($payload);
+                }
+            });
+    }
+
+    private static function nullableDecimalString(mixed $value, int $scale): ?string
+    {
+        $floatValue = Product::nullableFloat($value);
+
+        return $floatValue === null ? null : number_format($floatValue, $scale, '.', '');
     }
 
     /**

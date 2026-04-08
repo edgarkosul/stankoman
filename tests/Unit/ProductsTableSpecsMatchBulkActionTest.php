@@ -376,6 +376,95 @@ it('updates discount price for selected products in fields mass edit mode', func
         ->and($secondProduct->discount_price)->toBe(3000);
 });
 
+it('updates pricing levers and recalculates selected product prices in fields mass edit mode', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $stagingCategory = Category::query()->create([
+        'name' => 'Staging',
+        'slug' => 'staging',
+        'parent_id' => -1,
+        'order' => 190,
+        'is_active' => true,
+    ]);
+
+    $firstProduct = Product::query()->create([
+        'name' => 'Товар с курсом 1',
+        'slug' => 'bulk-pricing-lever-product-1',
+        'price_amount' => 8800,
+        'wholesale_price' => '100.0000',
+        'wholesale_currency' => 'EUR',
+        'exchange_rate' => '80.000000',
+        'wholesale_price_rub' => '8000.00',
+        'markup_multiplier' => '1.1000',
+        'margin_amount_rub' => '800.00',
+    ]);
+
+    $secondProduct = Product::query()->create([
+        'name' => 'Товар с курсом 2',
+        'slug' => 'bulk-pricing-lever-product-2',
+        'price_amount' => 4400,
+        'wholesale_price' => '50.0000',
+        'wholesale_currency' => 'EUR',
+        'exchange_rate' => '80.000000',
+        'wholesale_price_rub' => '4000.00',
+        'markup_multiplier' => '1.1000',
+        'margin_amount_rub' => '400.00',
+    ]);
+
+    $firstProduct->categories()->attach($stagingCategory->id, ['is_primary' => true]);
+    $secondProduct->categories()->attach($stagingCategory->id, ['is_primary' => true]);
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$firstProduct, $secondProduct])
+        ->callTableBulkAction('massEdit', [$firstProduct, $secondProduct], [
+            'mode' => 'fields',
+            'field' => 'exchange_rate',
+            'exchange_rate_value' => '90',
+        ]);
+
+    $firstProduct->refresh();
+    $secondProduct->refresh();
+
+    expect($firstProduct->exchange_rate)->toBe('90.000000')
+        ->and($firstProduct->wholesale_price_rub)->toBe('9000.00')
+        ->and($firstProduct->price_amount)->toBe(9900)
+        ->and($firstProduct->margin_amount_rub)->toBe('900.00')
+        ->and($secondProduct->exchange_rate)->toBe('90.000000')
+        ->and($secondProduct->wholesale_price_rub)->toBe('4500.00')
+        ->and($secondProduct->price_amount)->toBe(4950)
+        ->and($secondProduct->margin_amount_rub)->toBe('450.00');
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$firstProduct, $secondProduct])
+        ->callTableBulkAction('massEdit', [$firstProduct, $secondProduct], [
+            'mode' => 'fields',
+            'field' => 'markup_multiplier',
+            'markup_multiplier_value' => '1.2',
+        ]);
+
+    $firstProduct->refresh();
+    $secondProduct->refresh();
+
+    expect($firstProduct->markup_multiplier)->toBe('1.2000')
+        ->and($firstProduct->price_amount)->toBe(10800)
+        ->and($firstProduct->margin_amount_rub)->toBe('1800.00')
+        ->and($secondProduct->markup_multiplier)->toBe('1.2000')
+        ->and($secondProduct->price_amount)->toBe(5400)
+        ->and($secondProduct->margin_amount_rub)->toBe('900.00');
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$firstProduct, $secondProduct])
+        ->callTableBulkAction('massEdit', [$firstProduct, $secondProduct], [
+            'mode' => 'fields',
+            'field' => 'wholesale_currency',
+            'wholesale_currency_value' => 'usd',
+        ]);
+
+    expect($firstProduct->fresh()->wholesale_currency)->toBe('USD')
+        ->and($secondProduct->fresh()->wholesale_currency)->toBe('USD');
+});
+
 it('sets selected category as primary in categories mass edit mode', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
@@ -1023,6 +1112,12 @@ function rebuildProductsTableSpecsMatchSchemas(): void
         $table->unsignedInteger('price_amount')->default(0);
         $table->unsignedInteger('discount_price')->nullable();
         $table->char('currency', 3)->default('RUB');
+        $table->decimal('wholesale_price', 14, 4)->nullable();
+        $table->char('wholesale_currency', 3)->nullable();
+        $table->decimal('exchange_rate', 14, 6)->nullable();
+        $table->decimal('wholesale_price_rub', 14, 2)->nullable();
+        $table->decimal('markup_multiplier', 8, 4)->nullable();
+        $table->decimal('margin_amount_rub', 14, 2)->nullable();
         $table->boolean('in_stock')->default(true);
         $table->unsignedInteger('qty')->nullable();
         $table->unsignedInteger('popularity')->default(0);
