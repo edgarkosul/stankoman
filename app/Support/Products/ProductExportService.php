@@ -11,6 +11,7 @@ use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Style\Protection as CellProtection;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -299,6 +300,49 @@ class ProductExportService
         $protection->setFormatColumns(false);
     }
 
+    protected function applyColumnFormats(Worksheet $sheet, array $columns, int $lastDataRow): void
+    {
+        $fields = $this->availableFields();
+        $firstDataRow = 2;
+        $formatEndRow = max($lastDataRow, $firstDataRow);
+
+        foreach ($columns as $index => $columnKey) {
+            $type = $fields[$columnKey]['type'] ?? 'string';
+            $formatCode = $this->excelFormatCodeForType($type);
+
+            if ($formatCode === null) {
+                continue;
+            }
+
+            $columnLetter = Coordinate::stringFromColumnIndex($index + 1);
+
+            $sheet->getStyle("{$columnLetter}{$firstDataRow}:{$columnLetter}{$formatEndRow}")
+                ->getNumberFormat()
+                ->setFormatCode($formatCode);
+        }
+    }
+
+    protected function excelFormatCodeForType(string $type): ?string
+    {
+        if (str_starts_with($type, 'decimal')) {
+            $scale = preg_match('/decimal\s*\(\s*\d+\s*,\s*(\d+)\s*\)/i', $type, $matches)
+                ? (int) $matches[1]
+                : 2;
+
+            if ($scale <= 0) {
+                return NumberFormat::FORMAT_NUMBER;
+            }
+
+            return '0.'.str_repeat('0', $scale);
+        }
+
+        return match ($type) {
+            'integer' => NumberFormat::FORMAT_NUMBER,
+            'string', 'text', 'longtext', 'datetime', 'boolean' => NumberFormat::FORMAT_TEXT,
+            default => null,
+        };
+    }
+
     protected function normalizeCellValue(mixed $value): string|int|float|bool|null
     {
         if ($value === null || is_scalar($value)) {
@@ -370,6 +414,7 @@ class ProductExportService
 
         $this->applyBooleanValidation($sheet, $dataset['columns'], $rowNum - 1);
         $this->applyAllowedValuesValidation($sheet, $dataset['columns'], $rowNum - 1);
+        $this->applyColumnFormats($sheet, $dataset['columns'], $rowNum - 1);
 
         $lastColumn = $sheet->getHighestColumn(); // напр. 'K'
         $sheet->getStyle("A1:{$lastColumn}1")

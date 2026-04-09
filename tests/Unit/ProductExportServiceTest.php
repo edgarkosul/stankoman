@@ -6,6 +6,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Style\Protection as CellProtection;
 use Tests\TestCase;
 
@@ -171,6 +172,16 @@ it('exports pricing parameters with site price from price amount', function () {
     expect((int) $sheet->getCell('G2')->getValue())->toBe(10854);
     expect((float) $sheet->getCell('H2')->getValue())->toBe(10.0);
     expect((int) $sheet->getCell('I2')->getValue())->toBe(9769);
+    expect($sheet->getStyle('A2')->getNumberFormat()->getFormatCode())->toBe(NumberFormat::FORMAT_TEXT);
+    expect($sheet->getStyle('B2')->getNumberFormat()->getFormatCode())->toBe('0.0000');
+    expect($sheet->getStyle('C2')->getNumberFormat()->getFormatCode())->toBe(NumberFormat::FORMAT_TEXT);
+    expect($sheet->getStyle('D2')->getNumberFormat()->getFormatCode())->toBe('0.00');
+    expect($sheet->getStyle('E2')->getNumberFormat()->getFormatCode())->toBe(NumberFormat::FORMAT_NUMBER);
+    expect($sheet->getStyle('F2')->getNumberFormat()->getFormatCode())->toBe('0.00');
+    expect($sheet->getStyle('G2')->getNumberFormat()->getFormatCode())->toBe(NumberFormat::FORMAT_NUMBER);
+    expect($sheet->getStyle('H2')->getNumberFormat()->getFormatCode())->toBe('0.00');
+    expect($sheet->getStyle('I2')->getNumberFormat()->getFormatCode())->toBe(NumberFormat::FORMAT_NUMBER);
+    expect($sheet->getStyle('J2')->getNumberFormat()->getFormatCode())->toBe(NumberFormat::FORMAT_TEXT);
 
     $spreadsheet->disconnectWorksheets();
     unlink($result['path']);
