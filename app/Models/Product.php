@@ -112,9 +112,9 @@ class Product extends Model
         'price_amount' => 'int',
         'discount_price' => 'int',
         'wholesale_price' => 'decimal:4',
-        'exchange_rate' => 'decimal:6',
-        'wholesale_price_rub' => 'decimal:2',
-        'markup_multiplier' => 'decimal:4',
+        'exchange_rate' => 'decimal:2',
+        'wholesale_price_rub' => 'decimal:0',
+        'markup_multiplier' => 'decimal:2',
         'margin_amount_rub' => 'decimal:2',
         'auto_update_exchange_rate' => 'bool',
         'qty' => 'int',
@@ -169,19 +169,19 @@ class Product extends Model
     public static function calculateWholesalePriceRub(mixed $wholesalePrice, mixed $exchangeRate): ?float
     {
         $wholesalePrice = self::nullableFloat($wholesalePrice);
-        $exchangeRate = self::nullableFloat($exchangeRate);
+        $exchangeRate = self::normalizeExchangeRate($exchangeRate);
 
         if ($wholesalePrice === null || $exchangeRate === null) {
             return null;
         }
 
-        return round($wholesalePrice * $exchangeRate, 2);
+        return round($wholesalePrice * $exchangeRate, 0);
     }
 
     public static function calculateSitePriceAmount(mixed $wholesalePriceRub, mixed $markupMultiplier): ?int
     {
         $wholesalePriceRub = self::nullableFloat($wholesalePriceRub);
-        $markupMultiplier = self::nullableFloat($markupMultiplier);
+        $markupMultiplier = self::normalizeMarkupMultiplier($markupMultiplier);
 
         if ($wholesalePriceRub === null || $markupMultiplier === null) {
             return null;
@@ -226,6 +226,20 @@ class Product extends Model
     public static function normalizeWholesaleCurrency(mixed $value): ?string
     {
         return ProductWholesaleCurrency::normalizeInput($value);
+    }
+
+    public static function normalizeExchangeRate(mixed $value): ?float
+    {
+        $value = self::nullableFloat($value);
+
+        return $value === null ? null : round($value, 2);
+    }
+
+    public static function normalizeMarkupMultiplier(mixed $value): ?float
+    {
+        $value = self::nullableFloat($value);
+
+        return $value === null ? null : round($value, 2);
     }
 
     /* ======================================================================

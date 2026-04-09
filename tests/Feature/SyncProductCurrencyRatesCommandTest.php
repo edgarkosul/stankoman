@@ -46,7 +46,7 @@ it('runs the product currency sync command and updates auto-priced products', fu
         ->expectsOutput('Курсы обновлены: USD/RUR 82.5, CNY/RUR 11.3, EUR/RUR 94 (дата 09.04.2026). Обновлено товаров: 1.')
         ->assertSuccessful();
 
-    expect(Setting::query()->where('key', 'product_currency.usd_to_rub')->value('value'))->toBe('82.500000')
-        ->and($product->fresh()->exchange_rate)->toBe('82.500000')
+    expect(Setting::query()->where('key', 'product_currency.usd_to_rub')->value('value'))->toBe('82.50')
+        ->and($product->fresh()->exchange_rate)->toBe('82.50')
         ->and($product->fresh()->price_amount)->toBe(9075);
 });

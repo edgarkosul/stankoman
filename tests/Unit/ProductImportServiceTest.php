@@ -566,9 +566,9 @@ it('imports pricing parameters and recalculates site price and margin', function
 
     expect($product->wholesale_price)->toBe('100.5000')
         ->and($product->wholesale_currency)->toBe('USD')
-        ->and($product->exchange_rate)->toBe('90.000000')
-        ->and($product->wholesale_price_rub)->toBe('9045.00')
-        ->and($product->markup_multiplier)->toBe('1.2000')
+        ->and($product->exchange_rate)->toBe('90.00')
+        ->and($product->wholesale_price_rub)->toBe('9045')
+        ->and($product->markup_multiplier)->toBe('1.20')
         ->and($product->price_amount)->toBe(10854)
         ->and($product->margin_amount_rub)->toBe('1809.00');
 

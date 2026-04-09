@@ -249,7 +249,7 @@ class ProductCurrencyRateSyncService
     public function buildPricingPayload(Product $product, float $exchangeRate): array
     {
         $payload = [
-            'exchange_rate' => $this->formatDecimalForStorage($exchangeRate, 6),
+            'exchange_rate' => $this->formatDecimalForStorage($exchangeRate, 2),
         ];
 
         $wholesalePriceRub = Product::calculateWholesalePriceRub(
@@ -258,7 +258,7 @@ class ProductCurrencyRateSyncService
         );
 
         if ($wholesalePriceRub !== null) {
-            $payload['wholesale_price_rub'] = $this->formatDecimalForStorage($wholesalePriceRub, 2);
+            $payload['wholesale_price_rub'] = $this->formatDecimalForStorage($wholesalePriceRub, 0);
         }
 
         $sitePriceAmount = Product::calculateSitePriceAmount(
@@ -284,7 +284,7 @@ class ProductCurrencyRateSyncService
 
     protected function formatRateForStorage(float $rate): string
     {
-        return $this->formatDecimalForStorage($rate, 6);
+        return $this->formatDecimalForStorage($rate, 2);
     }
 
     protected function formatDecimalForStorage(float $value, int $scale): string

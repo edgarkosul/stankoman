@@ -59,19 +59,19 @@ return [
         ],
         'exchange_rate' => [
             'header' => 'Курс валюты',
-            'type' => 'decimal(14,6)',
+            'type' => 'decimal(14,2)',
             'importable' => true,
             'export_default' => true,
         ],
         'wholesale_price_rub' => [
             'header' => 'Опт, руб',
-            'type' => 'decimal(14,2)',
+            'type' => 'decimal(14,0)',
             'importable' => true,
             'export_default' => true,
         ],
         'markup_multiplier' => [
             'header' => 'Наценка',
-            'type' => 'decimal(8,4)',
+            'type' => 'decimal(8,2)',
             'importable' => true,
             'export_default' => true,
         ],

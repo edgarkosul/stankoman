@@ -274,7 +274,7 @@ class ProductsTable
                             ->label('Новый курс валюты')
                             ->numeric()
                             ->inputMode('decimal')
-                            ->step('0.000001')
+                            ->step('0.01')
                             ->minValue(0)
                             ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'exchange_rate')
                             ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'exchange_rate'),
@@ -283,7 +283,7 @@ class ProductsTable
                             ->label('Новая наценка')
                             ->numeric()
                             ->inputMode('decimal')
-                            ->step('0.0001')
+                            ->step('0.01')
                             ->minValue(0)
                             ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'markup_multiplier')
                             ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'markup_multiplier'),
@@ -1350,7 +1350,7 @@ class ProductsTable
     {
         $normalizedValue = self::nullableDecimalString(
             value: $value,
-            scale: $field === 'exchange_rate' ? 6 : 4,
+            scale: 2,
         );
 
         $query
@@ -1389,7 +1389,7 @@ class ProductsTable
                     );
 
                     if ($calculatedWholesalePriceRub !== null) {
-                        $wholesalePriceRub = self::nullableDecimalString($calculatedWholesalePriceRub, 2);
+                        $wholesalePriceRub = self::nullableDecimalString($calculatedWholesalePriceRub, 0);
                         $payload['wholesale_price_rub'] = $wholesalePriceRub;
                     }
 

@@ -97,8 +97,8 @@ it('syncs cbr rates, stores settings and updates auto-priced products', function
         ->and($usdRateSetting?->type)->toBe(SettingType::Float)
         ->and(Setting::query()->where('key', 'product_currency.source_date')->value('value'))->toBe('09.04.2026');
 
-    expect($product->fresh()->exchange_rate)->toBe('82.500000')
-        ->and($product->fresh()->wholesale_price_rub)->toBe('8250.00')
+    expect($product->fresh()->exchange_rate)->toBe('82.50')
+        ->and($product->fresh()->wholesale_price_rub)->toBe('8250')
         ->and($product->fresh()->price_amount)->toBe(9075)
         ->and($product->fresh()->margin_amount_rub)->toBe('825.00');
 });

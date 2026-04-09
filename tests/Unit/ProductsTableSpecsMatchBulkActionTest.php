@@ -427,14 +427,14 @@ it('updates pricing levers and recalculates selected product prices in fields ma
     $firstProduct->refresh();
     $secondProduct->refresh();
 
-    expect($firstProduct->exchange_rate)->toBe('90.000000')
+    expect($firstProduct->exchange_rate)->toBe('90.00')
         ->and($firstProduct->auto_update_exchange_rate)->toBeFalse()
-        ->and($firstProduct->wholesale_price_rub)->toBe('9000.00')
+        ->and($firstProduct->wholesale_price_rub)->toBe('9000')
         ->and($firstProduct->price_amount)->toBe(9900)
         ->and($firstProduct->margin_amount_rub)->toBe('900.00')
-        ->and($secondProduct->exchange_rate)->toBe('90.000000')
+        ->and($secondProduct->exchange_rate)->toBe('90.00')
         ->and($secondProduct->auto_update_exchange_rate)->toBeFalse()
-        ->and($secondProduct->wholesale_price_rub)->toBe('4500.00')
+        ->and($secondProduct->wholesale_price_rub)->toBe('4500')
         ->and($secondProduct->price_amount)->toBe(4950)
         ->and($secondProduct->margin_amount_rub)->toBe('450.00');
 
@@ -449,10 +449,10 @@ it('updates pricing levers and recalculates selected product prices in fields ma
     $firstProduct->refresh();
     $secondProduct->refresh();
 
-    expect($firstProduct->markup_multiplier)->toBe('1.2000')
+    expect($firstProduct->markup_multiplier)->toBe('1.20')
         ->and($firstProduct->price_amount)->toBe(10800)
         ->and($firstProduct->margin_amount_rub)->toBe('1800.00')
-        ->and($secondProduct->markup_multiplier)->toBe('1.2000')
+        ->and($secondProduct->markup_multiplier)->toBe('1.20')
         ->and($secondProduct->price_amount)->toBe(5400)
         ->and($secondProduct->margin_amount_rub)->toBe('900.00');
 
@@ -529,8 +529,8 @@ it('enables auto cbr exchange rate and recalculates selected product prices in f
     $product->refresh();
 
     expect($product->auto_update_exchange_rate)->toBeTrue()
-        ->and($product->exchange_rate)->toBe('82.500000')
-        ->and($product->wholesale_price_rub)->toBe('8250.00')
+        ->and($product->exchange_rate)->toBe('82.50')
+        ->and($product->wholesale_price_rub)->toBe('8250')
         ->and($product->price_amount)->toBe(9075)
         ->and($product->margin_amount_rub)->toBe('825.00');
 });

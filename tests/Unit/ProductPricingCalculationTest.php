@@ -7,9 +7,9 @@ it('calculates pricing values from wholesale inputs and the site price', functio
     $sitePriceAmount = Product::calculateSitePriceAmount($wholesalePriceRub, '1.2');
     $marginAmountRub = Product::calculateMarginAmountRub($sitePriceAmount, $wholesalePriceRub);
 
-    expect($wholesalePriceRub)->toBe(9271.13)
+    expect($wholesalePriceRub)->toBe(9271.0)
         ->and($sitePriceAmount)->toBe(11125)
-        ->and($marginAmountRub)->toBe(1853.87);
+        ->and($marginAmountRub)->toBe(1854.0);
 });
 
 it('keeps calculations nullable when source values are missing', function (): void {
