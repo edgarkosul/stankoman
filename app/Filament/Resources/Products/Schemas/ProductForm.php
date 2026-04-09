@@ -188,6 +188,15 @@ class ProductForm
                             }),
                         TextInput::make('exchange_rate')
                             ->label('Курс валюты')
+                            ->formatStateUsing(function (mixed $state): ?string {
+                                $normalizedRate = Product::normalizeExchangeRate($state);
+
+                                if ($normalizedRate === null) {
+                                    return null;
+                                }
+
+                                return number_format($normalizedRate, 2, '.', '');
+                            })
                             ->numeric()
                             ->inputMode('decimal')
                             ->step('0.01')

@@ -133,6 +133,20 @@ it('configures pricing parameters with site price backed by price amount', funct
         ->and($pricingSection->getColumns('lg'))->toBe(3);
 });
 
+it('formats exchange rate field state to two decimals on hydration', function (): void {
+    $page = new CreateProduct;
+    $schema = $page->form(Schema::make($page));
+    $exchangeRateField = $schema->getComponentByStatePath('exchange_rate', withHidden: true);
+
+    expect($exchangeRateField)->toBeInstanceOf(TextInput::class);
+
+    /** @var TextInput $exchangeRateField */
+    $exchangeRateField->state('78.3043');
+    $exchangeRateField->callAfterStateHydrated();
+
+    expect($exchangeRateField->getState())->toBe(78.3);
+});
+
 it('configures instructions and video as separate rich editors', function (): void {
     $page = new CreateProduct;
     $schema = $page->form(Schema::make($page));
