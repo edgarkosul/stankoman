@@ -225,13 +225,23 @@ class ProductForm
                             }),
                         TextInput::make('markup_multiplier')
                             ->label('Наценка')
+                            ->default(1)
                             ->numeric()
                             ->inputMode('decimal')
                             ->step('0.01')
-                            ->minValue(0)
+                            ->minValue(1)
+                            ->afterStateHydrated(function (mixed $state, Set $set): void {
+                                if (blank($state)) {
+                                    $set('markup_multiplier', 1);
+                                }
+                            })
                             ->columnSpan(['default' => 1, 'lg' => 1])
                             ->live(onBlur: true)
-                            ->afterStateUpdated(function (Get $get, Set $set): void {
+                            ->afterStateUpdated(function (mixed $state, Get $get, Set $set): void {
+                                if (blank($state)) {
+                                    $set('markup_multiplier', 1);
+                                }
+
                                 self::recalculatePricingFromSource($get, $set);
                             }),
                         TextInput::make('price_amount')

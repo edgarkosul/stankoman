@@ -493,6 +493,12 @@ class ProductImportService
                 continue;
             }
 
+            if ($h === 'markup_multiplier' && ! $this->isValidMarkupMultiplierInput($raw)) {
+                $errors[] = "Invalid value for {$h}: {$raw}";
+
+                continue;
+            }
+
             $type = $meta['type'] ?? 'string';
 
             $ok = match (true) {
@@ -599,6 +605,27 @@ class ProductImportService
         }
 
         return ProductWholesaleCurrency::normalizeInput($normalized) !== null;
+    }
+
+    protected function isValidMarkupMultiplierInput(mixed $value): bool
+    {
+        $normalized = $this->normalizeCanonicalValue($value);
+
+        if (is_string($normalized)) {
+            $normalized = trim($normalized);
+        }
+
+        if ($normalized === null || $normalized === '') {
+            return true;
+        }
+
+        $numericValue = Product::nullableFloat($normalized);
+
+        if ($numericValue === null) {
+            return false;
+        }
+
+        return $numericValue >= 1;
     }
 
     protected function canonicalDecimal($v, string $type)

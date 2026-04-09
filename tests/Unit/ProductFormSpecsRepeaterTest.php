@@ -167,6 +167,21 @@ it('formats discount percent field state from site and discount prices on hydrat
     expect($discountPercentField->getState())->toBe(15.0);
 });
 
+it('defaults markup multiplier to one and validates it from one in the form', function (): void {
+    $page = new CreateProduct;
+    $schema = $page->form(Schema::make($page));
+    $markupMultiplierField = $schema->getComponentByStatePath('markup_multiplier', withHidden: true);
+
+    expect($markupMultiplierField)->toBeInstanceOf(TextInput::class);
+
+    /** @var TextInput $markupMultiplierField */
+    $markupMultiplierField->state(null);
+    $markupMultiplierField->callAfterStateHydrated();
+
+    expect($markupMultiplierField->getState())->toBe(1.0)
+        ->and($markupMultiplierField->getMinValue())->toBe(1);
+});
+
 it('configures both margin fields as disabled in pricing section', function (): void {
     $page = new CreateProduct;
     $schema = $page->form(Schema::make($page));

@@ -279,7 +279,11 @@ class Product extends Model
     {
         $value = self::nullableFloat($value);
 
-        return $value === null ? null : round($value, 2);
+        if ($value === null) {
+            return 1.0;
+        }
+
+        return round($value, 2);
     }
 
     public static function normalizeDiscountPercent(mixed $value): ?float

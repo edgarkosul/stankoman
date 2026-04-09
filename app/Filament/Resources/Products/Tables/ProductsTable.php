@@ -284,7 +284,7 @@ class ProductsTable
                             ->numeric()
                             ->inputMode('decimal')
                             ->step('0.01')
-                            ->minValue(0)
+                            ->minValue(1)
                             ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'markup_multiplier')
                             ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'markup_multiplier'),
 

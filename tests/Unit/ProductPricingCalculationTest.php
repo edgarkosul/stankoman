@@ -22,6 +22,6 @@ it('calculates discount percent and discount price from site price', function ()
 
 it('keeps calculations nullable when source values are missing', function (): void {
     expect(Product::calculateWholesalePriceRub(null, 90))->toBeNull()
-        ->and(Product::calculateSitePriceAmount(1000, null))->toBeNull()
+        ->and(Product::calculateSitePriceAmount(1000, null))->toBe(1000)
         ->and(Product::calculateMarginAmountRub(null, 1000))->toBeNull();
 });

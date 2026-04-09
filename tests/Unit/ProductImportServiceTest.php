@@ -699,3 +699,34 @@ it('disables automatic cbr rate updates when exchange rate is imported manually'
 
     unlink($path);
 });
+
+it('rejects markup multiplier values below one during import', function () {
+    $product = Product::query()->create([
+        'name' => 'Invalid Markup Import Product',
+        'sku' => 'MARKUP-1',
+        'price_amount' => 1000,
+        'markup_multiplier' => '1.20',
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'markup_multiplier', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        '0.95',
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service = new ProductImportService;
+    $dryRun = $service->dryRunFromXlsx($run, $path);
+    $apply = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($dryRun['totals']['error'])->toBe(1)
+        ->and($apply['error'])->toBe(1)
+        ->and($product->fresh()->markup_multiplier)->toBe('1.20');
+
+    unlink($path);
+});
