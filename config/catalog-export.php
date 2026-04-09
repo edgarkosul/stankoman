@@ -87,6 +87,13 @@ return [
             'importable' => true,
             'export_default' => true,
         ],
+        'discount_percent' => [
+            'header' => 'Скидка в %',
+            'type' => 'decimal(5,2)',
+            'importable' => true,
+            'export_default' => true,
+            'virtual' => true,
+        ],
         'qty' => [
             'header' => 'Кол-во',
             'type' => 'integer',
@@ -213,6 +220,7 @@ return [
         'markup_multiplier',
         'price_amount',
         'margin_amount_rub',
+        'discount_percent',
         'discount_price',
         'qty',
         'warranty',

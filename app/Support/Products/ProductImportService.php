@@ -566,6 +566,7 @@ class ProductImportService
         return match ($field) {
             'warranty' => ProductWarranty::normalizeInput($value) ?? $value,
             'wholesale_currency' => ProductWholesaleCurrency::normalizeInput($value) ?? $value,
+            'discount_percent' => Product::normalizeDiscountPercent($value) ?? $value,
             default => $value,
         };
     }
@@ -682,6 +683,24 @@ class ProductImportService
         }
 
         foreach ($headers as $h) {
+            if ($h === 'discount_percent') {
+                $dbCanon = $this->canonical(
+                    Product::calculateDiscountPercent($product->price_amount, $product->discount_price),
+                    $whitelist[$h]['type'] ?? 'decimal(5,2)',
+                    $h,
+                );
+                $xlsCanon = $this->canonical(
+                    $data[$h] ?? null,
+                    $whitelist[$h]['type'] ?? 'decimal(5,2)',
+                    $h,
+                );
+
+                if ($dbCanon !== $xlsCanon) {
+                    return true;
+                }
+
+                continue;
+            }
 
             if (in_array($h, ['name', 'new_name', 'updated_at'], true)) {
                 continue;
@@ -749,6 +768,20 @@ class ProductImportService
 
         if ($calculatedMarginAmountRub !== null) {
             $this->putCalculatedPayloadValue($payload, $product, 'margin_amount_rub', $calculatedMarginAmountRub, $whitelist);
+        }
+
+        if (in_array('discount_percent', $headers, true)) {
+            $discountPercent = $this->canonical(
+                $data['discount_percent'] ?? null,
+                $whitelist['discount_percent']['type'] ?? 'decimal(5,2)',
+                'discount_percent',
+            );
+
+            $calculatedDiscountPrice = Product::calculateDiscountPrice($sitePriceAmount, $discountPercent);
+
+            if ($calculatedDiscountPrice !== null) {
+                $this->putCalculatedPayloadValue($payload, $product, 'discount_price', $calculatedDiscountPrice, $whitelist);
+            }
         }
 
         return $payload;

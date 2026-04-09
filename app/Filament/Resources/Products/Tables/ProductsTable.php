@@ -237,7 +237,7 @@ class ProductsTable
                                 'auto_update_exchange_rate' => 'Обновлять по курсу ЦБ',
                                 'exchange_rate' => 'Курс валюты',
                                 'markup_multiplier' => 'Наценка',
-                                'discount_price' => 'Цена со скидкой (процент от цены)',
+                                'discount_percent' => 'Скидка в %',
                                 'with_dns' => 'С НДС',
                                 'in_stock' => 'В наличии',
                                 'is_active' => 'Показывать на сайте',
@@ -288,14 +288,14 @@ class ProductsTable
                             ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'markup_multiplier')
                             ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'markup_multiplier'),
 
-                        TextInput::make('discount_price_percent')
+                        TextInput::make('discount_percent_value')
                             ->label('Скидка, %')
                             ->numeric()
                             ->suffix('%')
                             ->minValue(0)
                             ->maxValue(100)
-                            ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'discount_price')
-                            ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'discount_price'),
+                            ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'discount_percent')
+                            ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'discount_percent'),
 
                         Toggle::make('with_dns_value')
                             ->label('С НДС')
@@ -973,17 +973,19 @@ class ProductsTable
                                             $data['markup_multiplier_value'] ?? null,
                                         );
                                         break;
-                                    case 'discount_price':
-                                        $percent = min(100, max(0, (float) $data['discount_price_percent']));
+                                    case 'discount_percent':
+                                        $percent = min(100, max(0, (float) ($data['discount_percent_value'] ?? 0)));
 
                                         $q->select(['id', 'price_amount'])
                                             ->chunkById(200, function (EloquentCollection $chunk) use ($percent): void {
                                                 /** @var Product $product */
                                                 foreach ($chunk as $product) {
-                                                    $basePrice = (int) $product->price_amount;
-                                                    $discount = (int) round($basePrice * (1 - ($percent / 100)));
+                                                    $discountPrice = Product::calculateDiscountPrice(
+                                                        $product->price_amount,
+                                                        $percent,
+                                                    );
 
-                                                    $product->update(['discount_price' => max($discount, 0)]);
+                                                    $product->update(['discount_price' => $discountPrice]);
                                                 }
                                             });
                                         break;

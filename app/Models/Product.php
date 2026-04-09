@@ -202,6 +202,34 @@ class Product extends Model
         return round($sitePriceAmount - $wholesalePriceRub, 2);
     }
 
+    public static function calculateDiscountPercent(mixed $sitePriceAmount, mixed $discountPrice): ?float
+    {
+        $sitePriceAmount = self::nullableFloat($sitePriceAmount);
+        $discountPrice = self::nullableFloat($discountPrice);
+
+        if ($sitePriceAmount === null || $discountPrice === null || $sitePriceAmount <= 0) {
+            return null;
+        }
+
+        $discountPrice = min(max($discountPrice, 0), $sitePriceAmount);
+
+        return round((1 - ($discountPrice / $sitePriceAmount)) * 100, 2);
+    }
+
+    public static function calculateDiscountPrice(mixed $sitePriceAmount, mixed $discountPercent): ?int
+    {
+        $sitePriceAmount = self::nullableFloat($sitePriceAmount);
+        $discountPercent = self::normalizeDiscountPercent($discountPercent);
+
+        if ($sitePriceAmount === null || $discountPercent === null) {
+            return null;
+        }
+
+        $discountPercent = min(max($discountPercent, 0), 100);
+
+        return max(0, (int) round($sitePriceAmount * (1 - ($discountPercent / 100))));
+    }
+
     public static function nullableFloat(mixed $value): ?float
     {
         if ($value === null || $value === '') {
@@ -236,6 +264,13 @@ class Product extends Model
     }
 
     public static function normalizeMarkupMultiplier(mixed $value): ?float
+    {
+        $value = self::nullableFloat($value);
+
+        return $value === null ? null : round($value, 2);
+    }
+
+    public static function normalizeDiscountPercent(mixed $value): ?float
     {
         $value = self::nullableFloat($value);
 

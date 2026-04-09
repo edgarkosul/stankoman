@@ -12,6 +12,14 @@ it('calculates pricing values from wholesale inputs and the site price', functio
         ->and($marginAmountRub)->toBe(1854.0);
 });
 
+it('calculates discount percent and discount price from site price', function (): void {
+    $discountPercent = Product::calculateDiscountPercent(10854, 9769);
+    $discountPrice = Product::calculateDiscountPrice(10854, '10');
+
+    expect($discountPercent)->toBe(10.0)
+        ->and($discountPrice)->toBe(9769);
+});
+
 it('keeps calculations nullable when source values are missing', function (): void {
     expect(Product::calculateWholesalePriceRub(null, 90))->toBeNull()
         ->and(Product::calculateSitePriceAmount(1000, null))->toBeNull()

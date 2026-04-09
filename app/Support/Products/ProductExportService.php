@@ -2,6 +2,7 @@
 
 namespace App\Support\Products;
 
+use App\Models\Product;
 use BackedEnum;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -144,6 +145,13 @@ class ProductExportService
     {
         if ($col === 'new_name') {
             return null;
+        }
+
+        if ($col === 'discount_percent') {
+            return Product::calculateDiscountPercent(
+                $product->price_amount ?? null,
+                $product->discount_price ?? null,
+            );
         }
 
         if ($col === 'updated_at') {

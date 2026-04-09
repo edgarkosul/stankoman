@@ -350,6 +350,14 @@ it('updates discount price for selected products in fields mass edit mode', func
     $user = User::factory()->create();
     $this->actingAs($user);
 
+    $stagingCategory = Category::query()->create([
+        'name' => 'Staging',
+        'slug' => 'staging',
+        'parent_id' => -1,
+        'order' => 189,
+        'is_active' => true,
+    ]);
+
     $firstProduct = Product::query()->create([
         'name' => 'Товар 1',
         'slug' => 'bulk-discount-product-1',
@@ -362,12 +370,15 @@ it('updates discount price for selected products in fields mass edit mode', func
         'price_amount' => 3333,
     ]);
 
+    $firstProduct->categories()->attach($stagingCategory->id, ['is_primary' => true]);
+    $secondProduct->categories()->attach($stagingCategory->id, ['is_primary' => true]);
+
     Livewire::test(ListProducts::class)
         ->assertCanSeeTableRecords([$firstProduct, $secondProduct])
         ->callTableBulkAction('massEdit', [$firstProduct, $secondProduct], [
             'mode' => 'fields',
-            'field' => 'discount_price',
-            'discount_price_percent' => 10,
+            'field' => 'discount_percent',
+            'discount_percent_value' => 10,
         ]);
 
     $firstProduct->refresh();

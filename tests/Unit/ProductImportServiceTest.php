@@ -575,6 +575,41 @@ it('imports pricing parameters and recalculates site price and margin', function
     unlink($path);
 });
 
+it('imports discount percent and recalculates discount price with priority over direct discount price', function () {
+    $product = Product::query()->create([
+        'name' => 'Discount Percent Import Product',
+        'sku' => 'DISC-1',
+        'price_amount' => 1000,
+        'discount_price' => 900,
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'price_amount', 'discount_percent', 'discount_price', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        1200,
+        '12,5',
+        1,
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service = new ProductImportService;
+    $service->dryRunFromXlsx($run, $path);
+    $apply = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($apply['error'])->toBe(0)
+        ->and($apply['updated'])->toBe(1);
+
+    expect($product->fresh()->price_amount)->toBe(1200)
+        ->and($product->fresh()->discount_price)->toBe(1050);
+
+    unlink($path);
+});
+
 it('accepts CHY alias for CNY and rejects unsupported wholesale currencies', function () {
     $product = Product::query()->create([
         'name' => 'Currency Import Product',

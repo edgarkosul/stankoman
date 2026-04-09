@@ -248,6 +248,7 @@ class ProductForm
                             ->live(onBlur: true)
                             ->afterStateUpdated(function (Get $get, Set $set): void {
                                 self::recalculatePricingMargin($get, $set);
+                                self::recalculateDiscountPriceFromPercent($get, $set);
                             }),
                         TextInput::make('margin_amount_rub')
                             ->label('Маржа, руб')
@@ -256,6 +257,25 @@ class ProductForm
                             ->inputMode('decimal')
                             ->step('0.01')
                             ->columnSpan(['default' => 1, 'lg' => 1]),
+                        TextInput::make('discount_percent')
+                            ->label('Скидка в %')
+                            ->numeric()
+                            ->inputMode('decimal')
+                            ->step('0.01')
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->dehydrated(false)
+                            ->formatStateUsing(function (Get $get): ?float {
+                                return Product::calculateDiscountPercent(
+                                    $get('price_amount'),
+                                    $get('discount_price'),
+                                );
+                            })
+                            ->columnSpan(['default' => 1, 'lg' => 1])
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (Get $get, Set $set): void {
+                                self::recalculateDiscountPriceFromPercent($get, $set);
+                            }),
                         TextInput::make('discount_price')
                             ->label('Цена со скидкой')
                             ->suffix('₽')
@@ -265,6 +285,10 @@ class ProductForm
                             ->minValue(0)
                             ->columnSpan(['default' => 2, 'lg' => 1])
                             ->maxValue(4_294_967_295)
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (Get $get, Set $set): void {
+                                self::recalculateDiscountPercentFromPrice($get, $set);
+                            })
                             ->helperText('Показывается только авторизованным. Должна быть меньше обычной цены.'),
                     ]),
 
@@ -454,10 +478,8 @@ class ProductForm
             $set('price_amount', $sitePriceAmount);
         }
 
-        $set('margin_amount_rub', Product::calculateMarginAmountRub(
-            $sitePriceAmount ?? $get('price_amount'),
-            $wholesalePriceRub,
-        ));
+        self::recalculatePricingMargin($get, $set, $sitePriceAmount ?? $get('price_amount'), $wholesalePriceRub);
+        self::recalculateDiscountPriceFromPercent($get, $set, $sitePriceAmount ?? $get('price_amount'));
     }
 
     private static function recalculateSitePriceAndMargin(Get $get, Set $set): void
@@ -471,14 +493,19 @@ class ProductForm
             $set('price_amount', $sitePriceAmount);
         }
 
-        self::recalculatePricingMargin($get, $set);
+        self::recalculatePricingMargin($get, $set, $sitePriceAmount ?? $get('price_amount'));
+        self::recalculateDiscountPriceFromPercent($get, $set, $sitePriceAmount ?? $get('price_amount'));
     }
 
-    private static function recalculatePricingMargin(Get $get, Set $set): void
-    {
+    private static function recalculatePricingMargin(
+        Get $get,
+        Set $set,
+        mixed $sitePriceAmount = null,
+        mixed $wholesalePriceRub = null
+    ): void {
         $set('margin_amount_rub', Product::calculateMarginAmountRub(
-            $get('price_amount'),
-            $get('wholesale_price_rub'),
+            $sitePriceAmount ?? $get('price_amount'),
+            $wholesalePriceRub ?? $get('wholesale_price_rub'),
         ));
     }
 
@@ -520,9 +547,25 @@ class ProductForm
             $set('price_amount', $sitePriceAmount);
         }
 
-        $set('margin_amount_rub', Product::calculateMarginAmountRub(
+        self::recalculatePricingMargin($get, $set, $sitePriceAmount ?? $get('price_amount'), $wholesalePriceRub);
+        self::recalculateDiscountPriceFromPercent($get, $set, $sitePriceAmount ?? $get('price_amount'));
+    }
+
+    private static function recalculateDiscountPriceFromPercent(Get $get, Set $set, mixed $sitePriceAmount = null): void
+    {
+        $discountPrice = Product::calculateDiscountPrice(
             $sitePriceAmount ?? $get('price_amount'),
-            $wholesalePriceRub,
+            $get('discount_percent'),
+        );
+
+        $set('discount_price', $discountPrice);
+    }
+
+    private static function recalculateDiscountPercentFromPrice(Get $get, Set $set): void
+    {
+        $set('discount_percent', Product::calculateDiscountPercent(
+            $get('price_amount'),
+            $get('discount_price'),
         ));
     }
 

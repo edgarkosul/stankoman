@@ -110,6 +110,7 @@ it('configures pricing parameters with site price backed by price amount', funct
         'markup_multiplier' => [TextInput::class, 'Наценка'],
         'price_amount' => [TextInput::class, 'Цена на сайт, руб'],
         'margin_amount_rub' => [TextInput::class, 'Маржа, руб'],
+        'discount_percent' => [TextInput::class, 'Скидка в %'],
         'discount_price' => [TextInput::class, 'Цена со скидкой'],
     ];
 
@@ -145,6 +146,24 @@ it('formats exchange rate field state to two decimals on hydration', function ()
     $exchangeRateField->callAfterStateHydrated();
 
     expect($exchangeRateField->getState())->toBe(78.3);
+});
+
+it('formats discount percent field state from site and discount prices on hydration', function (): void {
+    $page = new CreateProduct;
+    $schema = $page->form(Schema::make($page));
+    $priceField = $schema->getComponentByStatePath('price_amount', withHidden: true);
+    $discountPriceField = $schema->getComponentByStatePath('discount_price', withHidden: true);
+    $discountPercentField = $schema->getComponentByStatePath('discount_percent', withHidden: true);
+
+    expect($discountPercentField)->toBeInstanceOf(TextInput::class);
+
+    $priceField->state(1000);
+    $discountPriceField->state(850);
+
+    /** @var TextInput $discountPercentField */
+    $discountPercentField->callAfterStateHydrated();
+
+    expect($discountPercentField->getState())->toBe(15.0);
 });
 
 it('configures instructions and video as separate rich editors', function (): void {
