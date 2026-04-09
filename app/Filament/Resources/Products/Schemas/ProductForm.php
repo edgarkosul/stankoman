@@ -256,7 +256,8 @@ class ProductForm
                             ->numeric()
                             ->inputMode('decimal')
                             ->step('0.01')
-                            ->readOnly()
+                            ->disabled()
+                            ->saved()
                             ->columnSpan(['default' => 1, 'lg' => 1]),
                         TextInput::make('discount_margin_amount_rub')
                             ->label('Маржа со скидкой, руб')
@@ -264,7 +265,7 @@ class ProductForm
                             ->numeric()
                             ->inputMode('decimal')
                             ->step('0.01')
-                            ->readOnly()
+                            ->disabled()
                             ->dehydrated(false)
                             ->validatedWhenNotDehydrated(false)
                             ->formatStateUsing(function (Get $get): ?float {

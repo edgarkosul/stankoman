@@ -167,7 +167,7 @@ it('formats discount percent field state from site and discount prices on hydrat
     expect($discountPercentField->getState())->toBe(15.0);
 });
 
-it('configures both margin fields as read only in pricing section', function (): void {
+it('configures both margin fields as disabled in pricing section', function (): void {
     $page = new CreateProduct;
     $schema = $page->form(Schema::make($page));
 
@@ -175,9 +175,9 @@ it('configures both margin fields as read only in pricing section', function ():
     $discountMarginField = $schema->getComponentByStatePath('discount_margin_amount_rub', withHidden: true);
 
     expect($marginField)->toBeInstanceOf(TextInput::class)
-        ->and($marginField->isReadOnly())->toBeTrue()
+        ->and($marginField->isDisabled())->toBeTrue()
         ->and($discountMarginField)->toBeInstanceOf(TextInput::class)
-        ->and($discountMarginField->isReadOnly())->toBeTrue();
+        ->and($discountMarginField->isDisabled())->toBeTrue();
 });
 
 it('configures instructions and video as separate rich editors', function (): void {
