@@ -770,6 +770,14 @@ class ProductImportService
             $this->putCalculatedPayloadValue($payload, $product, 'margin_amount_rub', $calculatedMarginAmountRub, $whitelist);
         }
 
+        if (in_array('exchange_rate', $headers, true) && $this->canonical(
+            $data['exchange_rate'] ?? null,
+            $whitelist['exchange_rate']['type'] ?? 'decimal(14,2)',
+            'exchange_rate',
+        ) !== null) {
+            $payload['auto_update_exchange_rate'] = 0;
+        }
+
         if (in_array('discount_percent', $headers, true)) {
             $discountPercent = $this->canonical(
                 $data['discount_percent'] ?? null,
@@ -815,6 +823,14 @@ class ProductImportService
                 $whitelist[$field]['type'] ?? 'string',
                 $field,
             );
+        }
+
+        if ($product !== null) {
+            $attributes = $product->getAttributes();
+
+            if (! array_key_exists($field, $attributes)) {
+                return Product::query()->whereKey($product->getKey())->value($field);
+            }
         }
 
         return $product?->getAttribute($field);

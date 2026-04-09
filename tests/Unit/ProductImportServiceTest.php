@@ -658,3 +658,44 @@ it('accepts CHY alias for CNY and rejects unsupported wholesale currencies', fun
 
     unlink($pathWithInvalid);
 });
+
+it('disables automatic cbr rate updates when exchange rate is imported manually', function () {
+    $product = Product::query()->create([
+        'name' => 'Manual Rate Import Product',
+        'sku' => 'RATE-1',
+        'price_amount' => 1000,
+        'wholesale_price' => '10.0000',
+        'wholesale_currency' => 'USD',
+        'exchange_rate' => '80.00',
+        'auto_update_exchange_rate' => true,
+        'wholesale_price_rub' => '800',
+        'markup_multiplier' => '1.20',
+        'margin_amount_rub' => '200.00',
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'exchange_rate', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        '91.25',
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service = new ProductImportService;
+    $service->dryRunFromXlsx($run, $path);
+    $apply = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($apply['error'])->toBe(0)
+        ->and($apply['updated'])->toBe(1);
+
+    expect($product->fresh()->exchange_rate)->toBe('91.25')
+        ->and($product->fresh()->auto_update_exchange_rate)->toBeFalse()
+        ->and($product->fresh()->wholesale_price_rub)->toBe('913')
+        ->and($product->fresh()->price_amount)->toBe(1096);
+
+    unlink($path);
+});
