@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ProductWarranty;
+use App\Enums\ProductWholesaleCurrency;
 use App\Models\Attribute as AttributeDef;
 use App\Models\Pivots\ProductCategory;
 use App\Support\ImageDerivativesResolver;
@@ -37,6 +38,7 @@ use Laravel\Scout\Searchable;
  * @property string|null $wholesale_price_rub
  * @property string|null $markup_multiplier
  * @property string|null $margin_amount_rub
+ * @property bool $auto_update_exchange_rate
  * @property bool $in_stock
  * @property int|null $qty
  * @property int $popularity
@@ -83,6 +85,7 @@ class Product extends Model
         'wholesale_price_rub',
         'markup_multiplier',
         'margin_amount_rub',
+        'auto_update_exchange_rate',
         'in_stock',
         'qty',
         'popularity',
@@ -113,6 +116,7 @@ class Product extends Model
         'wholesale_price_rub' => 'decimal:2',
         'markup_multiplier' => 'decimal:4',
         'margin_amount_rub' => 'decimal:2',
+        'auto_update_exchange_rate' => 'bool',
         'qty' => 'int',
         'popularity' => 'int',
         'in_stock' => 'bool',
@@ -217,6 +221,11 @@ class Product extends Model
         }
 
         return (float) $value;
+    }
+
+    public static function normalizeWholesaleCurrency(mixed $value): ?string
+    {
+        return ProductWholesaleCurrency::normalizeInput($value);
     }
 
     /* ======================================================================

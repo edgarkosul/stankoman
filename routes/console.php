@@ -19,6 +19,10 @@ Schedule::command('products:search-reindex')
     ->dailyAt('06:30')
     ->withoutOverlapping(180);
 
+Schedule::command('products:sync-currency-rates')
+    ->dailyAt('00:00')
+    ->withoutOverlapping(180);
+
 Schedule::command('seo:generate-sitemap')
     ->dailyAt('04:30')
     ->withoutOverlapping(180)
