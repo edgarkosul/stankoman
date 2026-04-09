@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Products\Schemas;
 
 use App\Enums\ProductWarranty;
+use App\Enums\ProductWholesaleCurrency;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageGalleryBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock;
@@ -11,6 +12,7 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideo
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\SellerRequisitesBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
 use App\Models\Product;
+use App\Support\Products\ProductCurrencyRateSyncService;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Repeater;
@@ -161,14 +163,28 @@ class ProductForm
                             ->afterStateUpdated(function (Get $get, Set $set): void {
                                 self::recalculatePricingFromSource($get, $set);
                             }),
-                        TextInput::make('wholesale_currency')
+                        Select::make('wholesale_currency')
                             ->label('Валюта')
-                            ->maxLength(3)
-                            ->default('RUB')
+                            ->options(ProductWholesaleCurrency::options())
+                            ->default(ProductWholesaleCurrency::Rur->value)
                             ->columnSpan(['default' => 1, 'lg' => 1])
-                            ->live(onBlur: true)
-                            ->afterStateUpdated(function (?string $state, Set $set): void {
-                                $set('wholesale_currency', filled($state) ? Str::upper($state) : null);
+                            ->live()
+                            ->afterStateUpdated(function (Get $get, Set $set, mixed $state): void {
+                                $set('wholesale_currency', Product::normalizeWholesaleCurrency($state));
+
+                                if ((bool) $get('auto_update_exchange_rate')) {
+                                    self::syncAutomaticExchangeRate($get, $set);
+                                }
+                            }),
+                        Toggle::make('auto_update_exchange_rate')
+                            ->label('Обновлять по курсу ЦБ')
+                            ->default(false)
+                            ->columnSpan(['default' => 1, 'lg' => 1])
+                            ->live()
+                            ->afterStateUpdated(function (Get $get, Set $set, mixed $state): void {
+                                if ((bool) $state) {
+                                    self::syncAutomaticExchangeRate($get, $set);
+                                }
                             }),
                         TextInput::make('exchange_rate')
                             ->label('Курс валюты')
@@ -176,6 +192,11 @@ class ProductForm
                             ->inputMode('decimal')
                             ->step('0.000001')
                             ->minValue(0)
+                            ->disabled(fn (Get $get): bool => (bool) $get('auto_update_exchange_rate'))
+                            ->dehydrated()
+                            ->helperText(fn (Get $get): ?string => (bool) $get('auto_update_exchange_rate')
+                                ? 'Курс обновляется автоматически по данным ЦБ РФ.'
+                                : null)
                             ->columnSpan(['default' => 1, 'lg' => 1])
                             ->live(onBlur: true)
                             ->afterStateUpdated(function (Get $get, Set $set): void {
@@ -449,6 +470,50 @@ class ProductForm
         $set('margin_amount_rub', Product::calculateMarginAmountRub(
             $get('price_amount'),
             $get('wholesale_price_rub'),
+        ));
+    }
+
+    private static function syncAutomaticExchangeRate(Get $get, Set $set): void
+    {
+        $currency = Product::normalizeWholesaleCurrency($get('wholesale_currency'));
+
+        if ($currency === null) {
+            return;
+        }
+
+        try {
+            $exchangeRate = app(ProductCurrencyRateSyncService::class)->resolveRateForCurrency($currency);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return;
+        }
+
+        if ($exchangeRate === null) {
+            return;
+        }
+
+        $set('exchange_rate', $exchangeRate);
+
+        $wholesalePriceRub = Product::calculateWholesalePriceRub(
+            $get('wholesale_price'),
+            $exchangeRate,
+        );
+
+        $set('wholesale_price_rub', $wholesalePriceRub);
+
+        $sitePriceAmount = Product::calculateSitePriceAmount(
+            $wholesalePriceRub,
+            $get('markup_multiplier'),
+        );
+
+        if ($sitePriceAmount !== null) {
+            $set('price_amount', $sitePriceAmount);
+        }
+
+        $set('margin_amount_rub', Product::calculateMarginAmountRub(
+            $sitePriceAmount ?? $get('price_amount'),
+            $wholesalePriceRub,
         ));
     }
 

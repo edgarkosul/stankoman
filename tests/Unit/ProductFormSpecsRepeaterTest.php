@@ -8,6 +8,7 @@ use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Tests\TestCase;
@@ -101,20 +102,21 @@ it('configures pricing parameters with site price backed by price amount', funct
     $schema = $page->form(Schema::make($page));
 
     $pricingFields = [
-        'wholesale_price' => 'Цена опт',
-        'wholesale_currency' => 'Валюта',
-        'exchange_rate' => 'Курс валюты',
-        'wholesale_price_rub' => 'Опт, руб',
-        'markup_multiplier' => 'Наценка',
-        'price_amount' => 'Цена на сайт, руб',
-        'margin_amount_rub' => 'Маржа, руб',
-        'discount_price' => 'Цена со скидкой',
+        'wholesale_price' => [TextInput::class, 'Цена опт'],
+        'wholesale_currency' => [Select::class, 'Валюта'],
+        'auto_update_exchange_rate' => [Toggle::class, 'Обновлять по курсу ЦБ'],
+        'exchange_rate' => [TextInput::class, 'Курс валюты'],
+        'wholesale_price_rub' => [TextInput::class, 'Опт, руб'],
+        'markup_multiplier' => [TextInput::class, 'Наценка'],
+        'price_amount' => [TextInput::class, 'Цена на сайт, руб'],
+        'margin_amount_rub' => [TextInput::class, 'Маржа, руб'],
+        'discount_price' => [TextInput::class, 'Цена со скидкой'],
     ];
 
-    foreach ($pricingFields as $statePath => $label) {
+    foreach ($pricingFields as $statePath => [$expectedClass, $label]) {
         $field = $schema->getComponentByStatePath($statePath, withHidden: true);
 
-        expect($field)->toBeInstanceOf(TextInput::class)
+        expect($field)->toBeInstanceOf($expectedClass)
             ->and($field->getLabel())->toBe($label);
     }
 

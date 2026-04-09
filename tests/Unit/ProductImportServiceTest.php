@@ -34,6 +34,7 @@ beforeEach(function () {
         $table->decimal('wholesale_price', 14, 4)->nullable();
         $table->char('wholesale_currency', 3)->nullable();
         $table->decimal('exchange_rate', 14, 6)->nullable();
+        $table->boolean('auto_update_exchange_rate')->default(false);
         $table->decimal('wholesale_price_rub', 14, 2)->nullable();
         $table->decimal('markup_multiplier', 8, 4)->nullable();
         $table->decimal('margin_amount_rub', 14, 2)->nullable();
@@ -572,4 +573,53 @@ it('imports pricing parameters and recalculates site price and margin', function
         ->and($product->margin_amount_rub)->toBe('1809.00');
 
     unlink($path);
+});
+
+it('accepts CHY alias for CNY and rejects unsupported wholesale currencies', function () {
+    $product = Product::query()->create([
+        'name' => 'Currency Import Product',
+        'sku' => 'CUR-1',
+        'price_amount' => 1000,
+    ]);
+
+    $service = new ProductImportService;
+
+    $runWithAlias = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $pathWithAlias = makeProductsImportXlsx(['name', 'wholesale_currency', 'updated_at'], [[
+        $product->name,
+        'CHY',
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service->dryRunFromXlsx($runWithAlias, $pathWithAlias);
+    $applyWithAlias = $service->applyFromXlsx($runWithAlias->fresh(), $pathWithAlias, ['write' => true]);
+
+    expect($applyWithAlias['error'])->toBe(0)
+        ->and($product->fresh()->wholesale_currency)->toBe('CNY');
+
+    unlink($pathWithAlias);
+
+    $runWithInvalid = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $pathWithInvalid = makeProductsImportXlsx(['name', 'wholesale_currency', 'updated_at'], [[
+        $product->name,
+        'GBP',
+        $product->fresh()->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $dryRunWithInvalid = $service->dryRunFromXlsx($runWithInvalid, $pathWithInvalid);
+    $applyWithInvalid = $service->applyFromXlsx($runWithInvalid->fresh(), $pathWithInvalid, ['write' => true]);
+
+    expect($dryRunWithInvalid['totals']['error'])->toBe(1)
+        ->and($applyWithInvalid['error'])->toBe(1)
+        ->and($product->fresh()->wholesale_currency)->toBe('CNY');
+
+    unlink($pathWithInvalid);
 });

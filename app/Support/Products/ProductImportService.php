@@ -3,6 +3,7 @@
 namespace App\Support\Products;
 
 use App\Enums\ProductWarranty;
+use App\Enums\ProductWholesaleCurrency;
 use App\Models\Category;
 use App\Models\ImportRun;
 use App\Models\Product;
@@ -486,6 +487,12 @@ class ProductImportService
                 continue;
             }
 
+            if ($h === 'wholesale_currency' && ! $this->isValidWholesaleCurrencyInput($raw)) {
+                $errors[] = "Invalid value for {$h}: {$raw}";
+
+                continue;
+            }
+
             $type = $meta['type'] ?? 'string';
 
             $ok = match (true) {
@@ -556,13 +563,11 @@ class ProductImportService
 
     protected function normalizeFieldCanonicalValue(?string $field, mixed $value): mixed
     {
-        if ($field !== 'warranty') {
-            return $value;
-        }
-
-        $normalized = ProductWarranty::normalizeInput($value);
-
-        return $normalized ?? $value;
+        return match ($field) {
+            'warranty' => ProductWarranty::normalizeInput($value) ?? $value,
+            'wholesale_currency' => ProductWholesaleCurrency::normalizeInput($value) ?? $value,
+            default => $value,
+        };
     }
 
     protected function isValidWarrantyInput(mixed $value): bool
@@ -578,6 +583,21 @@ class ProductImportService
         }
 
         return ProductWarranty::normalizeInput($normalized) !== null;
+    }
+
+    protected function isValidWholesaleCurrencyInput(mixed $value): bool
+    {
+        $normalized = $this->normalizeCanonicalValue($value);
+
+        if (is_string($normalized)) {
+            $normalized = trim($normalized);
+        }
+
+        if ($normalized === null || $normalized === '') {
+            return true;
+        }
+
+        return ProductWholesaleCurrency::normalizeInput($normalized) !== null;
     }
 
     protected function canonicalDecimal($v, string $type)

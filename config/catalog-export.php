@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\ProductWholesaleCurrency;
+
 return [
     'fields' => [
         'name' => [
@@ -51,6 +53,7 @@ return [
         'wholesale_currency' => [
             'header' => 'Валюта',
             'type' => 'string',
+            'allowed_values' => ProductWholesaleCurrency::values(),
             'importable' => true,
             'export_default' => true,
         ],

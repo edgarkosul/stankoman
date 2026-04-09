@@ -227,6 +227,39 @@ class ProductExportService
         }
     }
 
+    protected function applyAllowedValuesValidation(Worksheet $sheet, array $columns, int $lastDataRow): void
+    {
+        $fields = $this->availableFields();
+        $validationEndRow = max($lastDataRow, 2);
+
+        foreach ($columns as $index => $columnKey) {
+            $allowedValues = $fields[$columnKey]['allowed_values'] ?? null;
+
+            if (! is_array($allowedValues) || $allowedValues === []) {
+                continue;
+            }
+
+            $validation = new DataValidation;
+            $validation->setType(DataValidation::TYPE_LIST);
+            $validation->setErrorStyle(DataValidation::STYLE_STOP);
+            $validation->setAllowBlank(true);
+            $validation->setShowInputMessage(true);
+            $validation->setShowErrorMessage(true);
+            $validation->setShowDropDown(true);
+            $validation->setPromptTitle('Допустимые значения');
+            $validation->setPrompt('Выберите одно из допустимых значений.');
+            $validation->setErrorTitle('Недопустимое значение');
+            $validation->setError('Разрешены только значения из списка.');
+            $validation->setFormula1('"'.implode(',', $allowedValues).'"');
+
+            $columnIndex = $index + 1;
+
+            for ($row = 2; $row <= $validationEndRow; $row++) {
+                $sheet->getCell([$columnIndex, $row])->setDataValidation(clone $validation);
+            }
+        }
+    }
+
     protected function applyServiceColumnsProtection(Worksheet $sheet, array $columns, int $lastDataRow): void
     {
         if ($columns === []) {
@@ -328,6 +361,7 @@ class ProductExportService
         }
 
         $this->applyBooleanValidation($sheet, $dataset['columns'], $rowNum - 1);
+        $this->applyAllowedValuesValidation($sheet, $dataset['columns'], $rowNum - 1);
 
         $lastColumn = $sheet->getHighestColumn(); // напр. 'K'
         $sheet->getStyle("A1:{$lastColumn}1")

@@ -29,6 +29,7 @@ beforeEach(function () {
         $table->decimal('wholesale_price', 14, 4)->nullable();
         $table->char('wholesale_currency', 3)->nullable();
         $table->decimal('exchange_rate', 14, 6)->nullable();
+        $table->boolean('auto_update_exchange_rate')->default(false);
         $table->decimal('wholesale_price_rub', 14, 2)->nullable();
         $table->decimal('markup_multiplier', 8, 4)->nullable();
         $table->decimal('margin_amount_rub', 14, 2)->nullable();
@@ -166,6 +167,29 @@ it('exports pricing parameters with site price from price amount', function () {
     expect((float) $sheet->getCell('F2')->getValue())->toBe(1.2);
     expect((int) $sheet->getCell('G2')->getValue())->toBe(10854);
     expect((float) $sheet->getCell('H2')->getValue())->toBe(1809.0);
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($result['path']);
+});
+
+it('adds dropdown validation for allowed wholesale currencies', function () {
+    Product::query()->create([
+        'name' => 'Currency Validation Tool',
+        'wholesale_currency' => 'USD',
+    ]);
+
+    $service = new ProductExportService;
+    $result = $service->exportToXlsx(Product::query(), ['wholesale_currency']);
+
+    expect($result['path'])->toBeFile();
+
+    $spreadsheet = IOFactory::createReader('Xlsx')->load($result['path']);
+    $sheet = $spreadsheet->getActiveSheet();
+    $validation = $sheet->getCell('B2')->getDataValidation();
+
+    expect($sheet->getCell('B1')->getValue())->toBe('Валюта')
+        ->and($validation->getType())->toBe(DataValidation::TYPE_LIST)
+        ->and($validation->getFormula1())->toBe('"USD,CNY,EUR,RUR"');
 
     $spreadsheet->disconnectWorksheets();
     unlink($result['path']);

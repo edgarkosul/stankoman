@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Products\Tables;
 
 use App\Enums\ProductWarranty;
+use App\Enums\ProductWholesaleCurrency;
 use App\Filament\Resources\Products\Pages\CreateProduct;
 use App\Filament\Resources\Products\ProductResource;
 use App\Jobs\RunSpecsMatchJob;
@@ -12,6 +13,7 @@ use App\Models\ImportRun;
 use App\Models\Product;
 use App\Models\ProductAttributeValue;
 use App\Models\Unit;
+use App\Support\Products\ProductCurrencyRateSyncService;
 use App\Support\Products\ProductSearchSync;
 use App\Support\Products\SpecsMatchService;
 use Filament\Actions\Action;
@@ -40,7 +42,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class ProductsTable
 {
@@ -233,6 +234,7 @@ class ProductsTable
                                 'brand' => 'Бренд',
                                 'country' => 'Производитель',
                                 'wholesale_currency' => 'Валюта закупки',
+                                'auto_update_exchange_rate' => 'Обновлять по курсу ЦБ',
                                 'exchange_rate' => 'Курс валюты',
                                 'markup_multiplier' => 'Наценка',
                                 'discount_price' => 'Цена со скидкой (процент от цены)',
@@ -257,11 +259,16 @@ class ProductsTable
                             ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'country')
                             ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'country'),
 
-                        TextInput::make('wholesale_currency_value')
+                        Select::make('wholesale_currency_value')
                             ->label('Новая валюта закупки')
-                            ->maxLength(3)
+                            ->options(ProductWholesaleCurrency::options())
                             ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'wholesale_currency')
                             ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'wholesale_currency'),
+
+                        Toggle::make('auto_update_exchange_rate_value')
+                            ->label('Обновлять по курсу ЦБ')
+                            ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'auto_update_exchange_rate')
+                            ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'auto_update_exchange_rate'),
 
                         TextInput::make('exchange_rate_value')
                             ->label('Новый курс валюты')
@@ -941,9 +948,16 @@ class ProductsTable
                                         $q->update(['country' => $data['country_value']]);
                                         break;
                                     case 'wholesale_currency':
-                                        $q->update([
-                                            'wholesale_currency' => self::normalizeWholesaleCurrencyForBulkUpdate($data['wholesale_currency_value'] ?? null),
-                                        ]);
+                                        self::updateWholesaleCurrencyForBulkProducts(
+                                            $q,
+                                            $data['wholesale_currency_value'] ?? null,
+                                        );
+                                        break;
+                                    case 'auto_update_exchange_rate':
+                                        self::updateExchangeRateAutoModeForBulkProducts(
+                                            $q,
+                                            (bool) ($data['auto_update_exchange_rate_value'] ?? false),
+                                        );
                                         break;
                                     case 'exchange_rate':
                                         self::updatePricingLeverForBulkProducts(
@@ -1326,13 +1340,7 @@ class ProductsTable
 
     private static function normalizeWholesaleCurrencyForBulkUpdate(mixed $value): ?string
     {
-        if (! is_scalar($value)) {
-            return null;
-        }
-
-        $rawValue = trim((string) $value);
-
-        return $rawValue === '' ? null : Str::upper($rawValue);
+        return Product::normalizeWholesaleCurrency($value);
     }
 
     /**
@@ -1348,6 +1356,7 @@ class ProductsTable
         $query
             ->select([
                 'id',
+                'auto_update_exchange_rate',
                 'price_amount',
                 'wholesale_price',
                 'exchange_rate',
@@ -1361,6 +1370,10 @@ class ProductsTable
                     $payload = [
                         $field => $normalizedValue,
                     ];
+
+                    if ($field === 'exchange_rate') {
+                        $payload['auto_update_exchange_rate'] = false;
+                    }
 
                     $exchangeRate = $field === 'exchange_rate'
                         ? $normalizedValue
@@ -1393,6 +1406,88 @@ class ProductsTable
 
                     if ($marginAmountRub !== null) {
                         $payload['margin_amount_rub'] = self::nullableDecimalString($marginAmountRub, 2);
+                    }
+
+                    $product->update($payload);
+                }
+            });
+    }
+
+    /**
+     * @param  Builder<Product>  $query
+     */
+    private static function updateWholesaleCurrencyForBulkProducts(Builder $query, mixed $value): void
+    {
+        $normalizedCurrency = self::normalizeWholesaleCurrencyForBulkUpdate($value);
+
+        $query
+            ->select([
+                'id',
+                'auto_update_exchange_rate',
+                'wholesale_currency',
+                'wholesale_price',
+                'exchange_rate',
+                'wholesale_price_rub',
+                'markup_multiplier',
+                'price_amount',
+            ])
+            ->chunkById(200, function (EloquentCollection $chunk) use ($normalizedCurrency): void {
+                $rateService = app(ProductCurrencyRateSyncService::class);
+
+                /** @var Product $product */
+                foreach ($chunk as $product) {
+                    $payload = [
+                        'wholesale_currency' => $normalizedCurrency,
+                    ];
+
+                    if ((bool) $product->auto_update_exchange_rate && $normalizedCurrency !== null) {
+                        $exchangeRate = $rateService->resolveRateForCurrency($normalizedCurrency);
+
+                        if ($exchangeRate !== null) {
+                            $payload = array_merge($payload, $rateService->buildPricingPayload($product, $exchangeRate));
+                        }
+                    }
+
+                    $product->update($payload);
+                }
+            });
+    }
+
+    /**
+     * @param  Builder<Product>  $query
+     */
+    private static function updateExchangeRateAutoModeForBulkProducts(Builder $query, bool $enabled): void
+    {
+        if (! $enabled) {
+            $query->update(['auto_update_exchange_rate' => false]);
+
+            return;
+        }
+
+        $query
+            ->select([
+                'id',
+                'wholesale_currency',
+                'wholesale_price',
+                'exchange_rate',
+                'wholesale_price_rub',
+                'markup_multiplier',
+                'price_amount',
+            ])
+            ->chunkById(200, function (EloquentCollection $chunk): void {
+                $rateService = app(ProductCurrencyRateSyncService::class);
+
+                /** @var Product $product */
+                foreach ($chunk as $product) {
+                    $currency = self::normalizeWholesaleCurrencyForBulkUpdate($product->wholesale_currency);
+                    $payload = ['auto_update_exchange_rate' => true];
+
+                    if ($currency !== null) {
+                        $exchangeRate = $rateService->resolveRateForCurrency($currency);
+
+                        if ($exchangeRate !== null) {
+                            $payload = array_merge($payload, $rateService->buildPricingPayload($product, $exchangeRate));
+                        }
                     }
 
                     $product->update($payload);

@@ -21,6 +21,7 @@ use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
@@ -427,10 +428,12 @@ it('updates pricing levers and recalculates selected product prices in fields ma
     $secondProduct->refresh();
 
     expect($firstProduct->exchange_rate)->toBe('90.000000')
+        ->and($firstProduct->auto_update_exchange_rate)->toBeFalse()
         ->and($firstProduct->wholesale_price_rub)->toBe('9000.00')
         ->and($firstProduct->price_amount)->toBe(9900)
         ->and($firstProduct->margin_amount_rub)->toBe('900.00')
         ->and($secondProduct->exchange_rate)->toBe('90.000000')
+        ->and($secondProduct->auto_update_exchange_rate)->toBeFalse()
         ->and($secondProduct->wholesale_price_rub)->toBe('4500.00')
         ->and($secondProduct->price_amount)->toBe(4950)
         ->and($secondProduct->margin_amount_rub)->toBe('450.00');
@@ -458,11 +461,78 @@ it('updates pricing levers and recalculates selected product prices in fields ma
         ->callTableBulkAction('massEdit', [$firstProduct, $secondProduct], [
             'mode' => 'fields',
             'field' => 'wholesale_currency',
-            'wholesale_currency_value' => 'usd',
+            'wholesale_currency_value' => 'USD',
         ]);
 
     expect($firstProduct->fresh()->wholesale_currency)->toBe('USD')
         ->and($secondProduct->fresh()->wholesale_currency)->toBe('USD');
+});
+
+it('enables auto cbr exchange rate and recalculates selected product prices in fields mass edit mode', function () {
+    Http::fake([
+        'https://www.cbr.ru/scripts/XML_daily.asp*' => Http::response(<<<'XML'
+            <?xml version="1.0" encoding="UTF-8"?>
+            <ValCurs Date="09.04.2026">
+                <Valute>
+                    <CharCode>USD</CharCode>
+                    <Nominal>1</Nominal>
+                    <Value>82,5000</Value>
+                </Valute>
+                <Valute>
+                    <CharCode>CNY</CharCode>
+                    <Nominal>10</Nominal>
+                    <Value>113,0000</Value>
+                </Valute>
+                <Valute>
+                    <CharCode>EUR</CharCode>
+                    <Nominal>1</Nominal>
+                    <Value>94,0000</Value>
+                </Valute>
+            </ValCurs>
+            XML),
+    ]);
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $stagingCategory = Category::query()->create([
+        'name' => 'Staging',
+        'slug' => 'staging',
+        'parent_id' => -1,
+        'order' => 191,
+        'is_active' => true,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Товар с автообновлением курса',
+        'slug' => 'bulk-auto-rate-product',
+        'price_amount' => 8800,
+        'wholesale_price' => '100.0000',
+        'wholesale_currency' => 'USD',
+        'exchange_rate' => '80.000000',
+        'wholesale_price_rub' => '8000.00',
+        'markup_multiplier' => '1.1000',
+        'margin_amount_rub' => '800.00',
+        'auto_update_exchange_rate' => false,
+    ]);
+
+    $product->categories()->attach($stagingCategory->id, ['is_primary' => true]);
+
+    Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$product])
+        ->callTableBulkAction('massEdit', [$product], [
+            'mode' => 'fields',
+            'field' => 'auto_update_exchange_rate',
+            'auto_update_exchange_rate_value' => true,
+        ]);
+
+    $product->refresh();
+
+    expect($product->auto_update_exchange_rate)->toBeTrue()
+        ->and($product->exchange_rate)->toBe('82.500000')
+        ->and($product->wholesale_price_rub)->toBe('8250.00')
+        ->and($product->price_amount)->toBe(9075)
+        ->and($product->margin_amount_rub)->toBe('825.00');
 });
 
 it('sets selected category as primary in categories mass edit mode', function () {
@@ -1115,6 +1185,7 @@ function rebuildProductsTableSpecsMatchSchemas(): void
         $table->decimal('wholesale_price', 14, 4)->nullable();
         $table->char('wholesale_currency', 3)->nullable();
         $table->decimal('exchange_rate', 14, 6)->nullable();
+        $table->boolean('auto_update_exchange_rate')->default(false);
         $table->decimal('wholesale_price_rub', 14, 2)->nullable();
         $table->decimal('markup_multiplier', 8, 4)->nullable();
         $table->decimal('margin_amount_rub', 14, 2)->nullable();
