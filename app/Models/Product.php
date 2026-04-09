@@ -230,6 +230,18 @@ class Product extends Model
         return max(0, (int) round($sitePriceAmount * (1 - ($discountPercent / 100))));
     }
 
+    public static function calculateDiscountMarginAmountRub(mixed $discountPrice, mixed $wholesalePriceRub): ?float
+    {
+        $discountPrice = self::nullableFloat($discountPrice);
+        $wholesalePriceRub = self::nullableFloat($wholesalePriceRub);
+
+        if ($discountPrice === null || $wholesalePriceRub === null) {
+            return null;
+        }
+
+        return round($discountPrice - $wholesalePriceRub, 2);
+    }
+
     public static function nullableFloat(mixed $value): ?float
     {
         if ($value === null || $value === '') {

@@ -120,6 +120,7 @@ test('product import export form has inline hint icon tooltips for excel fields'
 
     expect($exportColumnsField->getHintIcon())->toBe(Heroicon::InformationCircle);
     expect($exportColumnsField->getHintIconTooltip())->toContain('Обязательные служебные колонки');
+    expect($exportColumnsField->getOptions())->not->toHaveKey('margin_amount_rub');
 
     expect($importFileField->getHintIcon())->toBe(Heroicon::InformationCircle);
     expect($importFileField->getHintIconTooltip())->toContain('Поддерживается только формат XLSX');

@@ -145,7 +145,6 @@ it('exports pricing parameters with site price from price amount', function () {
         'wholesale_price_rub',
         'markup_multiplier',
         'price_amount',
-        'margin_amount_rub',
         'discount_percent',
         'discount_price',
     ]);
@@ -161,9 +160,8 @@ it('exports pricing parameters with site price from price amount', function () {
     expect($sheet->getCell('E1')->getValue())->toBe('Опт, руб');
     expect($sheet->getCell('F1')->getValue())->toBe('Наценка');
     expect($sheet->getCell('G1')->getValue())->toBe('Цена на сайт, руб');
-    expect($sheet->getCell('H1')->getValue())->toBe('Маржа, руб');
-    expect($sheet->getCell('I1')->getValue())->toBe('Скидка в %');
-    expect($sheet->getCell('J1')->getValue())->toBe('Цена со скидкой');
+    expect($sheet->getCell('H1')->getValue())->toBe('Скидка в %');
+    expect($sheet->getCell('I1')->getValue())->toBe('Цена со скидкой');
 
     expect((float) $sheet->getCell('B2')->getValue())->toBe(100.5);
     expect((string) $sheet->getCell('C2')->getValue())->toBe('USD');
@@ -171,9 +169,8 @@ it('exports pricing parameters with site price from price amount', function () {
     expect((float) $sheet->getCell('E2')->getValue())->toBe(9045.0);
     expect((float) $sheet->getCell('F2')->getValue())->toBe(1.2);
     expect((int) $sheet->getCell('G2')->getValue())->toBe(10854);
-    expect((float) $sheet->getCell('H2')->getValue())->toBe(1809.0);
-    expect((float) $sheet->getCell('I2')->getValue())->toBe(10.0);
-    expect((int) $sheet->getCell('J2')->getValue())->toBe(9769);
+    expect((float) $sheet->getCell('H2')->getValue())->toBe(10.0);
+    expect((int) $sheet->getCell('I2')->getValue())->toBe(9769);
 
     $spreadsheet->disconnectWorksheets();
     unlink($result['path']);

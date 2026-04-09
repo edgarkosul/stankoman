@@ -51,7 +51,7 @@ class ProductExportService
         // 2) Фильтруем только известные поля из whitelist
         $superset = array_values(array_filter(
             $superset,
-            fn ($c) => isset($fields[$c])
+            fn ($c) => isset($fields[$c]) && (($fields[$c]['exportable'] ?? true) === true || in_array($c, $forced, true))
         ));
 
         // 3) Убираем принудительные колонки из середины — будем расставлять руками

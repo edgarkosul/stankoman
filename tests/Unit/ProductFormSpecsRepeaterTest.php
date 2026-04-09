@@ -110,6 +110,7 @@ it('configures pricing parameters with site price backed by price amount', funct
         'markup_multiplier' => [TextInput::class, 'Наценка'],
         'price_amount' => [TextInput::class, 'Цена на сайт, руб'],
         'margin_amount_rub' => [TextInput::class, 'Маржа, руб'],
+        'discount_margin_amount_rub' => [TextInput::class, 'Маржа со скидкой, руб'],
         'discount_percent' => [TextInput::class, 'Скидка в %'],
         'discount_price' => [TextInput::class, 'Цена со скидкой'],
     ];
@@ -164,6 +165,19 @@ it('formats discount percent field state from site and discount prices on hydrat
     $discountPercentField->callAfterStateHydrated();
 
     expect($discountPercentField->getState())->toBe(15.0);
+});
+
+it('configures both margin fields as read only in pricing section', function (): void {
+    $page = new CreateProduct;
+    $schema = $page->form(Schema::make($page));
+
+    $marginField = $schema->getComponentByStatePath('margin_amount_rub', withHidden: true);
+    $discountMarginField = $schema->getComponentByStatePath('discount_margin_amount_rub', withHidden: true);
+
+    expect($marginField)->toBeInstanceOf(TextInput::class)
+        ->and($marginField->isReadOnly())->toBeTrue()
+        ->and($discountMarginField)->toBeInstanceOf(TextInput::class)
+        ->and($discountMarginField->isReadOnly())->toBeTrue();
 });
 
 it('configures instructions and video as separate rich editors', function (): void {

@@ -78,8 +78,9 @@ return [
         'margin_amount_rub' => [
             'header' => 'Маржа, руб',
             'type' => 'decimal(14,2)',
-            'importable' => true,
-            'export_default' => true,
+            'importable' => false,
+            'exportable' => false,
+            'export_default' => false,
         ],
         'discount_price' => [
             'header' => 'Цена со скидкой',
@@ -219,7 +220,6 @@ return [
         'wholesale_price_rub',
         'markup_multiplier',
         'price_amount',
-        'margin_amount_rub',
         'discount_percent',
         'discount_price',
         'qty',

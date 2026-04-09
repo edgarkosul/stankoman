@@ -113,6 +113,10 @@ class ProductImportExport extends Page implements HasForms
                 continue;
             }
 
+            if (($meta['exportable'] ?? true) === false) {
+                continue;
+            }
+
             $options[$key] = $meta['header'] ?? $key;
         }
 
@@ -124,7 +128,7 @@ class ProductImportExport extends Page implements HasForms
                             ->label('Категории')
                             ->multiple()
                             ->searchable()
-                            ->options(static fn(): array => Category::query()->orderBy('name')->pluck('name', 'id')->all())
+                            ->options(static fn (): array => Category::query()->orderBy('name')->pluck('name', 'id')->all())
                             ->placeholder('Все категории'),
                         Toggle::make('filter_only_active')
                             ->label('Только активные'),
@@ -134,7 +138,7 @@ class ProductImportExport extends Page implements HasForms
                 Select::make('export_brand')
                     ->label('Бренд для отдельного экспорта')
                     ->searchable()
-                    ->options(fn(): array => $this->brandExportOptions())
+                    ->options(fn (): array => $this->brandExportOptions())
                     ->placeholder('Не выбран — использовать обычные фильтры')
                     ->helperText('Если бренд выбран, экспортируются все товары этого бренда по всему проекту, независимо от категорий.'),
                 Section::make('Экспорт в Excel')
@@ -182,7 +186,7 @@ class ProductImportExport extends Page implements HasForms
                                 ->label('Применить последний загруженный Excel')
                                 ->color('danger')
                                 ->requiresConfirmation()
-                                ->disabled(fn(): bool => !$this->canApplyLastRun())
+                                ->disabled(fn (): bool => ! $this->canApplyLastRun())
                                 ->action('doApply'),
                         ]),
                     ]),
@@ -244,7 +248,7 @@ class ProductImportExport extends Page implements HasForms
             $absPath = Storage::disk('local')->path($fileState);
         }
 
-        if (!$absPath) {
+        if (! $absPath) {
             Notification::make()
                 ->title('Файл не выбран')
                 ->danger()
@@ -255,7 +259,7 @@ class ProductImportExport extends Page implements HasForms
 
         $this->data['import_file_original_name'] = $originalName;
 
-        if (!$absPath || !is_file($absPath)) {
+        if (! $absPath || ! is_file($absPath)) {
             Notification::make()
                 ->title('Не удалось сохранить файл импорта')
                 ->danger()
@@ -300,23 +304,23 @@ class ProductImportExport extends Page implements HasForms
     {
         $tmpPath = $file->getRealPath();
 
-        if (!$tmpPath || !is_file($tmpPath)) {
+        if (! $tmpPath || ! is_file($tmpPath)) {
             return null;
         }
 
         $importsDir = storage_path('app/imports');
 
-        if (!is_dir($importsDir)) {
-            if (!@mkdir($importsDir, 0775, true) && !is_dir($importsDir)) {
+        if (! is_dir($importsDir)) {
+            if (! @mkdir($importsDir, 0775, true) && ! is_dir($importsDir)) {
                 return null;
             }
         }
 
         $extension = pathinfo($file->getClientOriginalName(), PATHINFO_EXTENSION) ?: 'xlsx';
-        $filename = uniqid('import_', true) . '.' . $extension;
-        $targetPath = $importsDir . DIRECTORY_SEPARATOR . $filename;
+        $filename = uniqid('import_', true).'.'.$extension;
+        $targetPath = $importsDir.DIRECTORY_SEPARATOR.$filename;
 
-        if (!@copy($tmpPath, $targetPath)) {
+        if (! @copy($tmpPath, $targetPath)) {
             return null;
         }
 
@@ -330,7 +334,7 @@ class ProductImportExport extends Page implements HasForms
             ->latest('id')
             ->first();
 
-        if (!$run) {
+        if (! $run) {
             Notification::make()
                 ->title('Нет запусков импорта')
                 ->body('Сначала выполните dry-run.')
@@ -352,7 +356,7 @@ class ProductImportExport extends Page implements HasForms
 
         $absPath = $run->stored_path ?? null;
 
-        if (!$absPath || !is_file($absPath)) {
+        if (! $absPath || ! is_file($absPath)) {
             Notification::make()
                 ->title('Файл импорта не найден')
                 ->body($absPath ?: 'Путь к файлу отсутствует.')
@@ -370,11 +374,11 @@ class ProductImportExport extends Page implements HasForms
         Notification::make()
             ->title('Импорт применён')
             ->body(
-                'Создано: ' . ($totals['created'] ?? 0) . ', ' .
-                'обновлено: ' . ($totals['updated'] ?? 0) . ', ' .
-                'без изменений: ' . ($totals['same'] ?? 0) . ', ' .
-                'конфликтов: ' . ($totals['conflict'] ?? 0) . ', ' .
-                'ошибок: ' . ($totals['error'] ?? 0)
+                'Создано: '.($totals['created'] ?? 0).', '.
+                'обновлено: '.($totals['updated'] ?? 0).', '.
+                'без изменений: '.($totals['same'] ?? 0).', '.
+                'конфликтов: '.($totals['conflict'] ?? 0).', '.
+                'ошибок: '.($totals['error'] ?? 0)
             )
             ->success()
             ->send();
@@ -390,11 +394,11 @@ class ProductImportExport extends Page implements HasForms
             });
         }
 
-        if (!empty($this->data['filter_only_active'])) {
+        if (! empty($this->data['filter_only_active'])) {
             $query->where('is_active', true);
         }
 
-        if (!empty($this->data['filter_only_stock'])) {
+        if (! empty($this->data['filter_only_stock'])) {
             $query->where('in_stock', true);
         }
 
@@ -420,14 +424,14 @@ class ProductImportExport extends Page implements HasForms
     {
         $rawCategoryIds = $this->data['filter_category_ids'] ?? [];
 
-        if (!is_array($rawCategoryIds)) {
+        if (! is_array($rawCategoryIds)) {
             return [];
         }
 
         $categoryIds = [];
 
         foreach ($rawCategoryIds as $categoryId) {
-            if ($categoryId === null || $categoryId === '' || !is_scalar($categoryId)) {
+            if ($categoryId === null || $categoryId === '' || ! is_scalar($categoryId)) {
                 continue;
             }
 
@@ -481,7 +485,7 @@ class ProductImportExport extends Page implements HasForms
     {
         $brand = $this->data['export_brand'] ?? null;
 
-        if (!is_scalar($brand)) {
+        if (! is_scalar($brand)) {
             return null;
         }
 

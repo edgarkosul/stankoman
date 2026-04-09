@@ -256,6 +256,23 @@ class ProductForm
                             ->numeric()
                             ->inputMode('decimal')
                             ->step('0.01')
+                            ->readOnly()
+                            ->columnSpan(['default' => 1, 'lg' => 1]),
+                        TextInput::make('discount_margin_amount_rub')
+                            ->label('Маржа со скидкой, руб')
+                            ->suffix('₽')
+                            ->numeric()
+                            ->inputMode('decimal')
+                            ->step('0.01')
+                            ->readOnly()
+                            ->dehydrated(false)
+                            ->validatedWhenNotDehydrated(false)
+                            ->formatStateUsing(function (Get $get): ?float {
+                                return Product::calculateDiscountMarginAmountRub(
+                                    $get('discount_price'),
+                                    $get('wholesale_price_rub'),
+                                );
+                            })
                             ->columnSpan(['default' => 1, 'lg' => 1]),
                         TextInput::make('discount_percent')
                             ->label('Скидка в %')
@@ -480,6 +497,7 @@ class ProductForm
 
         self::recalculatePricingMargin($get, $set, $sitePriceAmount ?? $get('price_amount'), $wholesalePriceRub);
         self::recalculateDiscountPriceFromPercent($get, $set, $sitePriceAmount ?? $get('price_amount'));
+        self::recalculateDiscountMargin($get, $set);
     }
 
     private static function recalculateSitePriceAndMargin(Get $get, Set $set): void
@@ -495,6 +513,7 @@ class ProductForm
 
         self::recalculatePricingMargin($get, $set, $sitePriceAmount ?? $get('price_amount'));
         self::recalculateDiscountPriceFromPercent($get, $set, $sitePriceAmount ?? $get('price_amount'));
+        self::recalculateDiscountMargin($get, $set);
     }
 
     private static function recalculatePricingMargin(
@@ -549,6 +568,7 @@ class ProductForm
 
         self::recalculatePricingMargin($get, $set, $sitePriceAmount ?? $get('price_amount'), $wholesalePriceRub);
         self::recalculateDiscountPriceFromPercent($get, $set, $sitePriceAmount ?? $get('price_amount'));
+        self::recalculateDiscountMargin($get, $set);
     }
 
     private static function recalculateDiscountPriceFromPercent(Get $get, Set $set, mixed $sitePriceAmount = null): void
@@ -559,6 +579,7 @@ class ProductForm
         );
 
         $set('discount_price', $discountPrice);
+        self::recalculateDiscountMargin($get, $set, $discountPrice);
     }
 
     private static function recalculateDiscountPercentFromPrice(Get $get, Set $set): void
@@ -566,6 +587,16 @@ class ProductForm
         $set('discount_percent', Product::calculateDiscountPercent(
             $get('price_amount'),
             $get('discount_price'),
+        ));
+
+        self::recalculateDiscountMargin($get, $set);
+    }
+
+    private static function recalculateDiscountMargin(Get $get, Set $set, mixed $discountPrice = null): void
+    {
+        $set('discount_margin_amount_rub', Product::calculateDiscountMarginAmountRub(
+            $discountPrice ?? $get('discount_price'),
+            $get('wholesale_price_rub'),
         ));
     }
 
