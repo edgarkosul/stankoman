@@ -44,7 +44,7 @@ class ProductImportExport extends Page implements HasForms
 
     /** @var array{
      *     export_columns: array<int, string>,
-     *     export_brand: string|null,
+     *     export_brand: array<int, string|int>|string|int|null,
      *     import_file: TemporaryUploadedFile|array<int, TemporaryUploadedFile|string>|string|null,
      *     import_file_original_name: string|null,
      *     filter_category_ids: array<int, int|string>,
@@ -55,7 +55,7 @@ class ProductImportExport extends Page implements HasForms
     public ?array $data = [
         'export_columns' => [],
         'import_file' => null,
-        'export_brand' => null,
+        'export_brand' => [],
         'import_file_original_name' => null,
         'filter_category_ids' => [],
         'filter_only_active' => false,
@@ -88,7 +88,7 @@ class ProductImportExport extends Page implements HasForms
 
         $this->form->fill([
             'export_columns' => $visibleDefaults,
-            'export_brand' => null,
+            'export_brand' => [],
             'import_file' => null,
             'import_file_original_name' => null,
             'filter_category_ids' => [],
@@ -136,11 +136,12 @@ class ProductImportExport extends Page implements HasForms
                             ->label('Только в наличии'),
                     ]),
                 Select::make('export_brand')
-                    ->label('Бренд для отдельного экспорта')
+                    ->label('Бренды для отдельного экспорта')
+                    ->multiple()
                     ->searchable()
                     ->options(fn (): array => $this->brandExportOptions())
-                    ->placeholder('Не выбран — использовать обычные фильтры')
-                    ->helperText('Если бренд выбран, экспортируются все товары этого бренда по всему проекту, независимо от категорий.'),
+                    ->placeholder('Не выбраны — использовать обычные фильтры')
+                    ->helperText('Если выбраны бренды, экспортируются все товары этих брендов по всему проекту, независимо от категорий.'),
                 Section::make('Экспорт в Excel')
                     ->schema([
                         Select::make('export_columns')
@@ -457,11 +458,11 @@ class ProductImportExport extends Page implements HasForms
 
     protected function buildExportQuery(): Builder
     {
-        $brand = $this->normalizedExportBrand();
+        $brands = $this->normalizedExportBrands();
 
-        if ($brand !== null) {
+        if ($brands !== []) {
             return Product::query()
-                ->where('brand', $brand);
+                ->whereIn('brand', $brands);
         }
 
         return $this->applyFiltersToProductQuery(Product::query());
@@ -481,16 +482,35 @@ class ProductImportExport extends Page implements HasForms
             ->all();
     }
 
-    protected function normalizedExportBrand(): ?string
+    /**
+     * @return array<int, string>
+     */
+    protected function normalizedExportBrands(): array
     {
-        $brand = $this->data['export_brand'] ?? null;
+        $rawBrands = $this->data['export_brand'] ?? [];
 
-        if (! is_scalar($brand)) {
-            return null;
+        if (is_scalar($rawBrands)) {
+            $rawBrands = [$rawBrands];
         }
 
-        $brand = trim((string) $brand);
+        if (! is_array($rawBrands)) {
+            return [];
+        }
 
-        return $brand !== '' ? $brand : null;
+        $brands = [];
+
+        foreach ($rawBrands as $brand) {
+            if ($brand === null || $brand === '' || ! is_scalar($brand)) {
+                continue;
+            }
+
+            $normalizedBrand = trim((string) $brand);
+
+            if ($normalizedBrand !== '') {
+                $brands[] = $normalizedBrand;
+            }
+        }
+
+        return array_values(array_unique($brands));
     }
 }

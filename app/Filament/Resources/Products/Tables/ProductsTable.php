@@ -147,12 +147,14 @@ class ProductsTable
             ->filters([
                 SelectFilter::make('categories')
                     ->relationship('categories', 'name', fn (Builder $query) => $query->leaf()->orderBy('order'))
+                    ->multiple()
                     ->searchable()
                     ->preload(),
 
                 SelectFilter::make('brand')
                     ->label('Бренд')
                     ->options(fn (): array => self::brandOptions())
+                    ->multiple()
                     ->searchable(),
 
                 // Товары вообще без категорий
