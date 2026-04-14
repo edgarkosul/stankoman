@@ -220,3 +220,121 @@ test('it reports when there are no empty category branches', function (): void {
     expect($exitCode)->toBe(0)
         ->and($output)->toContain('Пустые ветки категорий не найдены.');
 });
+
+test('it lists only top-level roots of empty category branches when branch roots option is enabled', function (): void {
+    $emptyRoot = Category::query()->create([
+        'name' => 'Корень пустой ветки',
+        'slug' => 'empty-branch-root-only',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $emptyIntermediate = Category::query()->create([
+        'name' => 'Вложенная пустая ветка',
+        'slug' => 'empty-branch-intermediate-only',
+        'parent_id' => $emptyRoot->id,
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    Category::query()->create([
+        'name' => 'Лист пустой ветки',
+        'slug' => 'empty-branch-leaf-only',
+        'parent_id' => $emptyIntermediate->id,
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $secondEmptyRoot = Category::query()->create([
+        'name' => 'Вторая пустая ветка',
+        'slug' => 'second-empty-branch-root-only',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 2,
+        'is_active' => true,
+    ]);
+
+    Category::query()->create([
+        'name' => 'Лист второй пустой ветки',
+        'slug' => 'second-empty-branch-leaf-only',
+        'parent_id' => $secondEmptyRoot->id,
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $nonEmptyRoot = Category::query()->create([
+        'name' => 'Непустая ветка',
+        'slug' => 'non-empty-root-only',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 3,
+        'is_active' => true,
+    ]);
+
+    $nonEmptyLeaf = Category::query()->create([
+        'name' => 'Лист с товаром',
+        'slug' => 'non-empty-leaf-only',
+        'parent_id' => $nonEmptyRoot->id,
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Товар для непустой ветки',
+        'slug' => 'test-product-for-branch-roots',
+        'price_amount' => 5000,
+        'currency' => 'RUB',
+    ]);
+
+    $nonEmptyLeaf->products()->attach($product->id, [
+        'is_primary' => true,
+    ]);
+
+    $exitCode = Artisan::call('categories:list-empty-leaves', [
+        '--branch-roots' => true,
+    ]);
+    $output = Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('Корень пустой ветки')
+        ->and($output)->toContain('Вторая пустая ветка')
+        ->and($output)->not->toContain('Вложенная пустая ветка')
+        ->and($output)->not->toContain('Лист пустой ветки')
+        ->and($output)->not->toContain('Непустая ветка');
+});
+
+test('it reports when there are no empty category branch roots', function (): void {
+    $rootCategory = Category::query()->create([
+        'name' => 'Непустая корневая ветка',
+        'slug' => 'non-empty-root-branch-roots',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $leafCategoryWithProduct = Category::query()->create([
+        'name' => 'Листовая категория с товаром',
+        'slug' => 'non-empty-leaf-branch-roots',
+        'parent_id' => $rootCategory->id,
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Товар для branch roots',
+        'slug' => 'test-product-for-branch-roots-empty-state',
+        'price_amount' => 6000,
+        'currency' => 'RUB',
+    ]);
+
+    $leafCategoryWithProduct->products()->attach($product->id, [
+        'is_primary' => true,
+    ]);
+
+    $exitCode = Artisan::call('categories:list-empty-leaves', [
+        '--branch-roots' => true,
+    ]);
+    $output = Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('Корни пустых веток категорий не найдены.');
+});

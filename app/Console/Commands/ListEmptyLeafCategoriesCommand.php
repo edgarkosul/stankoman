@@ -8,22 +8,29 @@ use Illuminate\Support\Collection;
 
 class ListEmptyLeafCategoriesCommand extends Command
 {
-    protected $signature = 'categories:list-empty-leaves {--branches : Вывести пустые ветки вместо пустых концевых категорий}';
+    protected $signature = 'categories:list-empty-leaves
+        {--branches : Вывести все пустые ветки вместо пустых концевых категорий}
+        {--branch-roots : Вывести только верхние корни пустых веток}';
 
     protected $description = 'Вывести пустые концевые категории или ветки категорий без товаров';
 
     public function handle(): int
     {
-        $listEmptyBranches = (bool) $this->option('branches');
-        $categories = $listEmptyBranches
-            ? $this->emptyBranchCategories()
-            : $this->emptyLeafCategories();
+        $listEmptyBranchRoots = (bool) $this->option('branch-roots');
+        $listEmptyBranches = $listEmptyBranchRoots || (bool) $this->option('branches');
+        $categories = match (true) {
+            $listEmptyBranchRoots => $this->emptyBranchRootCategories(),
+            $listEmptyBranches => $this->emptyBranchCategories(),
+            default => $this->emptyLeafCategories(),
+        };
 
         if ($categories->isEmpty()) {
             $this->info(
-                $listEmptyBranches
-                    ? 'Пустые ветки категорий не найдены.'
-                    : 'Концевые категории без товаров не найдены.'
+                match (true) {
+                    $listEmptyBranchRoots => 'Корни пустых веток категорий не найдены.',
+                    $listEmptyBranches => 'Пустые ветки категорий не найдены.',
+                    default => 'Концевые категории без товаров не найдены.',
+                }
             );
 
             return self::SUCCESS;
@@ -108,6 +115,29 @@ class ListEmptyLeafCategoriesCommand extends Command
                 return $childrenByParent->has($category->id)
                     && ! $hasProductsInSubtree((int) $category->id);
             })
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, Category>
+     */
+    private function emptyBranchRootCategories(): Collection
+    {
+        $emptyBranches = $this->emptyBranchCategories();
+
+        if ($emptyBranches->isEmpty()) {
+            return $emptyBranches;
+        }
+
+        $emptyBranchIds = $emptyBranches
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->flip();
+
+        return $emptyBranches
+            ->filter(
+                static fn (Category $category): bool => ! $emptyBranchIds->has((int) $category->parent_id)
+            )
             ->values();
     }
 }
