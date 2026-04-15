@@ -132,6 +132,24 @@ it('renders category meta title and description on catalog pages', function (): 
         ->assertSee('<meta name="description" content="Подборка ленточнопильных станков с доставкой и сервисом." />', false);
 });
 
+it('renders yandex metrika assets on the home page', function (): void {
+    Page::factory()->create([
+        'slug' => 'home',
+        'title' => 'Главная',
+        'content' => '<p>Главная страница</p>',
+        'is_published' => true,
+    ]);
+
+    $response = $this->get(route('home'));
+
+    $response->assertSuccessful()
+        ->assertSee('window.yandexMetrikaCounterId = 108565390;', false)
+        ->assertSee("https://mc.yandex.ru/metrika/tag.js?id=108565390', 'ym');", false)
+        ->assertSee("ym(108565390, 'init', {", false)
+        ->assertSee("ecommerce: 'dataLayer',", false)
+        ->assertSee('https://mc.yandex.ru/watch/108565390', false);
+});
+
 it('saves home page seo fields from the admin page', function (): void {
     $user = User::factory()->create();
     $page = Page::factory()->create([

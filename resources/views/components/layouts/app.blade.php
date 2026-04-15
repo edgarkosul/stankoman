@@ -19,6 +19,8 @@
 </head>
 
 <body>
+    @include('partials.yandex-metrika-noscript')
+
     <div class="flex min-h-screen flex-col">
         <x-layouts.partials.info />
         <x-layouts.partials.header />

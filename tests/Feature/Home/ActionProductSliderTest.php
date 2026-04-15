@@ -155,3 +155,14 @@ test('app js includes product slider initialization hooks', function (): void {
         ->toContain("document.addEventListener('livewire:navigated', () => initProductSliders(document));")
         ->toContain('initProductSliders(scope);');
 });
+
+test('app js tracks yandex metrika hits for livewire navigation', function (): void {
+    $appJs = file_get_contents(resource_path('js/app.js'));
+
+    expect($appJs)
+        ->toContain('let yandexMetrikaNavigationTracked = false;')
+        ->toContain('const trackYandexMetrikaPageView = () =>')
+        ->toContain("window.ym(counterId, 'hit', currentUrl, {")
+        ->toContain('window.yandexMetrikaLastUrl = currentUrl;')
+        ->toContain("document.addEventListener('livewire:navigated', trackYandexMetrikaPageView);");
+});

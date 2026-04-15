@@ -43,4 +43,8 @@ return [
         'cache_ttl' => (int) env('DADATA_CACHE_TTL', 86400),
     ],
 
+    'yandex_metrika' => [
+        'id' => env('YANDEX_METRIKA_ID', '108565390'),
+    ],
+
 ];

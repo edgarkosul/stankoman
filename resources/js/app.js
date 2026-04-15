@@ -856,6 +856,35 @@ const initImageGalleryLightbox = () => {
     });
 };
 
+let yandexMetrikaNavigationTracked = false;
+
+const trackYandexMetrikaPageView = () => {
+    const counterId = Number(window.yandexMetrikaCounterId);
+
+    if (!Number.isInteger(counterId) || typeof window.ym !== 'function') {
+        return;
+    }
+
+    if (!yandexMetrikaNavigationTracked) {
+        yandexMetrikaNavigationTracked = true;
+        window.yandexMetrikaLastUrl = window.location.href;
+
+        return;
+    }
+
+    const currentUrl = window.location.href;
+    const referer = typeof window.yandexMetrikaLastUrl === 'string' && window.yandexMetrikaLastUrl !== ''
+        ? window.yandexMetrikaLastUrl
+        : document.referrer;
+
+    window.ym(counterId, 'hit', currentUrl, {
+        referer,
+        title: document.title,
+    });
+
+    window.yandexMetrikaLastUrl = currentUrl;
+};
+
 document.addEventListener('DOMContentLoaded', initImageGalleries);
 document.addEventListener('livewire:navigated', initImageGalleries);
 document.addEventListener('DOMContentLoaded', initHeroSliders);
@@ -870,6 +899,7 @@ document.addEventListener('DOMContentLoaded', () => initNouisliderOnRange(docume
 document.addEventListener('livewire:navigated', () => initNouisliderOnRange(document));
 document.addEventListener('DOMContentLoaded', () => initCompareSwipers(document));
 document.addEventListener('livewire:navigated', () => initCompareSwipers(document));
+document.addEventListener('livewire:navigated', trackYandexMetrikaPageView);
 
 let productCardSwiperHooked = false;
 document.addEventListener('livewire:initialized', () => {
