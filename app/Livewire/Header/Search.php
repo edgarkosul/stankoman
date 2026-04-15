@@ -2,7 +2,7 @@
 
 namespace App\Livewire\Header;
 
-use App\Models\Product;
+use App\Support\Products\ProductSearchService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
@@ -22,15 +22,11 @@ class Search extends Component
     #[Computed]
     public function results(): Collection
     {
-        $q = trim($this->q);
-        if (mb_strlen($q) < 2) {
+        if (mb_strlen(trim($this->q)) < 2) {
             return collect();
         }
-        $q = $this->normalizedQuery($q);
 
-        return Product::search($q)
-            ->take(8)
-            ->get(['id', 'slug', 'name', 'sku', 'price', 'discount_price']);
+        return app(ProductSearchService::class)->suggestions($this->q, 8);
     }
 
     public function updatedQ(): void
@@ -61,37 +57,6 @@ class Search extends Component
         }
 
         return preg_replace('/('.$q.')/iu', '<mark class="bg-yellow-200">$1</mark>', e($text));
-    }
-
-    protected function toLatin(string $text): string
-    {
-        $text = trim($text);
-        if ($text === '') {
-            return '';
-        }
-
-        if (function_exists('transliterator_transliterate')) {
-            $latin = transliterator_transliterate('Any-Latin; Latin-ASCII; Lower()', $text);
-        } else {
-            $latin = \Illuminate\Support\Str::lower(\Illuminate\Support\Str::ascii($text));
-        }
-
-        return trim(preg_replace('/\s+/u', ' ', $latin));
-    }
-
-    protected function normalizedQuery(string $q): string
-    {
-        $q = trim(preg_replace('/\s+/u', ' ', $q));
-        if ($q === '') {
-            return $q;
-        }
-
-        // Если есть кириллица — ищем по латинице
-        if (preg_match('/\p{Cyrillic}/u', $q)) {
-            return $this->toLatin($q);
-        }
-
-        return $q; // иначе как есть
     }
 
     public function render(): View

@@ -14,12 +14,11 @@ use App\Livewire\Pages\Orders\Index as OrdersIndex;
 use App\Livewire\Pages\Orders\Show as OrderShow;
 use App\Models\ImportRun;
 use App\Models\Page;
-use App\Models\Product;
+use App\Support\Products\ProductSearchService;
 use App\Support\Seo\SiteSeoDataBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 Route::get('/', function (SiteSeoDataBuilder $seoBuilder) {
     $homePage = Page::query()->where('slug', 'home')->first();
@@ -42,29 +41,9 @@ Route::livewire('/catalog/{path?}', LeafCategoryPage::class)
 Route::get('/product/{product:slug}', [ProductController::class, 'show'])
     ->name('product.show');
 
-Route::get('/search', function (Request $request) {
+Route::get('/search', function (Request $request, ProductSearchService $search) {
     $qOriginal = (string) $request->query('q', '');
-    $q = trim((string) preg_replace('/\s+/u', ' ', $qOriginal));
-
-    $toLatin = function (string $text): string {
-        $text = trim($text);
-
-        if ($text === '') {
-            return '';
-        }
-
-        if (function_exists('transliterator_transliterate')) {
-            $latin = transliterator_transliterate('Any-Latin; Latin-ASCII; Lower()', $text);
-        } else {
-            $latin = Str::lower(Str::ascii($text));
-        }
-
-        return trim((string) preg_replace('/\s+/u', ' ', $latin));
-    };
-
-    if ($q !== '' && preg_match('/\p{Cyrillic}/u', $q) === 1) {
-        $q = $toLatin($q);
-    }
+    $q = $search->normalizeQuery($qOriginal);
 
     if (mb_strlen($q) < 2) {
         return view('pages.search', [
@@ -79,9 +58,7 @@ Route::get('/search', function (Request $request) {
         ]);
     }
 
-    $items = Product::search($q)
-        ->query(fn ($builder) => $builder->with('categories'))
-        ->paginate(24)
+    $items = $search->searchPage($qOriginal, 24)
         ->withQueryString();
 
     return view('pages.search', [

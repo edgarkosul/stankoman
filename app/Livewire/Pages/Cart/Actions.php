@@ -5,6 +5,7 @@ namespace App\Livewire\Pages\Cart;
 use App\Models\Product;
 use App\Support\CartService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -31,7 +32,7 @@ class Actions extends Component
 
     public bool $isPrice = true;
 
-    public function mount(CartService $cart): void
+    public function mount(): void
     {
         if ($this->variant !== 'leaf') {
             $this->extended = true;
@@ -46,11 +47,21 @@ class Actions extends Component
         $this->isInStock = (bool) ($product?->in_stock ?? false);
         $this->isPrice = (bool) ($product?->price_amount ?? 0) > 0;
 
-        $this->syncCartState($cart);
+        if (! $this->supportsPersistentCart()) {
+            $this->setTooltip();
+
+            return;
+        }
+
+        $this->syncCartState(app(CartService::class));
     }
 
     public function add(CartService $cart): void
     {
+        if (! $this->supportsPersistentCart()) {
+            return;
+        }
+
         if (! $this->isInStock || ! $this->isPrice) {
             return;
         }
@@ -84,6 +95,10 @@ class Actions extends Component
 
     public function remove(CartService $cart): void
     {
+        if (! $this->supportsPersistentCart()) {
+            return;
+        }
+
         $cart->removeItem($this->productId, $this->options);
 
         $this->inCart = false;
@@ -96,6 +111,10 @@ class Actions extends Component
     {
         $this->qty = $this->normalizedQty() + 1;
 
+        if (! $this->supportsPersistentCart()) {
+            return;
+        }
+
         $this->syncQtyIfInCart($cart);
     }
 
@@ -103,11 +122,22 @@ class Actions extends Component
     {
         $this->qty = max(1, $this->normalizedQty() - 1);
 
+        if (! $this->supportsPersistentCart()) {
+            return;
+        }
+
         $this->syncQtyIfInCart($cart);
     }
 
     public function setQty(CartService $cart): void
     {
+        if (! $this->supportsPersistentCart()) {
+            $this->qty = $this->normalizedQty();
+            $this->setTooltip();
+
+            return;
+        }
+
         $quantity = $this->normalizedQty();
         $this->qty = $quantity;
 
@@ -133,6 +163,14 @@ class Actions extends Component
     #[On('cart:updated.{productId}')]
     public function sync(CartService $cart): void
     {
+        if (! $this->supportsPersistentCart()) {
+            $this->inCart = false;
+            $this->qty = $this->normalizedQty();
+            $this->setTooltip();
+
+            return;
+        }
+
         $this->syncCartState($cart);
     }
 
@@ -163,6 +201,11 @@ class Actions extends Component
         }
 
         $this->setTooltip();
+    }
+
+    protected function supportsPersistentCart(): bool
+    {
+        return Schema::hasTable('carts') && Schema::hasTable('cart_items');
     }
 
     protected function syncQtyIfInCart(CartService $cart): void
