@@ -205,8 +205,8 @@ class SiteSeoDataBuilder
             'url' => $this->absoluteUrl('/'),
             'potentialAction' => [
                 '@type' => 'SearchAction',
-                'target' => $this->absoluteUrl('/search?q={search_term_string}'),
-                'query-input' => 'required name=search_term_string',
+                'target' => $this->absoluteUrl('/search?q={query}'),
+                'query' => 'required',
             ],
         ];
     }

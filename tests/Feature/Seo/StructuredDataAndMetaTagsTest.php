@@ -38,7 +38,9 @@ it('renders organization and website schema with social meta tags on the home pa
         ->assertSee('"email": "public@example.com"', false)
         ->assertSee('"contactType": "customer support"', false)
         ->assertSee('"@type": "WebSite"', false)
-        ->assertSee('"SearchAction"', false);
+        ->assertSee('"SearchAction"', false)
+        ->assertSee('"query": "required"', false)
+        ->assertDontSee('"query-input"', false);
 });
 
 it('renders custom meta description for published static pages', function (): void {
