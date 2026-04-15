@@ -74,8 +74,6 @@
             webvisor: true,
             clickmap: true,
             ecommerce: 'dataLayer',
-            referrer: document.referrer,
-            url: location.href,
             triggerEvent: true,
             accurateTrackBounce: true,
             trackLinks: true,

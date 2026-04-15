@@ -148,6 +148,8 @@ it('renders yandex metrika assets on the home page', function (): void {
         ->assertSee("ym(108565390, 'init', {", false)
         ->assertSee("ecommerce: 'dataLayer',", false)
         ->assertSee('triggerEvent: true,', false)
+        ->assertDontSee('referrer: document.referrer,', false)
+        ->assertDontSee('url: location.href,', false)
         ->assertSee('https://mc.yandex.ru/watch/108565390', false);
 });
 
