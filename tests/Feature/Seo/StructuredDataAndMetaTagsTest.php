@@ -143,13 +143,14 @@ it('renders yandex metrika assets on the home page', function (): void {
     $response = $this->get(route('home'));
 
     $response->assertSuccessful()
-        ->assertSee('window.yandexMetrikaCounterId = 108565390;', false)
-        ->assertSee("https://mc.yandex.ru/metrika/tag.js', 'ym');", false)
+        ->assertSee('<meta name="yandex-metrika-id" content="108565390">', false)
+        ->assertSee("https://mc.yandex.ru/metrika/tag.js?id=108565390', 'ym');", false)
         ->assertSee("ym(108565390, 'init', {", false)
         ->assertSee("ecommerce: 'dataLayer',", false)
-        ->assertSee('triggerEvent: true,', false)
-        ->assertDontSee('referrer: document.referrer,', false)
-        ->assertDontSee('url: location.href,', false)
+        ->assertSee('referrer: document.referrer,', false)
+        ->assertSee('url: location.href,', false)
+        ->assertDontSee('triggerEvent: true,', false)
+        ->assertDontSee('window.yandexMetrikaCounterId = 108565390;', false)
         ->assertSee('https://mc.yandex.ru/watch/108565390', false);
 });
 

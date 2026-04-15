@@ -859,7 +859,7 @@ const initImageGalleryLightbox = () => {
 let yandexMetrikaNavigationTracked = false;
 
 const trackYandexMetrikaPageView = () => {
-    const counterId = Number(window.yandexMetrikaCounterId);
+    const counterId = Number(document.querySelector('meta[name="yandex-metrika-id"]')?.content);
 
     if (!Number.isInteger(counterId) || typeof window.ym !== 'function') {
         return;

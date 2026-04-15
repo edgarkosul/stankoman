@@ -162,6 +162,7 @@ test('app js tracks yandex metrika hits for livewire navigation', function (): v
     expect($appJs)
         ->toContain('let yandexMetrikaNavigationTracked = false;')
         ->toContain('const trackYandexMetrikaPageView = () =>')
+        ->toContain(`document.querySelector('meta[name="yandex-metrika-id"]')?.content`)
         ->toContain("window.ym(counterId, 'hit', currentUrl, {")
         ->toContain('window.yandexMetrikaLastUrl = currentUrl;')
         ->toContain("document.addEventListener('livewire:navigated', trackYandexMetrikaPageView);");
