@@ -67,7 +67,7 @@
             k.async = 1;
             k.src = r;
             a.parentNode.insertBefore(k, a);
-        })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js?id={{ urlencode((string) $yandexMetrikaId) }}', 'ym');
+        })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
 
         ym({{ (int) $yandexMetrikaId }}, 'init', {
             ssr: true,
@@ -76,6 +76,7 @@
             ecommerce: 'dataLayer',
             referrer: document.referrer,
             url: location.href,
+            triggerEvent: true,
             accurateTrackBounce: true,
             trackLinks: true,
         });

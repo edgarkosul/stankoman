@@ -144,9 +144,10 @@ it('renders yandex metrika assets on the home page', function (): void {
 
     $response->assertSuccessful()
         ->assertSee('window.yandexMetrikaCounterId = 108565390;', false)
-        ->assertSee("https://mc.yandex.ru/metrika/tag.js?id=108565390', 'ym');", false)
+        ->assertSee("https://mc.yandex.ru/metrika/tag.js', 'ym');", false)
         ->assertSee("ym(108565390, 'init', {", false)
         ->assertSee("ecommerce: 'dataLayer',", false)
+        ->assertSee('triggerEvent: true,', false)
         ->assertSee('https://mc.yandex.ru/watch/108565390', false);
 });
 
