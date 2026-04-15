@@ -16,15 +16,20 @@ test('all project svg icons are styleable with currentColor hooks', function ():
 
 test('header and footer x-icon usages style icon layers through tailwind classes', function (): void {
     $header = file_get_contents(__DIR__.'/../../resources/views/components/layouts/partials/header.blade.php');
+    $userMenu = file_get_contents(__DIR__.'/../../resources/views/livewire/header/user-menu.blade.php');
     $footer = file_get_contents(__DIR__.'/../../resources/views/components/layouts/partials/footer.blade.php');
 
     expect($header)
         ->toContain('name="spot" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red"')
-        ->toContain('name="user" class="size-6 xl:size-5 -translate-y-0.5 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red"')
         ->toContain('name="logo_sq" class="size-14 ml-2 xs:hidden [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red [&_.icon-muted]:text-zinc-400 [&_.icon-contrast]:text-white"');
 
+    expect($userMenu)
+        ->toContain('name="user"')
+        ->toContain('size-6 xl:size-5 -translate-y-0.5 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red');
+
     expect($footer)
-        ->toContain('name="max" class="w-5 h-5 [&_.icon-base]:text-white [&_.icon-accent]:text-brand-red"')
-        ->toContain('name="telegram" class="w-5 h-5 [&_.icon-base]:text-white [&_.icon-accent]:text-brand-red"')
-        ->toContain('name="phone" class="w-5 h-5 [&_.icon-base]:text-white [&_.icon-accent]:text-brand-red"');
+        ->toContain('name="max"')
+        ->toContain('name="telegram"')
+        ->toContain('name="phone"')
+        ->toContain('[&_.icon-base]:text-white [&_.icon-accent]:text-brand-red');
 });

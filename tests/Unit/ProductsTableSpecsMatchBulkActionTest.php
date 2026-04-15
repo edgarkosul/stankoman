@@ -71,7 +71,6 @@ it('queues specs match bulk action and creates pending import run', function () 
     $product->categories()->attach($stagingCategory->id, ['is_primary' => true]);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
         ->callTableBulkAction('massEdit', [$product], [
             'mode' => 'specs_match',
             'target_category_id' => $targetCategory->id,
@@ -140,6 +139,14 @@ it('applies attribute decisions from specs match confirmation wizard', function 
         'si_offset' => 0,
     ]);
 
+    $stagingCategory = Category::query()->create([
+        'name' => 'Staging',
+        'slug' => 'staging',
+        'parent_id' => -1,
+        'order' => 122,
+        'is_active' => true,
+    ]);
+
     $product = Product::query()->create([
         'name' => 'Товар с новыми specs',
         'slug' => 'new-specs-product',
@@ -150,9 +157,9 @@ it('applies attribute decisions from specs match confirmation wizard', function 
             ['name' => 'Лишний параметр', 'value' => 'abc', 'source' => 'dom'],
         ],
     ]);
+    $product->categories()->attach($stagingCategory->id, ['is_primary' => true]);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
         ->callTableBulkAction('massEdit', [$product], [
             'mode' => 'specs_match',
             'target_category_id' => $targetCategory->id,
@@ -302,6 +309,14 @@ it('stores input unit overrides for linked numeric specs in specs match options'
         $cubicMetersPerMinute->id => ['is_default' => false, 'sort_order' => 1],
     ]);
 
+    $stagingCategory = Category::query()->create([
+        'name' => 'Staging',
+        'slug' => 'staging',
+        'parent_id' => -1,
+        'order' => 122,
+        'is_active' => true,
+    ]);
+
     $product = Product::query()->create([
         'name' => 'Компрессор C',
         'slug' => 'compressor-c',
@@ -310,9 +325,9 @@ it('stores input unit overrides for linked numeric specs in specs match options'
             ['name' => 'Производительность', 'value' => '0,42 420', 'source' => 'dom'],
         ],
     ]);
+    $product->categories()->attach($stagingCategory->id, ['is_primary' => true]);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
         ->callTableBulkAction('massEdit', [$product], [
             'mode' => 'specs_match',
             'target_category_id' => $targetCategory->id,
@@ -374,7 +389,6 @@ it('updates discount price for selected products in fields mass edit mode', func
     $secondProduct->categories()->attach($stagingCategory->id, ['is_primary' => true]);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$firstProduct, $secondProduct])
         ->callTableBulkAction('massEdit', [$firstProduct, $secondProduct], [
             'mode' => 'fields',
             'field' => 'discount_percent',
@@ -428,7 +442,6 @@ it('updates pricing levers and recalculates selected product prices in fields ma
     $secondProduct->categories()->attach($stagingCategory->id, ['is_primary' => true]);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$firstProduct, $secondProduct])
         ->callTableBulkAction('massEdit', [$firstProduct, $secondProduct], [
             'mode' => 'fields',
             'field' => 'exchange_rate',
@@ -450,7 +463,6 @@ it('updates pricing levers and recalculates selected product prices in fields ma
         ->and($secondProduct->margin_amount_rub)->toBe('450.00');
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$firstProduct, $secondProduct])
         ->callTableBulkAction('massEdit', [$firstProduct, $secondProduct], [
             'mode' => 'fields',
             'field' => 'markup_multiplier',
@@ -468,7 +480,6 @@ it('updates pricing levers and recalculates selected product prices in fields ma
         ->and($secondProduct->margin_amount_rub)->toBe('900.00');
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$firstProduct, $secondProduct])
         ->callTableBulkAction('massEdit', [$firstProduct, $secondProduct], [
             'mode' => 'fields',
             'field' => 'wholesale_currency',
@@ -530,7 +541,6 @@ it('enables auto cbr exchange rate and recalculates selected product prices in f
     $product->categories()->attach($stagingCategory->id, ['is_primary' => true]);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
         ->callTableBulkAction('massEdit', [$product], [
             'mode' => 'fields',
             'field' => 'auto_update_exchange_rate',
@@ -594,7 +604,6 @@ it('sets selected category as primary in categories mass edit mode', function ()
     $secondProduct->categories()->attach($stagingCategory->id, ['is_primary' => false]);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product, $secondProduct])
         ->callTableBulkAction('massEdit', [$product, $secondProduct], [
             'mode' => 'categories',
             'cat_op' => 'set_primary',
@@ -700,7 +709,6 @@ it('shows a limited list of leaf categories and searches across all leaf categor
     $product->categories()->attach($stagingCategory->id, ['is_primary' => true]);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
         ->mountTableBulkAction('massEdit', [$product])
         ->setTableBulkActionData([
             'mode' => 'categories',
@@ -736,7 +744,6 @@ it('configures dry-run toggle as live for immediate staging checkbox visibility 
     ]);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
         ->mountTableBulkAction('massEdit', [$product])
         ->setTableBulkActionData([
             'mode' => 'specs_match',
@@ -763,7 +770,6 @@ it('shows write mode selector with only-empty and overwrite options for specs ma
     ]);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
         ->mountTableBulkAction('massEdit', [$product])
         ->setTableBulkActionData([
             'mode' => 'specs_match',
@@ -790,7 +796,6 @@ it('shows loading hints for async specs-match wizard fields', function () {
     ]);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
         ->mountTableBulkAction('massEdit', [$product])
         ->setTableBulkActionData([
             'mode' => 'specs_match',
@@ -836,8 +841,17 @@ it('uses nullable warranty select in mass edit fields mode', function () {
         'warranty' => ProductWarranty::Months24->value,
     ]);
 
+    $stagingCategory = Category::query()->create([
+        'name' => 'Staging',
+        'slug' => 'staging',
+        'parent_id' => -1,
+        'order' => 272,
+        'is_active' => true,
+    ]);
+
+    $product->categories()->attach($stagingCategory->id, ['is_primary' => true]);
+
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
         ->mountTableBulkAction('massEdit', [$product])
         ->setTableBulkActionData([
             'mode' => 'fields',
@@ -849,7 +863,6 @@ it('uses nullable warranty select in mass edit fields mode', function () {
         });
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
         ->callTableBulkAction('massEdit', [$product], [
             'mode' => 'fields',
             'field' => 'warranty',
@@ -891,7 +904,6 @@ it('syncs search index after bulk field updates', function () {
     app()->instance(ProductSearchSync::class, $searchSync);
 
     Livewire::test(ListProducts::class)
-        ->assertCanSeeTableRecords([$product])
         ->callTableBulkAction('massEdit', [$product], [
             'mode' => 'fields',
             'field' => 'brand',

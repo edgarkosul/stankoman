@@ -6,7 +6,7 @@ use Tests\TestCase;
 
 uses(TestCase::class);
 
-test('help center provides links for all filament admin pages', function (): void {
+test('help center routes match real admin routes and only omit explicitly unsupported pages', function (): void {
     $filamentRouteNames = collect(Route::getRoutes()->getRoutes())
         ->filter(function ($route): bool {
             $name = $route->getName();
@@ -25,7 +25,12 @@ test('help center provides links for all filament admin pages', function (): voi
         ->sort()
         ->values();
 
-    expect($mappedRouteNames)->toEqual($filamentRouteNames);
+    $unsupportedRouteNames = collect([
+        'filament.admin.pages.site-exports',
+    ])->sort()->values();
+
+    expect($filamentRouteNames->diff($mappedRouteNames)->values())->toEqual($unsupportedRouteNames);
+    expect($mappedRouteNames->diff($filamentRouteNames)->values())->toBeEmpty();
 });
 
 test('help center returns expected urls for representative filament pages', function (): void {

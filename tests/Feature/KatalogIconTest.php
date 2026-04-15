@@ -3,7 +3,7 @@
 it('uses currentColor for the katalog icon fill', function () {
     $svg = file_get_contents(resource_path('svg/katalog.svg'));
 
-    expect($svg)->toContain('fill:currentColor');
+    expect($svg)->toContain('fill="currentColor"');
 });
 
 it('sets the katalog icon class to text-white in the header', function () {
@@ -13,11 +13,12 @@ it('sets the katalog icon class to text-white in the header', function () {
 });
 
 it('collapses header navigation items below xl with a dropdown', function () {
-    $header = file_get_contents(resource_path('views/components/layouts/partials/header.blade.php'));
+    $headerMenu = file_get_contents(resource_path('views/components/header-menu.blade.php'));
 
-    expect($header)
-        ->toContain('hidden xl:list-item')
-        ->toContain('xl:hidden')
+    expect($headerMenu)
+        ->toContain('relative lg:hidden')
+        ->toContain('hidden lg:flex xl:hidden')
+        ->toContain('hidden xl:flex')
         ->toContain('x-data="{ open: false }"')
         ->toContain('x-show="open"')
         ->toContain('Ещё');

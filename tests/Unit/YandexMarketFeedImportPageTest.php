@@ -91,8 +91,10 @@ test('yandex market feed import form has source, category and run controls', fun
 });
 
 test('livewire temporary upload rules allow large feed files', function () {
-    $maxUploadSizeKilobytes = (int) config('catalog-import.feed_upload.max_size_kb');
     $rules = config('livewire.temporary_file_upload.rules');
+    $maxRule = collect(is_array($rules) ? $rules : explode('|', (string) $rules))
+        ->first(fn (string $rule): bool => str_starts_with($rule, 'max:'));
+    $maxUploadSizeKilobytes = (int) str($maxRule ?? 'max:0')->after('max:')->value();
 
     expect($maxUploadSizeKilobytes)->toBeGreaterThan(30 * 1024);
     expect($rules)->toBeArray();

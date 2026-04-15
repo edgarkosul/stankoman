@@ -322,6 +322,33 @@ function rebuildMetalmasterParserSchemas(): void
 {
     dropMetalmasterParserSchemas();
 
+    Schema::create('import_runs', function (Blueprint $table): void {
+        $table->id();
+        $table->string('type')->default('products');
+        $table->string('status')->default('pending');
+        $table->json('columns')->nullable();
+        $table->json('totals')->nullable();
+        $table->string('source_filename')->nullable();
+        $table->string('stored_path')->nullable();
+        $table->unsignedBigInteger('supplier_id')->nullable();
+        $table->unsignedBigInteger('supplier_import_source_id')->nullable();
+        $table->unsignedBigInteger('user_id')->nullable();
+        $table->timestamp('started_at')->nullable();
+        $table->timestamp('finished_at')->nullable();
+        $table->timestamps();
+    });
+
+    Schema::create('import_issues', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('run_id');
+        $table->integer('row_index')->nullable();
+        $table->string('code', 64);
+        $table->string('severity', 16)->default('error');
+        $table->text('message')->nullable();
+        $table->json('row_snapshot')->nullable();
+        $table->timestamps();
+    });
+
     Schema::create('products', function (Blueprint $table): void {
         $table->id();
         $table->string('name');
@@ -344,6 +371,8 @@ function rebuildMetalmasterParserSchemas(): void
         $table->text('short')->nullable();
         $table->longText('description')->nullable();
         $table->text('extra_description')->nullable();
+        $table->longText('instructions')->nullable();
+        $table->longText('video')->nullable();
         $table->json('specs')->nullable();
         $table->string('promo_info')->nullable();
         $table->string('image')->nullable();
@@ -373,15 +402,20 @@ function rebuildMetalmasterParserSchemas(): void
     Schema::create('product_supplier_references', function (Blueprint $table): void {
         $table->id();
         $table->string('supplier', 120);
+        $table->unsignedBigInteger('supplier_id')->nullable();
         $table->string('external_id');
         $table->unsignedBigInteger('product_id');
+        $table->unsignedBigInteger('source_category_id')->nullable();
         $table->unsignedBigInteger('first_seen_run_id')->nullable();
         $table->unsignedBigInteger('last_seen_run_id')->nullable();
         $table->timestamp('last_seen_at')->nullable();
         $table->timestamps();
         $table->unique(['supplier', 'external_id']);
+        $table->unique(['supplier_id', 'external_id']);
         $table->index(['supplier', 'product_id']);
         $table->index(['supplier', 'last_seen_run_id']);
+        $table->index(['supplier_id', 'product_id']);
+        $table->index(['supplier_id', 'last_seen_run_id']);
     });
 
     Schema::create('product_import_media', function (Blueprint $table): void {
@@ -417,6 +451,8 @@ function rebuildMetalmasterParserSchemas(): void
 
 function dropMetalmasterParserSchemas(): void
 {
+    Schema::dropIfExists('import_issues');
+    Schema::dropIfExists('import_runs');
     Schema::dropIfExists('import_media_issues');
     Schema::dropIfExists('product_import_media');
     Schema::dropIfExists('product_supplier_references');

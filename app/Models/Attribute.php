@@ -4,9 +4,11 @@ namespace App\Models;
 
 use App\Support\FilterSchemaCache;
 use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -24,25 +26,25 @@ use Illuminate\Support\Str;
  * @property string|null $group
  * @property string|null $display_format
  * @property int $sort_order
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property int|null $number_decimals
  * @property float|null $number_step
  * @property string|null $number_rounding
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Category> $categories
+ * @property-read Collection<int, Category> $categories
  * @property-read int|null $categories_count
  * @property-read string $filter_ui
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\AttributeOption> $options
+ * @property-read Collection<int, AttributeOption> $options
  * @property-read int|null $options_count
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\ProductAttributeOption> $paoLinks
+ * @property-read Collection<int, ProductAttributeOption> $paoLinks
  * @property-read int|null $pao_links_count
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\ProductAttributeValue> $pavValues
+ * @property-read Collection<int, ProductAttributeValue> $pavValues
  * @property-read int|null $pav_values_count
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Product> $productsViaOptions
+ * @property-read Collection<int, Product> $productsViaOptions
  * @property-read int|null $products_via_options_count
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Product> $productsViaValues
+ * @property-read Collection<int, Product> $productsViaValues
  * @property-read int|null $products_via_values_count
- * @property-read \App\Models\Unit|null $unit
+ * @property-read Unit|null $unit
  *
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Attribute newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Attribute newQuery()
@@ -580,14 +582,6 @@ class Attribute extends Model
             return $this->defaultUnit();
         }
 
-        static $cache = [];
-
-        $key = $category->getKey().':'.$this->getKey();
-
-        if (array_key_exists($key, $cache)) {
-            return $cache[$key];
-        }
-
         // 1) Если на категории уже загружены attributeDefs — используем их, без лишних запросов
         if ($category->relationLoaded('attributeDefs')) {
             $catAttr = $category->attributeDefs->firstWhere('id', $this->getKey());
@@ -598,12 +592,12 @@ class Attribute extends Model
                     method_exists($catAttr->pivot, 'displayUnit') &&
                     $catAttr->pivot->relationLoaded('displayUnit')
                 ) {
-                    return $cache[$key] = $catAttr->pivot->displayUnit;
+                    return $catAttr->pivot->displayUnit;
                 }
 
                 // Иначе просто достаём Unit по id
                 if ($unit = Unit::find($catAttr->pivot->display_unit_id)) {
-                    return $cache[$key] = $unit;
+                    return $unit;
                 }
             }
         }
@@ -616,12 +610,12 @@ class Attribute extends Model
 
         if ($displayUnitId) {
             if ($unit = Unit::find($displayUnitId)) {
-                return $cache[$key] = $unit;
+                return $unit;
             }
         }
 
         // 3) По умолчанию — глобальная unit
-        return $cache[$key] = $this->defaultUnit();
+        return $this->defaultUnit();
     }
 
     /**

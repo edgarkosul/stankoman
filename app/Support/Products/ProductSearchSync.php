@@ -96,7 +96,7 @@ class ProductSearchSync
         $normalizedIds = $this->normalizeIds($ids);
 
         if ($normalizedIds === []) {
-            return Product::newCollection();
+            return (new Product)->newCollection();
         }
 
         return Product::query()
