@@ -23,8 +23,10 @@ class CategoryForm
             ->components([
                 Select::make('parent_id')
                     ->label('Родительская категория')
-                    ->options(fn () => self::categoryOptions())
-                    ->default(fn () => request()->integer('parent_id', Category::defaultParentKey()))
+                    ->options(fn (Get $get): array => self::categoryOptions(
+                        self::normalizeParentId($get('parent_id'))
+                    ))
+                    ->default(fn () => self::resolveRequestedParentId())
                     ->searchable()
                     ->preload()
                     ->required(),
@@ -82,7 +84,7 @@ class CategoryForm
             ]);
     }
 
-    protected static function categoryOptions(): array
+    protected static function categoryOptions(?int $selectedParentId = null): array
     {
         $all = Category::query()
             ->availableAsParent()
@@ -104,7 +106,51 @@ class CategoryForm
 
         $walk($rootKey, 0);
 
+        $selectedParentId ??= self::resolveRequestedParentId();
+
+        if ($selectedParentId !== $rootKey && ! array_key_exists($selectedParentId, $out)) {
+            $requestedParent = Category::query()
+                ->withoutStaging()
+                ->find($selectedParentId);
+
+            if ($requestedParent instanceof Category) {
+                $out[$requestedParent->getKey()] = self::formatCategoryOptionLabel($requestedParent);
+            }
+        }
+
         return $out;
+    }
+
+    protected static function resolveRequestedParentId(): int
+    {
+        return self::normalizeParentId(request()->query('parent_id')) ?? Category::defaultParentKey();
+    }
+
+    protected static function normalizeParentId(mixed $value): ?int
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $requestedParentId = (int) $value;
+
+        if ($requestedParentId === Category::defaultParentKey()) {
+            return $requestedParentId;
+        }
+
+        $parentExists = Category::query()
+            ->withoutStaging()
+            ->whereKey($requestedParentId)
+            ->exists();
+
+        return $parentExists ? $requestedParentId : null;
+    }
+
+    protected static function formatCategoryOptionLabel(Category $category): string
+    {
+        $depth = max($category->ancestorsAndSelf()->count() - 1, 0);
+
+        return str_repeat('— ', $depth).$category->name;
     }
 
     public static function slugField(): TextInput

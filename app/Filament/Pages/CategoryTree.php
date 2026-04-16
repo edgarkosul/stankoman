@@ -170,25 +170,9 @@ class CategoryTree extends TreePage
                 ->visible(
                     fn (Category $record): bool => $this->recordDepth($record) < static::$maxDepth - 1
                 )
-                ->action(function (Category $record): void {
-                    // вычисляем order для нового ребёнка
-                    $maxOrder = Category::query()
-                        ->where('parent_id', $record->getKey())
-                        ->max('order');
-
-                    $order = is_null($maxOrder) ? 0 : $maxOrder + 1;
-
-                    // простой уникальный временный slug
-                    $slug = Str::slug('new-category-'.Str::random(6));
-
-                    Category::create([
-                        'parent_id' => $record->getKey(),
-                        'order' => $order,
-                        'name' => 'Новая категория',
-                        'slug' => $slug,
-                        'is_active' => true,
-                    ]);
-                }),
+                ->url(
+                    fn (Category $record): string => CategoryResource::getUrl('create', ['parent_id' => $record])
+                ),
             Action::make('editInResource')
                 ->icon('heroicon-c-pencil-square') // или 'heroicon-o-pencil-square'
                 ->iconButton()   // только иконка, без синей «таблетки»

@@ -3,6 +3,7 @@
 use App\Filament\Resources\Categories\Pages\CreateCategory;
 use App\Filament\Resources\Categories\Pages\EditCategory;
 use App\Models\Category;
+use App\Models\Product;
 use App\Models\User;
 use Livewire\Livewire;
 
@@ -71,6 +72,39 @@ it('allows the same category slug under a different parent', function (): void {
     expect(Category::query()
         ->where('parent_id', $otherParent->getKey())
         ->where('slug', 'musor')
+        ->exists())->toBeTrue();
+});
+
+it('allows creating a subcategory for parent from tree query string even if it is excluded from default parent options', function (): void {
+    $leafParent = Category::query()->create([
+        'name' => 'Листовая категория',
+        'slug' => 'leaf-parent',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Товар для листовой категории',
+        'slug' => 'product-for-leaf-parent',
+        'price_amount' => 1000,
+    ]);
+
+    $leafParent->products()->attach($product->id, ['is_primary' => true]);
+
+    Livewire::withQueryParams(['parent_id' => $leafParent->getKey()])
+        ->test(CreateCategory::class)
+        ->fillForm([
+            'name' => 'Новая подкатегория',
+            'slug' => 'novaia-podkategoriia',
+            'is_active' => true,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    expect(Category::query()
+        ->where('parent_id', $leafParent->getKey())
+        ->where('slug', 'novaia-podkategoriia')
         ->exists())->toBeTrue();
 });
 
