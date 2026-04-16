@@ -24,6 +24,13 @@ test('admin panel uses configured brand name', function () {
     expect((string) $panel->getBrandName())->toBe('Test Admin Brand');
 });
 
+test('admin panel logo links to the site root', function () {
+    $provider = new AdminPanelProvider(app());
+    $panel = $provider->panel(Panel::make());
+
+    expect($panel->getHomeUrl())->toBe(route('home'));
+});
+
 test('admin panel falls back to company site host when shop name is blank', function () {
     config()->set('settings.general.shop_name', '');
     config()->set('company.site_host', 'fallback.example.com');

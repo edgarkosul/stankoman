@@ -68,6 +68,7 @@ class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])
+            ->homeUrl(fn (): string => route('home'))
             ->brandName(fn (): string => $this->resolveBrandName())
             ->brandLogo(asset('images/logo.svg'))
             ->brandLogoHeight('3rem')
