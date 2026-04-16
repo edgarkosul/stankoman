@@ -821,7 +821,7 @@ class ProductsTable
                             ])
                             ->visible(fn (Get $get): bool => $get('mode') === 'specs_match' && (int) ($get('target_category_id') ?? 0) > 0),
                     ])
-                    ->action(function (array $data, Collection $records) {
+                    ->action(function (array $data, Collection $records, $livewire) {
 
                         $ids = array_values(array_map('intval', $records->modelKeys()));
 
@@ -935,8 +935,12 @@ class ProductsTable
                         }
 
                         $shouldSyncSearch = $data['mode'] === 'fields';
+                        $stagingCategoryIdToDetach = self::resolveStagingCategoryIdToDetachAfterPrimaryCategorySwitch(
+                            $livewire,
+                            $data,
+                        );
 
-                        DB::transaction(function () use ($data, $ids) {
+                        DB::transaction(function () use ($data, $ids, $stagingCategoryIdToDetach) {
 
                             if ($data['mode'] === 'fields') {
                                 /** @var Builder<Product> $q */
@@ -1022,7 +1026,7 @@ class ProductsTable
                                     ->whereKey($ids)
                                     ->select(['id']);
 
-                                $productsQuery->chunkById(200, function (EloquentCollection $chunk) use ($data): void {
+                                $productsQuery->chunkById(200, function (EloquentCollection $chunk) use ($data, $stagingCategoryIdToDetach): void {
                                     /** @var Product $product */
                                     foreach ($chunk as $product) {
                                         $rel = $product->categories();
@@ -1031,6 +1035,11 @@ class ProductsTable
                                             case 'set_primary':
                                                 $categoryId = (int) $data['primary_category_id'];
                                                 $product->replacePrimaryCategory($categoryId);
+
+                                                if ($stagingCategoryIdToDetach !== null) {
+                                                    $rel->detach([$stagingCategoryIdToDetach]);
+                                                }
+
                                                 break;
 
                                             case 'attach_extra':
@@ -1630,6 +1639,37 @@ class ProductsTable
             ->limit(self::CATEGORY_OPTIONS_LIMIT)
             ->pluck('name', 'id')
             ->all();
+    }
+
+    private static function resolveStagingCategoryIdToDetachAfterPrimaryCategorySwitch(mixed $livewire, array $data): ?int
+    {
+        if (($data['mode'] ?? null) !== 'categories' || ($data['cat_op'] ?? null) !== 'set_primary') {
+            return null;
+        }
+
+        $targetCategoryId = (int) ($data['primary_category_id'] ?? 0);
+
+        if ($targetCategoryId <= 0 || ! is_object($livewire) || ! method_exists($livewire, 'getTableFilterState')) {
+            return null;
+        }
+
+        $stagingFilterState = $livewire->getTableFilterState('staging_category') ?? [];
+
+        if (! ($stagingFilterState['isActive'] ?? false)) {
+            return null;
+        }
+
+        $stagingCategoryId = Category::query()
+            ->where('slug', Category::stagingSlug())
+            ->value('id');
+
+        if (! is_numeric($stagingCategoryId)) {
+            return null;
+        }
+
+        $stagingCategoryId = (int) $stagingCategoryId;
+
+        return $stagingCategoryId === $targetCategoryId ? null : $stagingCategoryId;
     }
 
     private static function categoryOptionLabel(mixed $value): ?string

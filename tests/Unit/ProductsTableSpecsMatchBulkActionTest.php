@@ -556,7 +556,7 @@ it('enables auto cbr exchange rate and recalculates selected product prices in f
         ->and($product->margin_amount_rub)->toBe('825.00');
 });
 
-it('sets selected category as primary in categories mass edit mode', function () {
+it('sets selected category as primary and removes imported products from staging filter', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
@@ -604,11 +604,13 @@ it('sets selected category as primary in categories mass edit mode', function ()
     $secondProduct->categories()->attach($stagingCategory->id, ['is_primary' => false]);
 
     Livewire::test(ListProducts::class)
+        ->assertCanSeeTableRecords([$product, $secondProduct])
         ->callTableBulkAction('massEdit', [$product, $secondProduct], [
             'mode' => 'categories',
             'cat_op' => 'set_primary',
             'primary_category_id' => $newCategory->id,
-        ]);
+        ])
+        ->assertCanNotSeeTableRecords([$product, $secondProduct]);
 
     $product->refresh();
     $secondProduct->refresh();
@@ -649,14 +651,19 @@ it('sets selected category as primary in categories mass edit mode', function ()
             ->where('product_id', $product->id)
             ->where('category_id', $stagingCategory->id)
             ->exists()
-    )->toBeTrue();
+    )->toBeFalse();
 
     expect(
         DB::table('product_categories')
             ->where('product_id', $secondProduct->id)
             ->where('category_id', $stagingCategory->id)
             ->exists()
-    )->toBeTrue();
+    )->toBeFalse();
+
+    Livewire::test(ListProducts::class)
+        ->filterTable('staging_category', false)
+        ->filterTable('categories', [$newCategory->id])
+        ->assertCanSeeTableRecords([$product, $secondProduct]);
 });
 
 it('shows a limited list of leaf categories and searches across all leaf categories for primary category selection', function () {
