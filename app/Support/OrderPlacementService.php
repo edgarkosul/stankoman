@@ -10,6 +10,7 @@ use App\Mail\WelcomeSetPassword;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\Products\ProductEcommerceDataBuilder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -20,6 +21,10 @@ use Illuminate\Validation\ValidationException;
 
 class OrderPlacementService
 {
+    public function __construct(
+        private ProductEcommerceDataBuilder $ecommerceDataBuilder,
+    ) {}
+
     /**
      * @param  array<int, array{product_id:int, quantity:int, meta?:array<string, mixed>|null}>  $items
      * @param  array<string, mixed>  $contact
@@ -114,8 +119,12 @@ class OrderPlacementService
                 $discountTotal += ($basePrice - $effectivePrice) * $quantity;
             }
 
-            $meta = $item['meta'] ?? null;
-            $meta = is_array($meta) && $meta !== [] ? $meta : null;
+            $meta = array_filter([
+                ...$this->ecommerceDataBuilder->productSnapshotMeta($product),
+                ...((is_array($item['meta'] ?? null)) ? $item['meta'] : []),
+            ], static fn (mixed $value): bool => $value !== null && $value !== '');
+
+            $meta = $meta !== [] ? $meta : null;
 
             $preparedItems[] = [
                 'product_id' => $product->id,

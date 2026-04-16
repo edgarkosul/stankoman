@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\User;
 use App\Rules\ValidPhone;
 use App\Support\OrderPlacementService;
+use App\Support\Products\ProductEcommerceDataBuilder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\On;
@@ -69,7 +70,7 @@ class OneClickOrder extends Component
         $this->resetFormState();
     }
 
-    public function submit(OrderPlacementService $orders): void
+    public function submit(OrderPlacementService $orders, ProductEcommerceDataBuilder $ecommerceDataBuilder): void
     {
         $this->normalizePayload();
 
@@ -108,6 +109,10 @@ class OneClickOrder extends Component
 
         $this->submitted = true;
         $this->submittedOrderNumber = $order->order_number;
+        $this->dispatch(
+            'ecommerce:purchase',
+            payload: $ecommerceDataBuilder->purchasePayload($order),
+        );
     }
 
     /**

@@ -4,6 +4,7 @@ use App\Events\Orders\OrderSubmitted;
 use App\Listeners\SyncCartOnLogin;
 use App\Livewire\Checkout\Wizard;
 use App\Models\Cart;
+use App\Models\Category;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
@@ -22,10 +23,27 @@ it('redirects to cart page when checkout is opened with empty cart', function ()
 
 it('creates order through checkout wizard and clears user cart', function (): void {
     $user = User::factory()->create();
+    $root = Category::query()->create([
+        'name' => 'Каталог',
+        'slug' => 'catalog-checkout',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+    $leaf = Category::query()->create([
+        'name' => 'Ленточнопильные станки',
+        'slug' => 'bandsaws',
+        'parent_id' => $root->id,
+        'order' => 1,
+        'is_active' => true,
+    ]);
     $product = createCheckoutProduct([
+        'sku' => 'CHECKOUT-150',
+        'brand' => 'Stankoman',
         'price_amount' => 150000,
         'discount_price' => 130000,
     ]);
+    $product->categories()->attach($leaf->id, ['is_primary' => true]);
 
     $this->actingAs($user);
 
@@ -49,6 +67,24 @@ it('creates order through checkout wizard and clears user cart', function (): vo
         'seq' => str_pad((string) $order->seq, 2, '0', STR_PAD_LEFT),
     ]));
 
+    expect(session('ecommerce.purchase'))->toMatchArray([
+        'currencyCode' => 'RUB',
+        'purchase' => [
+            'actionField' => [
+                'id' => $order->order_number,
+                'revenue' => 260000.0,
+            ],
+            'products' => [[
+                'id' => 'CHECKOUT-150',
+                'name' => $product->name,
+                'price' => 130000.0,
+                'brand' => 'Stankoman',
+                'category' => 'Каталог / Ленточнопильные станки',
+                'quantity' => 2,
+            ]],
+        ],
+    ]);
+
     expect($order->items)->toHaveCount(1)
         ->and((int) $order->items->first()->quantity)->toBe(2)
         ->and((float) $order->items_subtotal)->toBe(300000.0)
@@ -58,6 +94,16 @@ it('creates order through checkout wizard and clears user cart', function (): vo
     $cart = Cart::query()->where('user_id', $user->id)->firstOrFail();
 
     expect($cart->items()->count())->toBe(0);
+
+    $this->get(route('checkout.success', [
+        'date' => $order->order_date->format('d-m-y'),
+        'seq' => str_pad((string) $order->seq, 2, '0', STR_PAD_LEFT),
+    ]))
+        ->assertSuccessful()
+        ->assertSee('data-ecommerce-purchase', escape: false)
+        ->assertSee('"id":"CHECKOUT-150"', escape: false)
+        ->assertSee('"category":"Каталог / Ленточнопильные станки"', escape: false)
+        ->assertSee('"revenue":260000', escape: false);
 });
 
 it('creates order through checkout wizard without delivery address', function (): void {

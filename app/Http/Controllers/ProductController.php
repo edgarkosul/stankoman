@@ -31,6 +31,7 @@ class ProductController extends Controller
             'summary' => $this->buildSummary($product),
             'tabs' => $this->buildTabs($product, $specs),
             'features' => $this->buildFeatures($product),
+            'ecommerceDetail' => $viewModel->detailPayload(),
             'seo' => [
                 'url' => $viewModel->canonicalUrl(),
                 'description' => $viewModel->metaDescription(),

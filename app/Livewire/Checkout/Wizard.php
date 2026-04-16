@@ -10,6 +10,7 @@ use App\Rules\ValidPhone;
 use App\Support\CartService;
 use App\Support\CheckoutService;
 use App\Support\CompanyLookupService;
+use App\Support\Products\ProductEcommerceDataBuilder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
@@ -139,11 +140,12 @@ class Wizard extends Component
         $this->dispatch('showLoginModal');
     }
 
-    public function confirm(CheckoutService $checkout)
+    public function confirm(CheckoutService $checkout, ProductEcommerceDataBuilder $ecommerceDataBuilder)
     {
         $this->validateAll();
 
         $order = $checkout->submit($this->contact, $this->delivery, $this->review);
+        session()->flash('ecommerce.purchase', $ecommerceDataBuilder->purchasePayload($order));
 
         return redirect()->route('checkout.success', [
             'date' => $order->order_date->format('d-m-y'),

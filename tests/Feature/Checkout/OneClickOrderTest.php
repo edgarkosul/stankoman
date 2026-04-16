@@ -2,6 +2,7 @@
 
 use App\Events\Orders\OrderSubmitted;
 use App\Livewire\Pages\Product\OneClickOrder;
+use App\Models\Category;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
@@ -12,12 +13,29 @@ use Livewire\Livewire;
 it('creates guest one click order without touching cart contents', function (): void {
     Event::fake([OrderSubmitted::class]);
 
+    $root = Category::query()->create([
+        'name' => 'Каталог',
+        'slug' => 'catalog-one-click',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+    $leaf = Category::query()->create([
+        'name' => 'Гибочные станки',
+        'slug' => 'bending-machines',
+        'parent_id' => $root->id,
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
     $oneClickProduct = createOneClickProduct([
         'name' => 'Станок для гибки арматуры Vektor GW32',
         'slug' => 'vektor-gw32',
+        'sku' => 'GW32',
         'brand' => 'VEKTOR',
         'price_amount' => 150000,
     ]);
+    $oneClickProduct->categories()->attach($leaf->id, ['is_primary' => true]);
     $cartProduct = createOneClickProduct([
         'name' => 'Товар в корзине',
         'slug' => 'cart-product',
@@ -38,7 +56,19 @@ it('creates guest one click order without touching cart contents', function (): 
         ->set('shippingRegion', '')
         ->set('shippingComment', 'Позвоните утром')
         ->call('submit')
-        ->assertSet('submitted', true);
+        ->assertSet('submitted', true)
+        ->assertDispatched('ecommerce:purchase', function (string $event, array $params) use ($oneClickProduct): bool {
+            $productPayload = $params['payload']['purchase']['products'][0] ?? [];
+
+            return $event === 'ecommerce:purchase'
+                && ($params['payload']['purchase']['actionField']['id'] ?? null) !== null
+                && ($productPayload['id'] ?? null) === 'GW32'
+                && (float) ($productPayload['price'] ?? 0) === 150000.0
+                && ($productPayload['brand'] ?? null) === 'VEKTOR'
+                && ($productPayload['category'] ?? null) === 'Каталог / Гибочные станки'
+                && (int) ($productPayload['quantity'] ?? 0) === 3
+                && ($productPayload['name'] ?? null) === $oneClickProduct->name;
+        });
 
     $order = Order::query()->with('items')->latest('id')->firstOrFail();
     $item = $order->items->firstOrFail();
@@ -53,7 +83,11 @@ it('creates guest one click order without touching cart contents', function (): 
         ->and($order->payment_method)->toBeNull()
         ->and($item->product_id)->toBe($oneClickProduct->id)
         ->and((int) $item->quantity)->toBe(3)
-        ->and($item->meta)->toMatchArray(['brand' => 'VEKTOR'])
+        ->and($item->meta)->toMatchArray([
+            'analytics_id' => 'GW32',
+            'brand' => 'VEKTOR',
+            'category_path' => 'Каталог / Гибочные станки',
+        ])
         ->and(app(CartService::class)->getCart()->items()->count())->toBe(1)
         ->and(app(CartService::class)->quantityFor($cartProduct->id))->toBe(2);
 });

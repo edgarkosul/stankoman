@@ -5,6 +5,7 @@ namespace App\Support\ViewModels;
 use App\Models\Product;
 use App\Models\ProductTab;
 use App\Support\ImageDerivativesResolver;
+use App\Support\Products\ProductEcommerceDataBuilder;
 use App\Support\Seo\SeoTextExtractor;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -14,7 +15,10 @@ use Jenssegers\Agent\Agent;
 
 class ProductPageViewModel
 {
-    public function __construct(public Product $product) {}
+    public function __construct(
+        public Product $product,
+        private ProductEcommerceDataBuilder $ecommerceDataBuilder,
+    ) {}
 
     public function metaTitle(): string
     {
@@ -217,61 +221,17 @@ class ProductPageViewModel
 
     public function seoSchema(): array
     {
-        $priceBlock = $this->priceBlock();
+        return $this->ecommerceDataBuilder->productSchema(
+            $this->product,
+            images: $this->schemaImages(),
+            description: $this->schemaDescription(),
+            url: route('product.show', $this->product),
+        );
+    }
 
-        // 1) Цена: сначала скидочная, если есть, иначе обычная
-        $rawPrice = $priceBlock['discount_price'] && $priceBlock['discount_price'] > 0
-            ? $priceBlock['discount_price']
-            : $priceBlock['price'];
-
-        $price = $rawPrice !== null ? (string) $rawPrice : '0';
-
-        // 2) Наличие
-        $inStock = $priceBlock['in_stock'] ?? true;
-
-        $availability = $inStock
-            ? 'https://schema.org/InStock'
-            : 'https://schema.org/OutOfStock';
-
-        // 3) Картинки (абсолютные URL, WebP-derivatives где возможно)
-        $images = $this->schemaImages();
-
-        // 4) Описание для Schema.org
-        $description = $this->schemaDescription();
-
-        // 5) Brand (если есть)
-        $brand = null;
-        if (! empty($this->product->brand)) {
-            $brand = [
-                '@type' => 'Brand',
-                'name' => $this->product->brand,
-            ];
-        }
-
-        // 6) Category (по основной категории)
-        $primaryCategory = $this->primaryCategory();
-        $categoryName = $primaryCategory?->name;
-
-        $data = [
-            '@context' => 'https://schema.org',
-            '@type' => 'Product',
-            'name' => $this->product->name,
-            'description' => $description ?: null,
-            'image' => $images,
-            'sku' => $this->product->sku ?? (string) $this->product->id,
-            'brand' => $brand,
-            'category' => $categoryName ?: null,
-            'offers' => [
-                '@type' => 'Offer',
-                'priceCurrency' => 'RUB', // при желании можно взять из поля product->currency
-                'price' => $price,
-                'availability' => $availability,
-                'url' => route('product.show', $this->product),
-            ],
-        ];
-
-        // Уберём null-ы на верхнем уровне (brand / category / description, если их нет)
-        return array_filter($data, fn ($v) => $v !== null);
+    public function detailPayload(): array
+    {
+        return $this->ecommerceDataBuilder->detailPayload($this->product);
     }
 
     private function schemaImages(): array

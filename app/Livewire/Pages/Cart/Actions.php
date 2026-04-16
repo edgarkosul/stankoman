@@ -4,6 +4,7 @@ namespace App\Livewire\Pages\Cart;
 
 use App\Models\Product;
 use App\Support\CartService;
+use App\Support\Products\ProductEcommerceDataBuilder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Attributes\On;
@@ -56,7 +57,7 @@ class Actions extends Component
         $this->syncCartState(app(CartService::class));
     }
 
-    public function add(CartService $cart): void
+    public function add(CartService $cart, ProductEcommerceDataBuilder $ecommerceDataBuilder): void
     {
         if (! $this->supportsPersistentCart()) {
             return;
@@ -67,6 +68,7 @@ class Actions extends Component
         }
 
         $this->qty = $this->normalizedQty();
+        $wasAlreadyInCart = $cart->isInCart($this->productId, $this->options);
         $cart->addItem($this->productId, $this->qty, $this->options);
 
         $this->inCart = true;
@@ -77,6 +79,23 @@ class Actions extends Component
             'cart:added',
             productId: $this->productId,
             product: $this->modalProductPayload(),
+        );
+
+        if ($wasAlreadyInCart) {
+            return;
+        }
+
+        $product = Product::query()
+            ->with('categories.parent')
+            ->find($this->productId);
+
+        if (! $product instanceof Product) {
+            return;
+        }
+
+        $this->dispatch(
+            'ecommerce:add-to-cart',
+            payload: $ecommerceDataBuilder->addToCartPayload($product, $this->qty),
         );
     }
 

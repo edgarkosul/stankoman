@@ -856,6 +856,101 @@ const initImageGalleryLightbox = () => {
     });
 };
 
+const parseEcommerceMarker = (selector) => {
+    const marker = document.querySelector(selector);
+
+    if (!(marker instanceof HTMLScriptElement)) {
+        return null;
+    }
+
+    if (marker.dataset.ecommerceConsumed === 'true') {
+        return null;
+    }
+
+    try {
+        const payload = JSON.parse(marker.textContent || 'null');
+
+        marker.dataset.ecommerceConsumed = 'true';
+
+        return payload;
+    } catch (error) {
+        console.warn('Failed to parse ecommerce marker', error);
+
+        return null;
+    }
+};
+
+const pushEcommercePayload = (payload) => {
+    if (!payload || typeof payload !== 'object') {
+        return;
+    }
+
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({
+        ecommerce: payload,
+    });
+};
+
+const trackEcommerceDetail = (payload) => {
+    const product = payload?.detail?.products?.[0];
+
+    if (!product?.id) {
+        return;
+    }
+
+    pushEcommercePayload(payload);
+};
+
+const trackEcommercePurchase = (payload) => {
+    const purchaseId = payload?.purchase?.actionField?.id;
+
+    if (!purchaseId) {
+        return;
+    }
+
+    const storageKey = `stankoman:ecommerce:purchase:${purchaseId}`;
+
+    try {
+        if (window.sessionStorage.getItem(storageKey) === '1') {
+            return;
+        }
+
+        window.sessionStorage.setItem(storageKey, '1');
+    } catch (error) {
+        console.warn('Failed to persist ecommerce purchase dedupe key', error);
+    }
+
+    pushEcommercePayload(payload);
+};
+
+const consumePageEcommerceMarkers = () => {
+    const detailPayload = parseEcommerceMarker('script[data-ecommerce-detail]');
+
+    if (detailPayload) {
+        trackEcommerceDetail(detailPayload);
+    }
+
+    const purchasePayload = parseEcommerceMarker('script[data-ecommerce-purchase]');
+
+    if (purchasePayload) {
+        trackEcommercePurchase(purchasePayload);
+    }
+};
+
+if (typeof window !== 'undefined') {
+    window.stankomanEcommerce = {
+        trackAdd(payload) {
+            pushEcommercePayload(payload);
+        },
+        trackDetail(payload) {
+            trackEcommerceDetail(payload);
+        },
+        trackPurchase(payload) {
+            trackEcommercePurchase(payload);
+        },
+    };
+}
+
 let yandexMetrikaNavigationTracked = false;
 
 const trackYandexMetrikaPageView = () => {
@@ -895,11 +990,19 @@ document.addEventListener('DOMContentLoaded', initImageGalleryLightbox);
 document.addEventListener('livewire:navigated', initImageGalleryLightbox);
 document.addEventListener('DOMContentLoaded', initProductCardSwipers);
 document.addEventListener('livewire:navigated', initProductCardSwipers);
+document.addEventListener('DOMContentLoaded', consumePageEcommerceMarkers);
+document.addEventListener('livewire:navigated', consumePageEcommerceMarkers);
 document.addEventListener('DOMContentLoaded', () => initNouisliderOnRange(document));
 document.addEventListener('livewire:navigated', () => initNouisliderOnRange(document));
 document.addEventListener('DOMContentLoaded', () => initCompareSwipers(document));
 document.addEventListener('livewire:navigated', () => initCompareSwipers(document));
 document.addEventListener('livewire:navigated', trackYandexMetrikaPageView);
+document.addEventListener('ecommerce:add-to-cart', (event) => {
+    window.stankomanEcommerce?.trackAdd(event.detail?.payload ?? null);
+});
+document.addEventListener('ecommerce:purchase', (event) => {
+    window.stankomanEcommerce?.trackPurchase(event.detail?.payload ?? null);
+});
 
 let productCardSwiperHooked = false;
 document.addEventListener('livewire:initialized', () => {

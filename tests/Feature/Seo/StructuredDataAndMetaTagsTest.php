@@ -62,6 +62,20 @@ it('renders custom meta description for published static pages', function (): vo
 });
 
 it('renders product schema and product social meta tags on product pages', function (): void {
+    $rootCategory = Category::query()->create([
+        'name' => 'Каталог',
+        'slug' => 'catalog-seo',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+    $leafCategory = Category::query()->create([
+        'name' => 'Токарные станки',
+        'slug' => 'turning-seo',
+        'parent_id' => $rootCategory->id,
+        'order' => 1,
+        'is_active' => true,
+    ]);
     $product = Product::query()->create([
         'name' => 'Токарный станок TEST-500',
         'slug' => 'tokarnyj-stanok-test-500',
@@ -74,6 +88,7 @@ it('renders product schema and product social meta tags on product pages', funct
         'meta_title' => 'Токарный станок TEST-500',
         'meta_description' => 'Надежный токарный станок для производственных задач.',
     ]);
+    $product->categories()->attach($leafCategory->id, ['is_primary' => true]);
 
     $response = $this->get(route('product.show', ['product' => $product]));
 
@@ -84,7 +99,11 @@ it('renders product schema and product social meta tags on product pages', funct
         ->assertSee('"@type": "Product"', false)
         ->assertSee('"priceCurrency": "RUB"', false)
         ->assertSee('"availability": "https://schema.org/InStock"', false)
-        ->assertSee('"sku": "TEST-500"', false);
+        ->assertSee('"sku": "TEST-500"', false)
+        ->assertSee('"category": "Каталог / Токарные станки"', false)
+        ->assertSee('data-ecommerce-detail', false)
+        ->assertSee('"id":"TEST-500"', false)
+        ->assertSee('"category":"Каталог / Токарные станки"', false);
 });
 
 it('uses generated product title fallback and cleaned canonical url when seo fields are absent', function (): void {
