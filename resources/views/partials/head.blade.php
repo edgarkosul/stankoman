@@ -37,9 +37,11 @@
     </script>
 @endforeach
 
-<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" href="{{ asset('favicon.ico') }}" type="image/x-icon">
+<link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
 
 @if (filled($yandexMetrikaId = config('services.yandex_metrika.id')))
     <meta name="yandex-metrika-id" content="{{ (int) $yandexMetrikaId }}">
