@@ -159,6 +159,23 @@ it('renders scroll lock hook and inner scroll container for one click modal', fu
         ->assertSee('/page/privacy', escape: false);
 });
 
+it('opens one click modal for a product passed through the open event', function (): void {
+    $product = createOneClickProduct([
+        'name' => 'Dynamic One Click Product',
+        'brand' => 'VACTOOL',
+        'price_amount' => 275000,
+    ]);
+
+    Livewire::test(OneClickOrder::class)
+        ->assertSet('productId', 0)
+        ->call('openModal', $product->id, 2)
+        ->assertSet('productId', $product->id)
+        ->assertSet('quantity', 2)
+        ->assertSet('isOpen', true)
+        ->assertSee('Dynamic One Click Product')
+        ->assertSee('VACTOOL');
+});
+
 function createOneClickProduct(array $attributes = []): Product
 {
     static $sequence = 1;

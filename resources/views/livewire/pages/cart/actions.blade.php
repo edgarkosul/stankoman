@@ -1,6 +1,7 @@
 @php
     $isDisabled = ! $isInStock || ! $isPrice;
     $isProductLayout = $variant === 'product';
+    $isCardLayout = $variant === 'card';
 
     $containerClass = $isProductLayout
         ? 'inline-flex h-12 w-full items-center justify-center gap-3 px-6 text-base font-semibold'
@@ -10,11 +11,17 @@
 
     $stateClass = $isDisabled
         ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
-        : 'bg-brand-green text-white hover:bg-brand-green/90 cursor-pointer';
+        : 'button-brand-green-muted text-white cursor-pointer';
 
     $iconToneClass = $isDisabled
         ? '[&_.icon-base]:text-zinc-400 [&_.icon-accent]:text-zinc-400'
-        : '[&_.icon-base]:text-white [&_.icon-accent]:text-white';
+        : ($inCart
+            ? 'cart-action-icon-muted'
+            : '[&_.icon-base]:text-white [&_.icon-accent]:text-white');
+
+    $labelToneClass = $isDisabled
+        ? 'text-zinc-400'
+        : ($inCart ? 'cart-action-foreground-muted' : 'text-white');
 
     $quantityShellClass = $isDisabled
         ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
@@ -30,7 +37,7 @@
 
     $rootClass = $isProductLayout
         ? 'grid gap-3 sm:grid-cols-[148px_minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[148px_minmax(0,1fr)]'
-        : 'flex items-center gap-2';
+        : ($isCardLayout ? 'flex min-w-0 items-stretch gap-2 flex-nowrap' : 'flex items-center gap-2');
 @endphp
 
 <div class="z-30 w-full {{ $rootClass }}" x-data x-on:click.stop.prevent>
@@ -86,10 +93,10 @@
             title="{{ $tooltip }}"
             class="transition {{ $containerClass }} {{ $stateClass }}"
         >
-            <x-icon name="cart" class="size-6 {{ $iconToneClass }}" />
+            <x-icon name="cart" class="size-6 shrink-0 {{ $iconToneClass }}" />
 
             @if ($extended)
-                <span class="whitespace-nowrap">{{ $inCart ? 'В корзине' : 'В корзину' }}</span>
+                <span class="min-w-0 whitespace-nowrap {{ $labelToneClass }} {{ $isCardLayout ? 'max-xs:hidden' : '' }}">{{ $inCart ? 'В корзине' : 'В корзину' }}</span>
             @endif
         </button>
 
@@ -113,16 +120,35 @@
             @if (! $isDisabled)
                 wire:click.stop.prevent="add"
             @endif
+            wire:loading.attr="disabled"
+            wire:target="add"
             @disabled($isDisabled)
             aria-disabled="{{ $isDisabled ? 'true' : 'false' }}"
             title="{{ $tooltip }}"
-            class="transition {{ $containerClass }} {{ $stateClass }}"
+            class="transition {{ $containerClass }} {{ $stateClass }} {{ $isCardLayout ? 'cart-action-button min-w-0 flex-1 overflow-hidden px-3' : '' }}"
         >
-            <x-icon name="cart" class="size-6 {{ $iconToneClass }}" />
+            <x-icon name="cart" class="size-6 shrink-0 {{ $iconToneClass }}" />
 
             @if ($extended)
-                <span class="whitespace-nowrap">{{ $inCart ? 'В корзине' : 'В корзину' }}</span>
+                <span class="min-w-0 whitespace-nowrap {{ $labelToneClass }} {{ $isCardLayout ? 'cart-action-label' : '' }}">{{ $inCart ? 'В корзине' : 'В корзину' }}</span>
             @endif
         </button>
+
+        @if ($isCardLayout)
+            <button
+                type="button"
+                @if (! $isDisabled)
+                    wire:click.stop.prevent="openOneClickOrder"
+                @endif
+                wire:loading.attr="disabled"
+                wire:target="openOneClickOrder"
+                @disabled($isDisabled)
+                aria-disabled="{{ $isDisabled ? 'true' : 'false' }}"
+                title="{{ $isDisabled ? $tooltip : 'Оформить заказ в 1 клик' }}"
+                class="inline-flex h-full min-h-11 shrink-0 items-center justify-center border border-zinc-200 bg-zinc-50 px-3 py-2 text-center text-sm font-medium text-nowrap text-zinc-500 shadow-sm transition disabled:cursor-not-allowed {{ $placeholderClass }}"
+            >
+                Купить в 1 клик
+            </button>
+        @endif
     @endif
 </div>

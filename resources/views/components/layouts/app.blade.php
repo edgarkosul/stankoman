@@ -24,6 +24,7 @@
     </div>
 
     @include('partials.cart-modal')
+    <livewire:pages.product.one-click-order />
     <livewire:auth.login-inline />
     <livewire:auth.register-inline />
     <livewire:auth.forgot-password-inline />

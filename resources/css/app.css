@@ -14,6 +14,33 @@
     display: none !important;
 }
 
+.button-brand-green-muted {
+    background-color: color-mix(in oklab, var(--color-brand-green) 70%, transparent);
+}
+
+.button-brand-green-muted:hover {
+    background-color: color-mix(in oklab, var(--color-brand-green) 55%, transparent);
+}
+
+.cart-action-foreground-muted {
+    color: color-mix(in oklab, white 72%, var(--color-brand-green) 28%);
+}
+
+.cart-action-icon-muted .icon-base,
+.cart-action-icon-muted .icon-accent {
+    color: color-mix(in oklab, white 72%, var(--color-brand-green) 28%);
+}
+
+.cart-action-button {
+    container-type: inline-size;
+}
+
+@container (max-width: 10rem) {
+    .cart-action-label {
+        display: none;
+    }
+}
+
 @font-face {
     font-family: "Roboto Flex";
     font-style: normal;

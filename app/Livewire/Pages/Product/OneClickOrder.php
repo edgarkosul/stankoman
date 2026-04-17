@@ -14,7 +14,7 @@ use Livewire\Component;
 
 class OneClickOrder extends Component
 {
-    public int $productId;
+    public int $productId = 0;
 
     public bool $isOpen = false;
 
@@ -41,9 +41,9 @@ class OneClickOrder extends Component
      */
     public array $product = [];
 
-    public function mount(int $productId): void
+    public function mount(?int $productId = null): void
     {
-        $this->productId = $productId;
+        $this->productId = max(0, (int) ($productId ?? 0));
         $this->product = $this->resolveProductSnapshot();
         $this->resetFormState();
     }
@@ -51,10 +51,12 @@ class OneClickOrder extends Component
     #[On('one-click-order:open')]
     public function openModal(int $productId, int $quantity = 1): void
     {
-        if ($productId !== $this->productId) {
+        if ($productId < 1) {
             return;
         }
 
+        $this->productId = $productId;
+        $this->product = $this->resolveProductSnapshot();
         $this->resetErrorBag();
         $this->resetValidation();
         $this->resetFormState();

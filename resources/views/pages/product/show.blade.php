@@ -34,11 +34,9 @@
         <x-product.similar :product="$product" />
 
         <livewire:recent-products-slider />
-
         @php($productId = (int) $product->id)
         @if ($productId > 0)
             <div x-data x-init="$store.recent && $store.recent.add({{ $productId }})" class="hidden" aria-hidden="true"></div>
-            <livewire:pages.product.one-click-order :product-id="$productId" :key="'one-click-order-'.$productId" />
         @endif
     </div>
 </x-layouts.app>
