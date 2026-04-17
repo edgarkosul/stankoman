@@ -14,7 +14,7 @@ class ProductPrintController extends Controller
 {
     public function __invoke(Request $request, Product $product): Response
     {
-        $vm = new ProductPageViewModel($product);
+        $vm = app(ProductPageViewModel::class, ['product' => $product]);
 
         $images = method_exists($vm, 'images') ? $vm->images() : [];
         $cover = $images[0] ?? null;
@@ -26,8 +26,8 @@ class ProductPrintController extends Controller
                 $cover = public_path(ltrim($coverPath, '/'));
             } elseif (Str::startsWith($coverPath, 'storage/')) {
                 $cover = public_path($coverPath);
-            } elseif (!Str::startsWith($coverPath, ['http://', 'https://', '/'])) {
-                $cover = public_path('storage/' . ltrim($coverPath, '/'));
+            } elseif (! Str::startsWith($coverPath, ['http://', 'https://', '/'])) {
+                $cover = public_path('storage/'.ltrim($coverPath, '/'));
             }
         }
 
@@ -37,7 +37,7 @@ class ProductPrintController extends Controller
             'product' => $product,
             'cover' => $cover,
             'sku' => $product->sku ?? $product->id,
-            'price' => number_format((float) ($product->price_amount ?? 0), 0, ',', ' ') . ' ₽',
+            'price' => number_format((float) ($product->price_amount ?? 0), 0, ',', ' ').' ₽',
             'attributes' => $this->attributesForPdf($product),
             'specs' => $this->specsForPdf($product),
             'descriptionHtml' => $descriptionHtml,
@@ -54,7 +54,7 @@ class ProductPrintController extends Controller
                 'defaultFont' => 'RobotoCondensed',
             ]);
 
-        $filename = 'InterTooler_' . preg_replace('/[^\p{L}\p{N}\-_]+/u', '_', $product->name) . '.pdf';
+        $filename = 'InterTooler_'.preg_replace('/[^\p{L}\p{N}\-_]+/u', '_', $product->name).'.pdf';
 
         return $request->boolean('dl') ? $pdf->download($filename) : $pdf->stream($filename);
     }
@@ -110,7 +110,7 @@ class ProductPrintController extends Controller
             }
         }
 
-        if (!is_array($rawSpecs)) {
+        if (! is_array($rawSpecs)) {
             return [];
         }
 
@@ -180,13 +180,13 @@ class ProductPrintController extends Controller
 
         $html = preg_replace(
             '#(<img[^>]+src=)(["\'])/pics/([^"\']+)\2#i',
-            '$1$2' . $basePics . '/$3$2',
+            '$1$2'.$basePics.'/$3$2',
             $html
         );
 
         $html = preg_replace(
             '#(<img[^>]+src=)(["\'])pics/([^"\']+)\2#i',
-            '$1$2' . $basePics . '/$3$2',
+            '$1$2'.$basePics.'/$3$2',
             $html
         );
 
