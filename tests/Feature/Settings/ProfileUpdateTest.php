@@ -13,6 +13,17 @@ test('profile page is displayed', function () {
         ->assertSee('class="font-semibold">Профиль</span>', false);
 });
 
+test('filament admins are redirected away from profile page', function () {
+    config()->set('settings.general.filament_admin_emails', ['admin@example.com']);
+
+    $this->actingAs(User::factory()->create([
+        'email' => 'admin@example.com',
+    ]));
+
+    $this->get('/settings/profile')
+        ->assertRedirect(route('home'));
+});
+
 test('profile information can be updated', function () {
     $user = User::factory()->create();
 

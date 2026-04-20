@@ -36,6 +36,25 @@ it('shows only authenticated user orders in cabinet list', function (): void {
         ->assertDontSee($otherOrder->order_number);
 });
 
+it('redirects filament admins away from orders cabinet routes', function (): void {
+    config()->set('settings.general.filament_admin_emails', ['admin@example.com']);
+
+    $admin = User::factory()->create([
+        'email' => 'admin@example.com',
+    ]);
+    $order = Order::factory()->for($admin)->create([
+        'order_date' => Carbon::parse('2026-02-20'),
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('user.orders.index'))
+        ->assertRedirect(route('home'));
+
+    $this->actingAs($admin)
+        ->get(route('user.orders.show', orderRouteParams($order)))
+        ->assertRedirect(route('home'));
+});
+
 it('renders order details page for the owner', function (): void {
     $user = User::factory()->create();
 

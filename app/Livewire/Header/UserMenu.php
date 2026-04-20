@@ -2,6 +2,8 @@
 
 namespace App\Livewire\Header;
 
+use App\Models\User;
+use Filament\Facades\Filament;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
@@ -25,6 +27,22 @@ class UserMenu extends Component
         $user = Auth::user();
 
         return $user instanceof MustVerifyEmail && ! $user->hasVerifiedEmail();
+    }
+
+    public function isFilamentAdmin(): bool
+    {
+        $user = Auth::user();
+
+        return $user instanceof User && $user->isFilamentAdmin();
+    }
+
+    public function filamentAdminUrl(): ?string
+    {
+        if (! $this->isFilamentAdmin()) {
+            return null;
+        }
+
+        return Filament::getPanel('admin', isStrict: false)?->getUrl();
     }
 
     public function logout(): void

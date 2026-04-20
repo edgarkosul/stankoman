@@ -49,6 +49,23 @@ test('users can not authenticate with invalid password', function () {
     $this->assertGuest();
 });
 
+test('filament admins can not authenticate using the login screen', function () {
+    config()->set('settings.general.filament_admin_emails', ['admin@example.com']);
+
+    $user = User::factory()->create([
+        'email' => 'admin@example.com',
+    ]);
+
+    $response = $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $response->assertSessionHasErrorsIn('email');
+
+    $this->assertGuest();
+});
+
 test('users can logout', function () {
     $user = User::factory()->create();
 

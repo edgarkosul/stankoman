@@ -11,6 +11,7 @@ use App\Support\CartService;
 use App\Support\CheckoutService;
 use App\Support\CompanyLookupService;
 use App\Support\Products\ProductEcommerceDataBuilder;
+use Closure;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
@@ -203,7 +204,22 @@ class Wizard extends Component
             'contact.is_company' => ['boolean'],
             'contact.customer_name' => ['required', 'string', 'min:2', 'max:100'],
             'contact.customer_phone' => ['required', 'string', 'max:32', new ValidPhone],
-            'contact.customer_email' => ['nullable', 'required_if:contact.create_account,true', 'string', 'max:190', 'email:rfc'],
+            'contact.customer_email' => [
+                'nullable',
+                'required_if:contact.create_account,true',
+                'string',
+                'max:190',
+                'email:rfc',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if (
+                        (bool) ($this->contact['create_account'] ?? false)
+                        && is_string($value)
+                        && User::isFilamentAdminEmail($value)
+                    ) {
+                        $fail('Этот email используется для доступа в админку и не может использоваться для аккаунта покупателя.');
+                    }
+                },
+            ],
             'contact.create_account' => ['boolean'],
             'contact.company_name' => ['nullable', 'required_if:contact.is_company,true', 'string', 'min:2', 'max:255'],
             'contact.inn' => ['nullable', 'required_if:contact.is_company,true', 'regex:/^\d{10}(\d{2})?$/', new ValidInn],

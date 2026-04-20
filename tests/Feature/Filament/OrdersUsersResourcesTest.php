@@ -32,9 +32,15 @@ test('admin can open user and order resources with relationship sections', funct
         'total_amount' => 3000,
     ]);
 
+    $customer = User::factory()->create([
+        'email' => 'customer@example.com',
+    ]);
+
     $this->actingAs($admin)
         ->get(UserResource::getUrl('index', panel: 'admin'))
-        ->assertSuccessful();
+        ->assertSuccessful()
+        ->assertSee($customer->email)
+        ->assertDontSee($admin->email);
 
     $this->actingAs($admin)
         ->get(UserResource::getUrl('edit', ['record' => $admin], panel: 'admin'))

@@ -197,12 +197,24 @@ class OrderPlacementService
         $phone = trim((string) ($contact['customer_phone'] ?? ''));
         $name = trim((string) ($contact['customer_name'] ?? ''));
 
+        if ($createAccount && $email !== '' && User::isFilamentAdminEmail($email)) {
+            throw ValidationException::withMessages([
+                'contact.customer_email' => 'Этот email используется для доступа в админку и не может использоваться для аккаунта покупателя.',
+            ]);
+        }
+
         $applyDiscounts = Auth::check() || $createAccount;
 
         if (Auth::check()) {
             $user = Auth::user();
 
             if ($user instanceof User) {
+                if (! $user->canUseStorefront()) {
+                    throw ValidationException::withMessages([
+                        'checkout' => 'Оформление заказа из аккаунта недоступно для администраторов Filament.',
+                    ]);
+                }
+
                 $this->syncUserContact($user, $name, $phone);
 
                 return [$user->id, $applyDiscounts];

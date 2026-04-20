@@ -21,6 +21,23 @@ it('redirects to cart page when checkout is opened with empty cart', function ()
     $response->assertRedirect(route('cart.index'));
 });
 
+it('redirects filament admins away from checkout page', function (): void {
+    config()->set('settings.general.filament_admin_emails', ['admin@example.com']);
+
+    $admin = User::factory()->create([
+        'email' => 'admin@example.com',
+    ]);
+    $product = createCheckoutProduct([
+        'price_amount' => 100000,
+    ]);
+
+    $this->actingAs($admin);
+    app(CartService::class)->addItem($product->id, 1);
+
+    $this->get(route('checkout.index'))
+        ->assertRedirect(route('home'));
+});
+
 it('creates order through checkout wizard and clears user cart', function (): void {
     $user = User::factory()->create();
     $root = Category::query()->create([
@@ -239,6 +256,28 @@ it('requires email when create account is enabled in checkout wizard', function 
         ->set('review.accept_terms', true)
         ->call('confirm')
         ->assertHasErrors(['contact.customer_email' => 'required_if']);
+});
+
+it('rejects storefront account creation for filament admin email in checkout wizard', function (): void {
+    config()->set('settings.general.filament_admin_emails', ['admin@example.com']);
+
+    $product = createCheckoutProduct([
+        'price_amount' => 100000,
+    ]);
+
+    app(CartService::class)->addItem($product->id, 1);
+
+    Livewire::test(Wizard::class)
+        ->set('contact.customer_name', 'Покупатель')
+        ->set('contact.customer_phone', '+79990001122')
+        ->set('contact.customer_email', 'admin@example.com')
+        ->set('contact.create_account', true)
+        ->set('delivery.shipping_method', 'delivery')
+        ->set('delivery.shipping_city', 'Краснодар')
+        ->set('review.payment_method', 'cash')
+        ->set('review.accept_terms', true)
+        ->call('confirm')
+        ->assertHasErrors(['contact.customer_email']);
 });
 
 it('renders phone mask attribute on checkout page', function (): void {

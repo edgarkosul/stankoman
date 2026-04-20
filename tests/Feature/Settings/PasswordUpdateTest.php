@@ -14,6 +14,17 @@ test('password page is displayed', function () {
         ->assertSee('class="font-semibold">Пароль</span>', false);
 });
 
+test('filament admins are redirected away from password page', function () {
+    config()->set('settings.general.filament_admin_emails', ['admin@example.com']);
+
+    $this->actingAs(User::factory()->create([
+        'email' => 'admin@example.com',
+    ]));
+
+    $this->get('/settings/password')
+        ->assertRedirect(route('home'));
+});
+
 test('password can be updated', function () {
     $user = User::factory()->create([
         'password' => Hash::make('password'),

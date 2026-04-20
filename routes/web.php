@@ -5,6 +5,7 @@ use App\Http\Controllers\PageController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductPrintController;
 use App\Http\Middleware\CartNotEmpty;
+use App\Http\Middleware\EnsureStorefrontCustomer;
 use App\Livewire\Checkout\Wizard as CheckoutWizard;
 use App\Livewire\Pages\Cart\Index as CartIndex;
 use App\Livewire\Pages\Categories\LeafCategoryPage;
@@ -84,7 +85,7 @@ Route::get('/cart', CartIndex::class)
 
 Route::get('/checkout', CheckoutWizard::class)
     ->name('checkout.index')
-    ->middleware(CartNotEmpty::class);
+    ->middleware([CartNotEmpty::class, EnsureStorefrontCustomer::class]);
 
 Route::get('/checkout/success/{date}/{seq}', function (string $date, string $seq) {
     $orderNumber = "{$date}/{$seq}";
@@ -98,7 +99,7 @@ Route::get('/checkout/success/{date}/{seq}', function (string $date, string $seq
 Route::get('/favorites', FavoritesIndex::class)
     ->name('favorites.index');
 
-Route::prefix('user')->middleware(['auth'])->group(function (): void {
+Route::prefix('user')->middleware(['auth', EnsureStorefrontCustomer::class])->group(function (): void {
     Route::livewire('/orders', OrdersIndex::class)
         ->name('user.orders.index');
 

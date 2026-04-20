@@ -8,6 +8,8 @@ use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -90,7 +92,17 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return in_array(Str::lower((string) $this->email), $this->allowedPanelEmails(), true);
+        return $this->isFilamentAdmin();
+    }
+
+    public function isFilamentAdmin(): bool
+    {
+        return self::isFilamentAdminEmail((string) $this->email);
+    }
+
+    public function canUseStorefront(): bool
+    {
+        return ! $this->isFilamentAdmin();
     }
 
     public function favoriteProducts(): BelongsToMany
@@ -103,10 +115,33 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         return $this->hasMany(Order::class);
     }
 
+    public static function isFilamentAdminEmail(string $email): bool
+    {
+        return in_array(Str::lower(trim($email)), self::allowedPanelEmails(), true);
+    }
+
     /**
      * @return list<string>
      */
-    protected function allowedPanelEmails(): array
+    public static function filamentAdminEmails(): array
+    {
+        return self::allowedPanelEmails();
+    }
+
+    #[Scope]
+    protected function storefrontCustomers(Builder $query): void
+    {
+        $emails = self::filamentAdminEmails();
+
+        if ($emails !== []) {
+            $query->whereNotIn('email', $emails);
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function allowedPanelEmails(): array
     {
         $configuredLists = [
             config('settings.general.filament_admin_emails', []),
@@ -114,7 +149,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         ];
 
         foreach ($configuredLists as $emails) {
-            $normalized = $this->normalizeAllowedEmails($emails);
+            $normalized = self::normalizeAllowedEmails($emails);
 
             if ($normalized !== []) {
                 return $normalized;
@@ -127,7 +162,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     /**
      * @return list<string>
      */
-    protected function normalizeAllowedEmails(mixed $emails): array
+    protected static function normalizeAllowedEmails(mixed $emails): array
     {
         if (! is_array($emails)) {
             return [];

@@ -82,6 +82,23 @@ test('users can not authenticate via inline login modal with invalid password', 
     $this->assertGuest();
 });
 
+test('filament admins can not authenticate using inline login modal', function () {
+    config()->set('settings.general.filament_admin_emails', ['admin@example.com']);
+
+    $user = User::factory()->create([
+        'email' => 'admin@example.com',
+    ]);
+
+    Livewire::test(LoginInline::class)
+        ->set('email', $user->email)
+        ->set('password', 'password')
+        ->call('login')
+        ->assertHasErrors('email')
+        ->assertNotDispatched('auth:redirect');
+
+    $this->assertGuest();
+});
+
 test('guest user menu dispatches login modal event', function () {
     Livewire::test(UserMenu::class)
         ->call('openLoginModal')
@@ -107,7 +124,28 @@ test('authenticated user menu renders dropdown actions', function () {
         ->assertSee($user->name)
         ->assertSee($user->email)
         ->assertDontSeeHtml('data-test="open-login-modal-button"')
+        ->assertDontSeeHtml('data-test="user-menu-admin-item"')
         ->assertDontSeeHtml('data-test="user-menu-verify-email-item"');
+});
+
+test('filament admin user menu shows only admin link and logout', function () {
+    config()->set('settings.general.filament_admin_emails', ['admin@example.com']);
+
+    $user = User::factory()->create([
+        'name' => 'admin',
+        'email' => 'admin@example.com',
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(UserMenu::class)
+        ->assertSeeHtml('data-test="user-menu-button"')
+        ->assertSeeHtml('data-test="user-menu-dropdown"')
+        ->assertSeeHtml('data-test="user-menu-admin-item"')
+        ->assertSeeHtml('data-test="user-menu-logout-item"')
+        ->assertDontSeeHtml('data-test="user-menu-orders-item"')
+        ->assertDontSeeHtml('data-test="user-menu-settings-item"')
+        ->assertDontSeeHtml('data-test="user-menu-verify-email-item"')
+        ->assertSee('Админка');
 });
 
 test('authenticated user menu shortens button label to first 11 chars of first name part', function () {

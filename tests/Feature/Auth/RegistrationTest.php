@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\User;
+
 test('registration screen can be rendered', function () {
     $response = $this->get(route('register'));
 
@@ -37,4 +39,23 @@ test('users must accept legal terms to register', function () {
         ->assertSessionHasErrors(['accept_terms']);
 
     $this->assertGuest();
+});
+
+test('filament admin emails can not be registered as storefront users', function () {
+    config()->set('settings.general.filament_admin_emails', ['admin@example.com']);
+
+    $response = $this->from(route('register'))->post(route('register.store'), [
+        'name' => 'Admin User',
+        'email' => 'admin@example.com',
+        'password' => 'password',
+        'password_confirmation' => 'password',
+        'accept_terms' => 'on',
+    ]);
+
+    $response->assertRedirect(route('register', absolute: false))
+        ->assertSessionHasErrors(['email']);
+
+    $this->assertGuest();
+
+    expect(User::query()->where('email', 'admin@example.com')->exists())->toBeFalse();
 });

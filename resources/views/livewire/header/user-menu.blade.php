@@ -32,32 +32,43 @@ x-data="navDropdown()"
 
             <div class="-mx-[.3125rem] my-[.3125rem] h-px bg-zinc-200"></div>
 
-            <div class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-50">
-                <x-icon name="cart" class="size-6 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red overflow-visible" />
-                <a href="{{ route('user.orders.index') }}" wire:navigate @click="close()"
-                    class=" w-full px-2 py-1.5  font-medium text-zinc-800 " role="menuitem"
-                    data-test="user-menu-orders-item">
-                    Мои заказы
-                </a>
-            </div>
-            <div class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-50">
-                <x-icon name="settings" class="size-6 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red overflow-visible" />
-                <a href="{{ route('profile.edit') }}" wire:navigate @click="close()"
-                    class="w-full px-2 py-1.5  text-sm font-medium text-zinc-800 hover:bg-zinc-50"
-                    role="menuitem" data-test="user-menu-settings-item">
-                    Настройки
-                </a>
-            </div>
-
-            @if ($this->hasUnverifiedEmail())
+            @if ($this->isFilamentAdmin())
                 <div class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-50">
-                    <x-icon name="email_v" class="size-6 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red overflow-visible" />
-                    <button type="button" wire:click="openVerifyEmailModal" @click="close()"
-                        class="flex w-full items-center rounded-md px-2 py-1.5 text-start text-sm font-medium text-zinc-800 hover:bg-zinc-50"
-                        role="menuitem" data-test="user-menu-verify-email-item">
-                        Подтвердить email
-                    </button>
+                    <x-icon name="settings" class="size-6 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red overflow-visible" />
+                    <a href="{{ $this->filamentAdminUrl() }}" @click="close()"
+                        class="w-full px-2 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                        role="menuitem" data-test="user-menu-admin-item">
+                        Админка
+                    </a>
                 </div>
+            @else
+                <div class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-50">
+                    <x-icon name="cart" class="size-6 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red overflow-visible" />
+                    <a href="{{ route('user.orders.index') }}" wire:navigate @click="close()"
+                        class=" w-full px-2 py-1.5  font-medium text-zinc-800 " role="menuitem"
+                        data-test="user-menu-orders-item">
+                        Мои заказы
+                    </a>
+                </div>
+                <div class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-50">
+                    <x-icon name="settings" class="size-6 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red overflow-visible" />
+                    <a href="{{ route('profile.edit') }}" wire:navigate @click="close()"
+                        class="w-full px-2 py-1.5  text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                        role="menuitem" data-test="user-menu-settings-item">
+                        Настройки
+                    </a>
+                </div>
+
+                @if ($this->hasUnverifiedEmail())
+                    <div class="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-50">
+                        <x-icon name="email_v" class="size-6 [&_.icon-base]:text-zinc-800 [&_.icon-accent]:text-brand-red overflow-visible" />
+                        <button type="button" wire:click="openVerifyEmailModal" @click="close()"
+                            class="flex w-full items-center rounded-md px-2 py-1.5 text-start text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                            role="menuitem" data-test="user-menu-verify-email-item">
+                            Подтвердить email
+                        </button>
+                    </div>
+                @endif
             @endif
 
             <div class="-mx-[.3125rem] my-[.3125rem] h-px bg-zinc-200"></div>
