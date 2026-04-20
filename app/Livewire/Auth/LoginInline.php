@@ -65,10 +65,12 @@ class LoginInline extends Component
 
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt([
-            'email' => $this->email,
-            'password' => $this->password,
-        ], $this->remember)) {
+        if (
+            !Auth::attempt([
+                'email' => $this->email,
+                'password' => $this->password,
+            ], $this->remember)
+        ) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
@@ -83,7 +85,7 @@ class LoginInline extends Component
         $this->close();
         $this->skipRender();
 
-        if ($user instanceof MustVerifyEmail && ! $user->hasVerifiedEmail()) {
+        if ($user instanceof MustVerifyEmail && !$user->hasVerifiedEmail()) {
             $this->dispatch('auth:redirect', url: route('verification.notice', absolute: false));
 
             return;
@@ -97,7 +99,7 @@ class LoginInline extends Component
      */
     protected function ensureIsNotRateLimited(): void
     {
-        if (! RateLimiter::tooManyAttempts($this->throttleKey(), 5)) {
+        if (!RateLimiter::tooManyAttempts($this->throttleKey(), 5)) {
             return;
         }
 
@@ -115,7 +117,7 @@ class LoginInline extends Component
 
     protected function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->email).'|'.request()->ip());
+        return Str::transliterate(Str::lower($this->email) . '|' . request()->ip());
     }
 
     public function render(): View
