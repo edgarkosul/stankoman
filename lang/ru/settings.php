@@ -3,7 +3,7 @@
 return [
     'general.shop_name' => 'Название магазина',
     'general.manager_emails' => 'Адреса админов для уведомлений',
-    'general.filament_admin_emails' => 'Адреса админов Filament',
+    'general.filament_admin_emails' => 'Адреса админов',
     'company.legal_name' => 'Юридическое название компании',
     'company.brand_line' => 'Брендовая подпись',
     'company.site_host' => 'Домен сайта',
