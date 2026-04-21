@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\NameNormalizer;
 use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
 use Illuminate\Database\Eloquent\Model;
 
@@ -20,6 +21,17 @@ class Unit extends Model
         'si_factor' => 'float',
         'si_offset' => 'float',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(function (): void {
+            NameNormalizer::flushCache();
+        });
+
+        static::deleted(function (): void {
+            NameNormalizer::flushCache();
+        });
+    }
 
     /**
      * Человекопонятные названия семейств единиц.

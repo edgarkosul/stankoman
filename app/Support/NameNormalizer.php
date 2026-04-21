@@ -7,10 +7,30 @@ use Illuminate\Support\Facades\Schema;
 
 final class NameNormalizer
 {
+    /**
+     * @var array<string, string|null>
+     */
+    private static array $normalizedValuesCache = [];
+
+    /**
+     * @var array<string, true>|null
+     */
+    private static ?array $unitTokensCache = null;
+
+    public static function flushCache(): void
+    {
+        self::$normalizedValuesCache = [];
+        self::$unitTokensCache = null;
+    }
+
     public static function normalize(?string $value): ?string
     {
         if ($value === null) {
             return null;
+        }
+
+        if (array_key_exists($value, self::$normalizedValuesCache)) {
+            return self::$normalizedValuesCache[$value];
         }
 
         $normalized = str_replace(
@@ -45,7 +65,7 @@ final class NameNormalizer
 
         $normalized = preg_replace('/\s+/u', ' ', $normalized) ?? $normalized;
 
-        return self::stripTrailingUnitToken($normalized);
+        return self::$normalizedValuesCache[$value] = self::stripTrailingUnitToken($normalized);
     }
 
     private static function stripTrailingUnitToken(string $normalized): ?string
@@ -74,8 +94,12 @@ final class NameNormalizer
      */
     private static function unitTokens(): array
     {
+        if (self::$unitTokensCache !== null) {
+            return self::$unitTokensCache;
+        }
+
         if (! Schema::hasTable('units')) {
-            return [];
+            return self::$unitTokensCache = [];
         }
 
         $tokens = [];
@@ -90,7 +114,7 @@ final class NameNormalizer
             }
         }
 
-        return $tokens;
+        return self::$unitTokensCache = $tokens;
     }
 
     private static function normalizeUnitToken(?string $value): ?string

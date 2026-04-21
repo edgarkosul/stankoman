@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\NameNormalizer;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -21,6 +22,7 @@ pest()->extend(TestCase::class)
     ->in('Feature');
 
 beforeEach(function (): void {
+    NameNormalizer::flushCache();
     ensureSafeTestingDatabase();
     ensureBackupTablesExist();
 });

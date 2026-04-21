@@ -11,10 +11,16 @@ use App\Models\ProductAttributeOption;
 use App\Models\ProductAttributeValue;
 use App\Models\Unit;
 use App\Support\NameNormalizer;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class SpecsMatchService
 {
+    /**
+     * @var array<string, array<int, Unit>>|null
+     */
+    private ?array $unitLookupIndexCache = null;
+
     /**
      * @param  array<int, int|string>  $productIds
      * @return array<int, array{
@@ -1567,6 +1573,10 @@ class SpecsMatchService
      */
     private function unitLookupIndex(): array
     {
+        if ($this->unitLookupIndexCache !== null) {
+            return $this->unitLookupIndexCache;
+        }
+
         $index = [];
         $units = Unit::query()
             ->select(['id', 'name', 'symbol', 'base_symbol', 'dimension'])
@@ -1579,7 +1589,7 @@ class SpecsMatchService
             }
         }
 
-        return $index;
+        return $this->unitLookupIndexCache = $index;
     }
 
     private function unitLabel(?Unit $unit): ?string
@@ -2225,7 +2235,7 @@ class SpecsMatchService
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, Unit>
+     * @return Collection<int, Unit>
      */
     private function availableUnitsForAttribute(Attribute $attribute)
     {
