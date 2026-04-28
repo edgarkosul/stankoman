@@ -1,53 +1,86 @@
-@import '../../../../vendor/filament/filament/resources/css/theme.css';
+@import "../../../../vendor/filament/filament/resources/css/theme.css";
 
 @source '../../../../app/Filament/**/*';
 @source '../../../../resources/views/filament/**/*';
 @source inline('text-xs text-sm text-base text-lg text-xl text-2xl text-3xl text-4xl text-5xl text-6xl text-7xl text-8xl text-9xl');
 
+@custom-variant dark (&:where([data-light-theme-only], [data-light-theme-only] *));
+
 /* заголовок с хлебными крошками — вертикальное направление */
 .fi-header.fi-header-has-breadcrumbs {
-  flex-direction: column !important;
+    flex-direction: column !important;
 }
 
 /* контейнер кнопок в заголовке — выравнивание по правому краю */
 .fi-header-actions-ctn {
-  align-self: flex-end !important;
+    align-self: flex-end !important;
 }
 
 @layer components {
-  .fi-panel-admin.builder-menu-page .fi-fo-repeater-item.fi-fo-repeater-item-has-header {
-    @apply ring-2 ring-primary-500/30 dark:ring-primary-400/40;
-  }
+    .fi-panel-admin.builder-menu-page
+        .fi-fo-repeater-item.fi-fo-repeater-item-has-header {
+        @apply ring-2 ring-primary-500/30;
+    }
 
-  .fi-panel-admin.builder-menu-page .fi-fo-repeater .fi-fo-repeater-add .fi-btn.fi-ac-btn-action {
-    @apply bg-sky-500 text-white hover:bg-sky-400 dark:bg-sky-500 dark:hover:bg-sky-400 ring-1 ring-sky-500/50 dark:ring-sky-400/60;
-  }
+    .fi-panel-admin.builder-menu-page
+        .fi-fo-repeater
+        .fi-fo-repeater-add
+        .fi-btn.fi-ac-btn-action {
+        @apply bg-sky-500 text-white hover:bg-sky-400 ring-1 ring-sky-500/50;
+    }
 
-  .fi-panel-admin.builder-menu-page .fi-fo-repeater-item-has-header .fi-fo-repeater-item-content .fi-fo-repeater .fi-fo-repeater-item-has-header {
-    @apply ring-2 ring-sky-500/40 dark:ring-sky-400/50;
-  }
+    .fi-panel-admin.builder-menu-page
+        .fi-fo-repeater-item-has-header
+        .fi-fo-repeater-item-content
+        .fi-fo-repeater
+        .fi-fo-repeater-item-has-header {
+        @apply ring-2 ring-sky-500/40;
+    }
 
-  .fi-panel-admin.builder-menu-page .fi-page-main .fi-fo-field-label-col .fi-fo-field-label-content {
-    @apply text-xl text-primary-600 dark:text-primary-400;
-  }
+    .fi-panel-admin.builder-menu-page
+        .fi-page-main
+        .fi-fo-field-label-col
+        .fi-fo-field-label-content {
+        @apply text-xl text-primary-600;
+    }
 
-  .fi-panel-admin.builder-menu-page .fi-page-main .fi-fo-repeater-item-content .fi-fo-field-label-col .fi-fo-field-label-content {
-    @apply text-xs text-gray-950 dark:text-white;
-  }
+    .fi-panel-admin.builder-menu-page
+        .fi-page-main
+        .fi-fo-repeater-item-content
+        .fi-fo-field-label-col
+        .fi-fo-field-label-content {
+        @apply text-xs text-gray-950;
+    }
 
-  .fi-panel-admin.builder-menu-page .fi-page-main .fi-fo-repeater-item-content .fi-fo-field:has(.fi-fo-repeater) > .fi-fo-field-label-col .fi-fo-field-label-content {
-    @apply text-xl text-sky-500 dark:text-sky-400;
-  }
+    .fi-panel-admin.builder-menu-page
+        .fi-page-main
+        .fi-fo-repeater-item-content
+        .fi-fo-field:has(.fi-fo-repeater)
+        > .fi-fo-field-label-col
+        .fi-fo-field-label-content {
+        @apply text-xl text-sky-500;
+    }
 
-  .fi-panel-admin.builder-menu-page .fi-fo-repeater-item-header .fi-fo-repeater-item-header-label {
-    @apply text-2xl leading-tight font-semibold;
-  }
+    .fi-panel-admin.builder-menu-page
+        .fi-fo-repeater-item-header
+        .fi-fo-repeater-item-header-label {
+        @apply text-2xl leading-tight font-semibold;
+    }
 
-  .fi-panel-admin.builder-menu-page .fi-fo-repeater-item-has-header .fi-fo-repeater-item-content .fi-fo-repeater .fi-fo-repeater-item-header .fi-fo-repeater-item-header-label {
-    @apply leading-tight font-semibold;
-  }
+    .fi-panel-admin.builder-menu-page
+        .fi-fo-repeater-item-has-header
+        .fi-fo-repeater-item-content
+        .fi-fo-repeater
+        .fi-fo-repeater-item-header
+        .fi-fo-repeater-item-header-label {
+        @apply leading-tight font-semibold;
+    }
 
-  .fi-panel-admin .fi-resource-products .fi-modal .fi-fo-repeater-items > .fi-fo-repeater-item.fi-fo-repeater-item-has-header {
-    @apply border border-sky-500 dark:border-sky-400;
-  }
+    .fi-panel-admin
+        .fi-resource-products
+        .fi-modal
+        .fi-fo-repeater-items
+        > .fi-fo-repeater-item.fi-fo-repeater-item-has-header {
+        @apply border border-sky-500;
+    }
 }

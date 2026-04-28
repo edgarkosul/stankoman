@@ -1,11 +1,11 @@
 <x-layouts::auth>
     <div class="mt-4 flex flex-col gap-6">
-        <p class="text-center text-sm text-zinc-600 dark:text-zinc-400">
+        <p class="text-center text-sm text-zinc-600">
             {{ __('Подтвердите адрес электронной почты, перейдя по ссылке, которую мы только что отправили вам на email.') }}
         </p>
 
         @if (session('status') == 'verification-link-sent')
-            <p class="text-center text-sm font-medium text-green-600 dark:text-green-400">
+            <p class="text-center text-sm font-medium text-green-600">
                 {{ __('Новая ссылка для подтверждения отправлена на адрес электронной почты, указанный при регистрации.') }}
             </p>
         @endif
@@ -25,7 +25,7 @@
                 @csrf
                 <button
                     type="submit"
-                    class="cursor-pointer text-sm font-medium text-zinc-700 hover:underline dark:text-zinc-300"
+                    class="cursor-pointer text-sm font-medium text-zinc-700 hover:underline"
                     data-test="logout-button"
                 >
                     {{ __('Выйти') }}

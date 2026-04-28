@@ -71,7 +71,7 @@
                 </flux:field>
 
                 @error('accept_terms')
-                    <p class="text-sm font-medium text-red-600 dark:text-red-400">{{ $message }}</p>
+                    <p class="text-sm font-medium text-red-600">{{ $message }}</p>
                 @enderror
             </div>
 
@@ -82,7 +82,7 @@
             </div>
         </form>
 
-        <div class="space-x-1 rtl:space-x-reverse text-center text-sm text-zinc-600 dark:text-zinc-400">
+        <div class="space-x-1 rtl:space-x-reverse text-center text-sm text-zinc-600">
             <span>{{ __('Already have an account?') }}</span>
             <flux:link :href="route('login')" wire:navigate>{{ __('Log in') }}</flux:link>
         </div>

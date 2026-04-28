@@ -74,7 +74,7 @@
 @source inline('wdth-{25..150..5}');
 @source inline('text-xs text-sm text-base text-lg text-xl text-2xl text-3xl text-4xl text-5xl text-6xl text-7xl text-8xl text-9xl');
 
-@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant dark (&:where([data-light-theme-only], [data-light-theme-only] *));
 
 @plugin "tailwind-scrollbar" {
     preferredstrategy: "pseudoelements";
@@ -250,14 +250,6 @@
     font-stretch: 150%;
 }
 
-@layer theme {
-    .dark {
-        --color-accent: var(--color-white);
-        --color-accent-content: var(--color-white);
-        --color-accent-foreground: var(--color-neutral-800);
-    }
-}
-
 @layer base {
     *,
     ::after,
@@ -268,6 +260,7 @@
     }
 
     html {
+        color-scheme: light;
         font-stretch: 25%;
     }
 }

@@ -3,7 +3,7 @@
     $height = is_numeric($height ?? null) && (int) $height > 0 ? (int) $height : null;
 @endphp
 
-<div class="border rounded-md p-3 bg-gray-50 dark:bg-gray-900/40">
+<div class="border rounded-md p-3 bg-gray-50">
     <div class="font-semibold text-sm">
         Карта Яндекс
     </div>

@@ -1,4 +1,4 @@
-<div class="border rounded-md p-3 bg-gray-50 dark:bg-gray-900/40">
+<div class="border rounded-md p-3 bg-gray-50">
     <div class="font-semibold text-sm">
         Видео Rutube
     </div>

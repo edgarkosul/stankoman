@@ -11,6 +11,6 @@
         icon="heroicon-o-chevron-up"
         label="Наверх"
         x-on:click="window.scrollTo({ top: 0, behavior: 'smooth' })"
-        class="pointer-events-auto shadow-lg ring-1 ring-gray-950/10 dark:ring-white/10"
+        class="pointer-events-auto shadow-lg ring-1 ring-gray-950/10"
     />
 </div>

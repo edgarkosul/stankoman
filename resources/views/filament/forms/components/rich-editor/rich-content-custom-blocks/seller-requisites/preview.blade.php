@@ -2,21 +2,21 @@
     $title = $title ?? 'Продавец / Администрация сайта';
 @endphp
 
-<div class="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-gray-900/40">
+<div class="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
     <div class="grid gap-3">
-        <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500 dark:text-zinc-400">
+        <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
             {{ $title }}:
         </div>
 
-        <div class="grid gap-2 text-sm text-zinc-700 dark:text-zinc-200">
+        <div class="grid gap-2 text-sm text-zinc-700">
             @if ($legalName)
-                <div class="font-semibold text-zinc-900 dark:text-white">
+                <div class="font-semibold text-zinc-900">
                     {{ $legalName }}
                 </div>
             @endif
 
             @if ($inn || $ogrn || $ogrnip)
-                <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-600 dark:text-zinc-300">
+                <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-600">
                     @if ($inn)
                         <span>ИНН: {{ $inn }}</span>
                     @endif
@@ -32,19 +32,19 @@
             @endif
 
             @if ($legalAddress)
-                <div class="text-xs text-zinc-600 dark:text-zinc-300">
+                <div class="text-xs text-zinc-600">
                     {{ $legalAddress }}
                 </div>
             @endif
 
             @if ($correspondenceAddress)
-                <div class="text-xs text-zinc-500 dark:text-zinc-400">
+                <div class="text-xs text-zinc-500">
                     Адрес для корреспонденции: {{ $correspondenceAddress }}
                 </div>
             @endif
 
             @if ($email || $phone)
-                <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+                <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
                     @if ($email)
                         <span>{{ $email }}</span>
                     @endif

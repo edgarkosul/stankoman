@@ -1,15 +1,15 @@
 @php
-    $inputClasses = 'h-11 w-full border border-zinc-300 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none transition focus:border-brand-green focus:ring-2 focus:ring-brand-green/30 disabled:cursor-not-allowed disabled:opacity-70 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500';
+    $inputClasses = 'h-11 w-full border border-zinc-300 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none transition focus:border-brand-green focus:ring-2 focus:ring-brand-green/30 disabled:cursor-not-allowed disabled:opacity-70';
 @endphp
 
 <section
-    class="mt-10 border-t border-zinc-200 pt-8 dark:border-zinc-700"
+    class="mt-10 border-t border-zinc-200 pt-8"
     x-data="{ confirmDeleteOpen: @js($errors->isNotEmpty()) }"
     @keydown.escape.window="confirmDeleteOpen = false"
 >
     <div class="mb-5 space-y-1">
-        <h3 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Удаление аккаунта</h3>
-        <p class="text-sm text-zinc-600 dark:text-zinc-400">Удалите аккаунт и все связанные с ним данные</p>
+        <h3 class="text-xl font-semibold text-zinc-900">Удаление аккаунта</h3>
+        <p class="text-sm text-zinc-600">Удалите аккаунт и все связанные с ним данные</p>
     </div>
 
     <button
@@ -30,21 +30,21 @@
         aria-labelledby="delete-account-title"
     >
         <div
-            class="w-full max-w-lg border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+            class="w-full max-w-lg border border-zinc-200 bg-white p-6 shadow-xl"
             @click.outside="confirmDeleteOpen = false"
         >
             <form wire:submit="deleteUser" class="space-y-5">
                 <div class="space-y-2">
-                    <h4 id="delete-account-title" class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+                    <h4 id="delete-account-title" class="text-lg font-semibold text-zinc-900">
                         Вы уверены, что хотите удалить аккаунт?
                     </h4>
-                    <p class="text-sm text-zinc-600 dark:text-zinc-400">
+                    <p class="text-sm text-zinc-600">
                         После удаления аккаунта все данные будут удалены безвозвратно. Введите пароль для подтверждения.
                     </p>
                 </div>
 
                 <div>
-                    <label for="delete-account-password" class="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                    <label for="delete-account-password" class="mb-1 block text-sm font-medium text-zinc-700">
                         Пароль
                     </label>
                     <input
@@ -63,7 +63,7 @@
                     <button
                         type="button"
                         @click="confirmDeleteOpen = false; $wire.password = ''"
-                        class="inline-flex h-11 items-center justify-center border border-zinc-300 px-5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800/70"
+                        class="inline-flex h-11 items-center justify-center border border-zinc-300 px-5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
                     >
                         Отмена
                     </button>

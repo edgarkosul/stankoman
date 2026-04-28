@@ -11,13 +11,13 @@
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="inline-verify-email-title"
-                class="relative w-full max-w-md bg-white p-8 shadow-xl dark:bg-zinc-800"
+                class="relative w-full max-w-md bg-white p-8 shadow-xl"
                 wire:click.stop
             >
                 <button
                     type="button"
                     wire:click="close"
-                    class="absolute right-3 top-3 flex h-8 w-8 items-center justify-center text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:hover:text-white"
+                    class="absolute right-3 top-3 flex h-8 w-8 items-center justify-center text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
                     aria-label="{{ __('Закрыть') }}"
                 >
                     <x-icon name="x" class="size-5" />
@@ -25,28 +25,28 @@
 
                 <div class="flex flex-col gap-6">
                     <div class="text-center">
-                        <h2 id="inline-verify-email-title" class="text-3xl font-semibold text-zinc-900 dark:text-zinc-100">
+                        <h2 id="inline-verify-email-title" class="text-3xl font-semibold text-zinc-900">
                             {{ __('Подтвердите адрес электронной почты') }}
                         </h2>
-                        <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                        <p class="mt-1 text-sm text-zinc-600">
                             {{ __('Для продолжения подтвердите адрес электронной почты :email.', ['email' => auth()->user()?->email ?? '']) }}
                         </p>
 
                         @if (! $linkSent)
-                            <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                            <p class="mt-1 text-sm text-zinc-600">
                                 {{ __('Нажмите кнопку ниже, чтобы отправить письмо с ссылкой для подтверждения.') }}
                             </p>
                         @endif
                     </div>
 
                     @if ($linkSent)
-                        <p class="text-center text-sm font-medium text-green-600 dark:text-green-400">
+                        <p class="text-center text-sm font-medium text-green-600">
                             {{ __('Новая ссылка для подтверждения отправлена на вашу электронную почту.') }}
                         </p>
                     @endif
 
                     @error('verification')
-                        <p class="text-center text-sm font-medium text-red-600 dark:text-red-400">
+                        <p class="text-center text-sm font-medium text-red-600">
                             {{ $message }}
                         </p>
                     @enderror
@@ -70,7 +70,7 @@
 
                         <button
                             type="button"
-                            class="inline-flex h-11 w-full items-center justify-center border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300/70 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-500/60"
+                            class="inline-flex h-11 w-full items-center justify-center border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300/70"
                             wire:click="continueToApp"
                             data-test="verify-email-inline-continue-button"
                         >
@@ -79,7 +79,7 @@
 
                         <button
                             type="button"
-                            class="inline-flex h-11 w-full items-center justify-center border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300/70 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:ring-zinc-500/60"
+                            class="inline-flex h-11 w-full items-center justify-center border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300/70"
                             wire:click="logout"
                             data-test="verify-email-inline-logout-button"
                         >

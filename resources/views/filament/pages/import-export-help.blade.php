@@ -134,51 +134,11 @@
                 background-color: #f6f8fa;
             }
 
-            .dark .github-readme .markdown-body {
-                color: #c9d1d9;
-            }
-
-            .dark .github-readme .markdown-body h1,
-            .dark .github-readme .markdown-body h2 {
-                border-bottom-color: #3d444d;
-            }
-
-            .dark .github-readme .markdown-body a {
-                color: #58a6ff;
-            }
-
-            .dark .github-readme .markdown-body code,
-            .dark .github-readme .markdown-body pre {
-                background-color: #161b22;
-            }
-
-            .dark .github-readme .markdown-body blockquote {
-                border-left-color: #3d444d;
-                color: #8b949e;
-            }
-
-            .dark .github-readme .markdown-body hr {
-                background-color: #3d444d;
-            }
-
-            .dark .github-readme .markdown-body table th,
-            .dark .github-readme .markdown-body table td,
-            .dark .github-readme .markdown-body table tr {
-                border-color: #3d444d;
-            }
-
-            .dark .github-readme .markdown-body table tr {
-                background-color: #0d1117;
-            }
-
-            .dark .github-readme .markdown-body table tr:nth-child(2n) {
-                background-color: #161b22;
-            }
         </style>
     @endonce
 
     <div class="mx-auto w-full max-w-5xl">
-        <article class="github-readme rounded-2xl border border-zinc-200 bg-white px-6 py-7 shadow-sm sm:px-8 sm:py-9 dark:border-zinc-700 dark:bg-zinc-900">
+        <article class="github-readme rounded-2xl border border-zinc-200 bg-white px-6 py-7 shadow-sm sm:px-8 sm:py-9">
             <div class="markdown-body">
                 {!! $guideHtml !!}
             </div>
