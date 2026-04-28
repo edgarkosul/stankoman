@@ -35,7 +35,7 @@
     container-type: inline-size;
 }
 
-@container (max-width: 10rem) {
+@container (max-width: 6rem) {
     .cart-action-label {
         display: none;
     }
