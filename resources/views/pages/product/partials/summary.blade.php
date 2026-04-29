@@ -6,16 +6,19 @@
     <div class="flex flex-col gap-3">
         <div class="flex items-end gap-3">
             @if ($finalPrice === 0)
-                <div class="text-3xl wght-700 wdth-70 text-brand-700">Цена по запросу</div>
+            <div class="text-3xl wght-700 wdth-70 text-brand-700">Цена по запросу</div>
             @else
-                <div class="text-3xl wght-700 wdth-70">{{ price($finalPrice) }}</div>
-                @if ($hasDiscount)
-                    <p class="text-xl text-zinc-500 wght-500 wdth-70 line-through decoration-2 decoration-brand-red">
-                        {{ price(data_get($summary, 'price.base')) }}
-                    </p>
-                @endif
+            <div class="text-3xl wght-700 wdth-70">{{ price($finalPrice) }}</div>
+            @if ($hasDiscount)
+            <p class="text-xl text-zinc-500 wght-500 wdth-70 line-through decoration-2 decoration-brand-red">
+                {{ price(data_get($summary, 'price.base')) }}
+            </p>
+            @endif
             @endif
         </div>
+         @if ($finalPrice !== 0)
+        <div class="wght-500 wdth-70 text-zinc-700">В том числе НДС {{ config('settings.product.stavka_nds') }} %</div>
+        @endif
         <div class="my-4">
             <livewire:pages.cart.actions
                 :product-id="$product->id"

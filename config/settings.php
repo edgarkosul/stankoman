@@ -1,6 +1,6 @@
 <?php
 
-$company = require __DIR__.'/company.php';
+$company = require __DIR__ . '/company.php';
 
 return [
     'general' => [
@@ -36,6 +36,6 @@ return [
     ],
 
     'product' => [
-        'stavka_nds' => 20,
+        'stavka_nds' => 22,
     ],
 ];
