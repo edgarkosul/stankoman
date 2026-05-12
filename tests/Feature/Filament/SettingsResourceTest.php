@@ -25,7 +25,7 @@ test('admin sees translated title on the setting edit page', function (): void {
     $this->actingAs($admin)
         ->get(SettingResource::getUrl('edit', ['record' => $setting], panel: 'admin'))
         ->assertSuccessful()
-        ->assertSee('Адреса админов Filament');
+        ->assertSee('Адреса админов');
 });
 
 test('settings global search only uses persisted columns', function (): void {
@@ -64,11 +64,44 @@ test('settings index shows important settings before requisites', function (): v
         ->assertSeeInOrder([
             'Название магазина',
             'Адреса админов для уведомлений',
-            'Адреса админов Filament',
+            'Адреса админов',
             'Публичный email',
             'Юридический адрес',
             'Название банка',
         ]);
+});
+
+test('settings index translates product currency keys', function (): void {
+    config([
+        'settings.general.filament_admin_emails' => ['admin@example.com'],
+    ]);
+
+    $admin = User::factory()->create([
+        'email' => 'admin@example.com',
+    ]);
+
+    foreach ([
+        'product_currency.cny_to_rub',
+        'product_currency.eur_to_rub',
+        'product_currency.rur_to_rub',
+        'product_currency.source_date',
+        'product_currency.usd_to_rub',
+    ] as $key) {
+        Setting::factory()->create([
+            'key' => $key,
+            'value' => 'test-value',
+            'type' => SettingType::String,
+        ]);
+    }
+
+    $this->actingAs($admin)
+        ->get(SettingResource::getUrl('index', panel: 'admin'))
+        ->assertSuccessful()
+        ->assertSee('Курс юаня к рублю')
+        ->assertSee('Курс евро к рублю')
+        ->assertSee('Курс рубля к рублю')
+        ->assertSee('Дата курса ЦБ РФ')
+        ->assertSee('Курс доллара к рублю');
 });
 
 test('edit setting page saves manager emails repeater into json value', function (): void {

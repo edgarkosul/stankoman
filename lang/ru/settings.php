@@ -21,4 +21,9 @@ return [
     'company.bank.ks' => 'Корреспондентский счет',
     'mail.from.address' => 'Email отправителя писем',
     'product.stavka_nds' => 'Ставка НДС, %',
+    'product_currency.cny_to_rub' => 'Курс юаня к рублю',
+    'product_currency.eur_to_rub' => 'Курс евро к рублю',
+    'product_currency.rur_to_rub' => 'Курс рубля к рублю',
+    'product_currency.source_date' => 'Дата курса ЦБ РФ',
+    'product_currency.usd_to_rub' => 'Курс доллара к рублю',
 ];
