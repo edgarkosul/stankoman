@@ -54,7 +54,7 @@ class CreateProduct extends CreateRecord
             'country' => $source->country,
             'warranty' => $source->warranty?->value,
             'in_stock' => $source->in_stock,
-            'is_active' => false,
+            'is_active' => $source->is_active,
             'is_in_yml_feed' => $source->is_in_yml_feed,
             'popularity' => $source->popularity,
 

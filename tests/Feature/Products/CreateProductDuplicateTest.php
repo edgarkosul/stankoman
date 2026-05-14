@@ -32,7 +32,7 @@ test('duplicate product copies the product form fields into the new product', fu
         'warranty' => ProductWarranty::Months24->value,
         'in_stock' => true,
         'qty' => 7,
-        'is_active' => false,
+        'is_active' => true,
         'is_in_yml_feed' => true,
         'popularity' => 17,
         'wholesale_price' => '95000.5000',
@@ -88,7 +88,7 @@ test('duplicate product copies the product form fields into the new product', fu
         ->and($duplicate?->country)->toBe($source->country)
         ->and($duplicate?->warranty?->value)->toBe($source->warranty?->value)
         ->and($duplicate?->in_stock)->toBeTrue()
-        ->and($duplicate?->is_active)->toBeFalse()
+        ->and($duplicate?->is_active)->toBeTrue()
         ->and($duplicate?->is_in_yml_feed)->toBeTrue()
         ->and($duplicate?->popularity)->toBe($source->popularity)
         ->and($duplicate?->title)->toBe($source->title)
