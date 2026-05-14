@@ -44,6 +44,8 @@ class CreateProduct extends CreateRecord
         $data = [
             'name' => $source->name.' (копия)',
             'slug' => $source->slug.'-copy',
+            'meta_title' => $source->meta_title,
+            'meta_description' => $source->meta_description,
             'price_amount' => $source->price_amount,
             'discount_price' => $source->discount_price,
             'with_dns' => $source->with_dns,
@@ -53,7 +55,16 @@ class CreateProduct extends CreateRecord
             'warranty' => $source->warranty?->value,
             'in_stock' => $source->in_stock,
             'is_active' => false,
+            'is_in_yml_feed' => $source->is_in_yml_feed,
             'popularity' => $source->popularity,
+
+            'wholesale_price' => $source->wholesale_price,
+            'wholesale_currency' => $source->wholesale_currency,
+            'auto_update_exchange_rate' => $source->auto_update_exchange_rate,
+            'exchange_rate' => $source->exchange_rate,
+            'wholesale_price_rub' => $source->wholesale_price_rub,
+            'markup_multiplier' => $source->markup_multiplier,
+            'margin_amount_rub' => $source->margin_amount_rub,
 
             'description' => $source->description,
             'instructions' => filled($source->instructions) ? $source->instructions : $source->extra_description,
@@ -130,6 +141,17 @@ class CreateProduct extends CreateRecord
             // Если пользователь в форме убрал эту категорию — update просто не заденет ни одной строки.
             $target->setPrimaryCategory($primary->id);
         }
+
+        $target->forceFill([
+            'title' => $source->title,
+            'currency' => $source->currency,
+            'qty' => $source->qty,
+            'short' => $source->short,
+            'extra_description' => $source->extra_description,
+            'image' => $source->image,
+            'gallery' => $source->gallery,
+            'thumb' => $source->thumb,
+        ])->saveQuietly();
     }
 
     /**
