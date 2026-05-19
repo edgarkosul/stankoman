@@ -171,7 +171,7 @@ class ProductsTable
                     ->query(
                         fn (Builder $query): Builder => $query->whereDoesntHave(
                             'categories',
-                            fn (Builder $query): Builder => $query->wherePivot('is_primary', true),
+                            fn (Builder $query): Builder => $query->where('product_categories.is_primary', true),
                         )
                     ),
 

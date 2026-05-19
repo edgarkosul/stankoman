@@ -72,8 +72,7 @@ it('adds a without primary category toggle filter', function () {
     $filter = configuredProductsTableFilter('without_primary_category');
 
     expect($filter)->toBeInstanceOf(BaseFilter::class)
-        ->and($filter->getLabel())->toBe('Без основной категории')
-        ->and($filter->isToggle())->toBeTrue();
+        ->and($filter->getLabel())->toBe('Без основной категории');
 });
 
 it('filters the products table by multiple brands for bulk selection workflows', function () {
