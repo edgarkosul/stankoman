@@ -165,6 +165,16 @@ class ProductsTable
                         fn (Builder $query): Builder => $query->whereDoesntHave('categories')
                     ),
 
+                Filter::make('without_primary_category')
+                    ->label('Без основной категории')
+                    ->toggle()
+                    ->query(
+                        fn (Builder $query): Builder => $query->whereDoesntHave(
+                            'categories',
+                            fn (Builder $query): Builder => $query->wherePivot('is_primary', true),
+                        )
+                    ),
+
                 // Товары с категорией slug = staging
                 Filter::make('staging_category')
                     ->label('Импортированные товары')

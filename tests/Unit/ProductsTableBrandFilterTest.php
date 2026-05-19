@@ -68,6 +68,14 @@ it('adds a searchable multi-select categories filter', function () {
         ->and($filter->isMultiple())->toBeTrue();
 });
 
+it('adds a without primary category toggle filter', function () {
+    $filter = configuredProductsTableFilter('without_primary_category');
+
+    expect($filter)->toBeInstanceOf(BaseFilter::class)
+        ->and($filter->getLabel())->toBe('Без основной категории')
+        ->and($filter->isToggle())->toBeTrue();
+});
+
 it('filters the products table by multiple brands for bulk selection workflows', function () {
     $this->actingAs(User::factory()->create());
 
@@ -149,6 +157,55 @@ it('filters the products table by multiple categories', function () {
         ->filterTable('categories', [$firstCategory->id, $secondCategory->id])
         ->assertCanSeeTableRecords([$firstProduct, $secondProduct])
         ->assertCanNotSeeTableRecords([$thirdProduct]);
+});
+
+it('filters products assigned to a category without a primary category', function () {
+    $this->actingAs(User::factory()->create());
+
+    $targetCategory = Category::query()->create([
+        'name' => 'Заточные станки',
+        'slug' => 'zatochnye-stanki',
+        'parent_id' => -1,
+        'order' => 1,
+    ]);
+
+    $otherCategory = Category::query()->create([
+        'name' => 'Сверлильные станки',
+        'slug' => 'sverlilnye-stanki',
+        'parent_id' => -1,
+        'order' => 2,
+    ]);
+
+    $withoutPrimaryInTargetCategory = Product::query()->create([
+        'name' => 'Product without primary in target category',
+        'slug' => 'product-without-primary-in-target-category',
+        'price_amount' => 1000,
+    ]);
+    $withoutPrimaryInTargetCategory->categories()->attach($targetCategory->id, ['is_primary' => false]);
+
+    $withPrimaryInTargetCategory = Product::query()->create([
+        'name' => 'Product with primary in target category',
+        'slug' => 'product-with-primary-in-target-category',
+        'price_amount' => 1100,
+    ]);
+    $withPrimaryInTargetCategory->categories()->attach($targetCategory->id, ['is_primary' => true]);
+
+    $withoutPrimaryInOtherCategory = Product::query()->create([
+        'name' => 'Product without primary in other category',
+        'slug' => 'product-without-primary-in-other-category',
+        'price_amount' => 1200,
+    ]);
+    $withoutPrimaryInOtherCategory->categories()->attach($otherCategory->id, ['is_primary' => false]);
+
+    Livewire::test(ListProducts::class)
+        ->filterTable('staging_category', false)
+        ->filterTable('categories', [$targetCategory->id])
+        ->filterTable('without_primary_category')
+        ->assertCanSeeTableRecords([$withoutPrimaryInTargetCategory])
+        ->assertCanNotSeeTableRecords([
+            $withPrimaryInTargetCategory,
+            $withoutPrimaryInOtherCategory,
+        ]);
 });
 
 function configuredProductsTableFilter(string $name): ?BaseFilter
