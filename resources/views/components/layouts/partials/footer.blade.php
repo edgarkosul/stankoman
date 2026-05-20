@@ -62,11 +62,24 @@
         </div>
     </div>
     <div class="max-w-7xl mx-auto px-4 md:px-6 py-4">
-        <p class="border-t border-zinc-600 py-4 flex flex-wrap gap-4">
-            © {{ now()->year }}
+        <p class="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/15 py-4 text-sm text-white/80">
+            <span>© {{ now()->year }}</span>
             <a href="{{ $companySiteUrl !== '' ? $companySiteUrl : url('/') }}"
-                class="hover:underline underline-offset-4">{{ $companySiteHost }}</a>
-            Все права защищены
+                class="text-white/90 underline-offset-4 transition hover:text-white hover:underline">{{ $companySiteHost }}</a>
+            <span>Все права защищены</span>
+
+            <a href="https://www.siteko.net/development#portfolio"
+                class="group inline-flex items-center gap-2 text-white/80 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-700 md:ml-auto"
+                target="_blank"
+                rel="noopener">
+                <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-white/80 ring-1 ring-white/15 transition group-hover:bg-white group-hover:text-brand-red">
+                    <x-heroicon-m-arrow-up-right class="h-4 w-4" />
+                </span>
+                <span>
+                    Laravel-разработка сайта с нуля —
+                    <span class="font-semibold text-white">Siteko</span>
+                </span>
+            </a>
         </p>
     </div>
 </footer>
