@@ -383,6 +383,13 @@ class ProductForm
                     ->image()
                     ->columnSpan(['default' => 2, 'lg' => 2])
                     ->imageEditor(),
+                FileUpload::make('thumb')
+                    ->label('Thumb')
+                    ->disk('public')
+                    ->directory('pics')
+                    ->image()
+                    ->imagePreviewHeight('100')
+                    ->columnSpan(['default' => 2, 'lg' => 1]),
                 FileUpload::make('gallery')
                     ->disk('public')
                     ->directory('pics')

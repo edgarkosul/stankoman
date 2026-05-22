@@ -18,6 +18,19 @@ class EditProduct extends EditRecord
 
     protected static string $resource = ProductResource::class;
 
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        if ($this->imageFieldsChanged($data)) {
+            $data['thumb'] = null;
+        }
+
+        return $data;
+    }
+
     protected function getHeaderActions(): array
     {
         return [
@@ -117,5 +130,52 @@ class EditProduct extends EditRecord
                 'is_active' => 'Заполните обязательные атрибуты: '.$list,
             ]);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function imageFieldsChanged(array $data): bool
+    {
+        return $this->normalizeSingleUploadState($data['image'] ?? null) !== $this->record->image
+            || $this->normalizeMultipleUploadState($data['gallery'] ?? null) !== $this->normalizeMultipleUploadState($this->record->gallery);
+    }
+
+    private function normalizeSingleUploadState(mixed $state): ?string
+    {
+        if (is_string($state) && filled($state)) {
+            return $state;
+        }
+
+        if (! is_array($state)) {
+            return null;
+        }
+
+        foreach ($state as $file) {
+            if (is_string($file) && filled($file)) {
+                return $file;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function normalizeMultipleUploadState(mixed $state): array
+    {
+        if (is_string($state) && filled($state)) {
+            return [$state];
+        }
+
+        if (! is_array($state)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $state,
+            static fn (mixed $file): bool => is_string($file) && filled($file),
+        ));
     }
 }

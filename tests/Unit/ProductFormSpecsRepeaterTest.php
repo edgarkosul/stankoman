@@ -4,6 +4,7 @@ use App\Enums\ProductWarranty;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock;
 use App\Filament\Resources\Products\Pages\CreateProduct;
 use App\Filament\Resources\Products\Schemas\ProductForm;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
@@ -95,6 +96,22 @@ it('uses meta_title as the editable seo title field', function (): void {
     expect($metaTitleField)->toBeInstanceOf(TextInput::class)
         ->and($metaTitleField->getLabel())->toBe('META Title')
         ->and($legacyTitleField)->toBeNull();
+});
+
+it('shows legacy thumb image field next to product image fields', function (): void {
+    $page = new CreateProduct;
+    $schema = $page->form(Schema::make($page));
+
+    $thumbField = $schema->getComponentByStatePath('thumb', withHidden: true);
+
+    expect($thumbField)->toBeInstanceOf(FileUpload::class);
+
+    /** @var FileUpload $thumbField */
+    expect($thumbField->getLabel())->toBe('Thumb')
+        ->and($thumbField->getDiskName())->toBe('public')
+        ->and($thumbField->getDirectory())->toBe('pics')
+        ->and($thumbField->getAcceptedFileTypes())->toBe(['image/*'])
+        ->and($thumbField->getImagePreviewHeight())->toBe('100');
 });
 
 it('configures pricing parameters with site price backed by price amount', function (): void {
