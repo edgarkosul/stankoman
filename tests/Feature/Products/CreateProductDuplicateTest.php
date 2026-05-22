@@ -5,9 +5,12 @@ use App\Enums\ProductWholesaleCurrency;
 use App\Filament\Resources\Products\Pages\CreateProduct;
 use App\Models\Product;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 test('duplicate product copies the product form fields into the new product', function (): void {
+    Storage::fake('public');
+
     $user = User::factory()->create();
 
     config([
@@ -15,6 +18,15 @@ test('duplicate product copies the product form fields into the new product', fu
     ]);
 
     $this->actingAs($user);
+
+    foreach ([
+        'pics/source-image.jpg',
+        'pics/source-thumb.jpg',
+        'pics/gallery-1.jpg',
+        'pics/gallery-2.jpg',
+    ] as $file) {
+        Storage::disk('public')->put($file, 'test-image');
+    }
 
     $source = Product::query()->create([
         'name' => 'Источник для копирования характеристик',
@@ -111,4 +123,60 @@ test('duplicate product copies the product form fields into the new product', fu
         ->and($duplicate?->thumb)->toBe($source->thumb)
         ->and($duplicate?->gallery)->toBe($source->gallery)
         ->and($duplicate?->specs)->toBe($source->specs);
+});
+
+test('duplicate product keeps replaced image fields when saving the copy', function (): void {
+    Storage::fake('public');
+
+    $user = User::factory()->create();
+
+    config([
+        'settings.general.filament_admin_emails' => [strtolower((string) $user->email)],
+    ]);
+
+    $this->actingAs($user);
+
+    foreach ([
+        'pics/source-image.jpg',
+        'pics/source-thumb.jpg',
+        'pics/source-gallery-1.jpg',
+        'pics/source-gallery-2.jpg',
+        'pics/replaced-image.jpg',
+        'pics/replaced-gallery.jpg',
+    ] as $file) {
+        Storage::disk('public')->put($file, 'test-image');
+    }
+
+    $source = Product::query()->create([
+        'name' => 'Источник для замены изображений',
+        'slug' => 'source-product-replaced-images-test',
+        'currency' => 'RUB',
+        'price_amount' => 125_000,
+        'with_dns' => true,
+        'in_stock' => true,
+        'is_active' => false,
+        'is_in_yml_feed' => true,
+        'popularity' => 17,
+        'image' => 'pics/source-image.jpg',
+        'thumb' => 'pics/source-thumb.jpg',
+        'gallery' => ['pics/source-gallery-1.jpg', 'pics/source-gallery-2.jpg'],
+    ]);
+
+    Livewire::withQueryParams(['from' => $source->id])
+        ->test(CreateProduct::class)
+        ->fillForm([
+            'image' => ['pics/replaced-image.jpg'],
+            'gallery' => ['pics/replaced-gallery.jpg'],
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $duplicate = Product::query()
+        ->where('slug', $source->slug.'-copy')
+        ->first();
+
+    expect($duplicate)->not->toBeNull()
+        ->and($duplicate?->image)->toBe('pics/replaced-image.jpg')
+        ->and($duplicate?->gallery)->toBe(['pics/replaced-gallery.jpg'])
+        ->and($duplicate?->thumb)->toBeNull();
 });

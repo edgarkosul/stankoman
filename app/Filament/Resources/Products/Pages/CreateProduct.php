@@ -142,16 +142,24 @@ class CreateProduct extends CreateRecord
             $target->setPrimaryCategory($primary->id);
         }
 
-        $target->forceFill([
+        $image = $this->normalizeSingleUploadState(data_get($this->data, 'image'));
+        $gallery = $this->normalizeMultipleUploadState(data_get($this->data, 'gallery'));
+
+        $legacyData = [
             'title' => $source->title,
             'currency' => $source->currency,
             'qty' => $source->qty,
             'short' => $source->short,
             'extra_description' => $source->extra_description,
-            'image' => $source->image,
-            'gallery' => $source->gallery,
-            'thumb' => $source->thumb,
-        ])->saveQuietly();
+            'image' => $image,
+            'gallery' => $gallery === [] ? null : $gallery,
+        ];
+
+        if ($image === $source->image && $gallery === $this->normalizeGalleryForComparison($source->gallery)) {
+            $legacyData['thumb'] = $source->thumb;
+        }
+
+        $target->forceFill($legacyData)->saveQuietly();
     }
 
     /**
@@ -172,5 +180,58 @@ class CreateProduct extends CreateRecord
         }
 
         $component->state($items);
+    }
+
+    private function normalizeSingleUploadState(mixed $state): ?string
+    {
+        if (is_string($state) && filled($state)) {
+            return $state;
+        }
+
+        if (! is_array($state)) {
+            return null;
+        }
+
+        foreach ($state as $file) {
+            if (is_string($file) && filled($file)) {
+                return $file;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function normalizeMultipleUploadState(mixed $state): array
+    {
+        if (is_string($state) && filled($state)) {
+            return [$state];
+        }
+
+        if (! is_array($state)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $state,
+            static fn (mixed $file): bool => is_string($file) && filled($file),
+        ));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function normalizeGalleryForComparison(mixed $gallery): array
+    {
+        if (! is_array($gallery)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $gallery,
+            static fn (mixed $file): bool => is_string($file) && filled($file),
+        ));
     }
 }
