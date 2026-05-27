@@ -25,6 +25,23 @@
         ->map(fn($value) => is_string($value) ? trim($value) : null)
         ->filter()
         ->unique()
+        ->filter(function (string $value): bool {
+            if (\Illuminate\Support\Str::startsWith($value, ['http://', 'https://', '//'])) {
+                return true;
+            }
+
+            if (\Illuminate\Support\Str::startsWith($value, '/storage/')) {
+                $value = \Illuminate\Support\Str::after($value, '/storage/');
+            } elseif (\Illuminate\Support\Str::startsWith($value, 'storage/')) {
+                $value = \Illuminate\Support\Str::after($value, 'storage/');
+            } elseif (\Illuminate\Support\Str::startsWith($value, '/')) {
+                return true;
+            }
+
+            $value = preg_split('/[?#]/', $value, 2)[0] ?? $value;
+
+            return \Illuminate\Support\Facades\Storage::disk('public')->exists($value);
+        })
         ->values();
 
     if ($images->isEmpty()) {

@@ -25,3 +25,11 @@ test('product slider component renders with empty products collection', function
         ->toContain('data-nav="prev"')
         ->toContain('data-nav="next"');
 });
+
+test('popular products component is ignored by livewire morph updates', function (): void {
+    $component = file_get_contents(resource_path('views/components/product/popular.blade.php'));
+
+    expect($component)
+        ->toContain('<section wire:ignore')
+        ->toContain('Популярные товары:');
+});

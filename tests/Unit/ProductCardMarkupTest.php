@@ -13,3 +13,12 @@ test('product card root container stretches to full parent size', function (): v
         ->toContain('product-card__swiper h-48 w-full min-w-0 flex-none')
         ->toContain('grid grow content-start w-full grid-cols-[max-content_max-content]');
 });
+
+test('product card skips missing public storage images', function (): void {
+    $view = file_get_contents(resource_path('views/components/product/card.blade.php'));
+
+    expect($view)
+        ->toContain("Str::startsWith(\$value, '/storage/')")
+        ->toContain("Str::startsWith(\$value, 'storage/')")
+        ->toContain("Storage::disk('public')->exists(\$value)");
+});
