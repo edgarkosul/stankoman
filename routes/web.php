@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\LegacyKratonRedirectController;
 use App\Http\Controllers\MailPreviewController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\ProductController;
@@ -31,6 +32,9 @@ Route::get('/', function (SiteSeoDataBuilder $seoBuilder) {
         ],
     ]);
 })->name('home');
+
+Route::get('/_legacy/kraton/resolve', LegacyKratonRedirectController::class)
+    ->name('legacy.kraton.resolve');
 
 Route::get('/page/{page:slug}', PageController::class)
     ->name('page.show');
