@@ -44,9 +44,89 @@ Do not parse legacy PHP files on user requests.
 
 Parsing is a one-time or manually rerun import task because `kratonkuban.ru` is abandoned and will not receive product updates. Runtime redirect logic must use database lookups only.
 
+## Implementation Status
+
+Status as of 2026-05-29:
+
+- Implemented and deployed: `legacy_products` table.
+- Implemented and deployed: `App\Models\LegacyProduct`.
+- Implemented and deployed: `App\Support\Legacy\KratonProductPageParser`.
+- Implemented and deployed: `php artisan legacy:kraton-import`.
+- Implemented and deployed: `php artisan legacy:kraton-match`.
+- Implemented and deployed: Laravel resolver endpoint `GET /_legacy/kraton/resolve`.
+- Not implemented yet: nginx interception for `kratonkuban.ru`.
+- Not enabled yet: browser-visible redirects from `kratonkuban.ru` legacy URLs.
+
+Production import result:
+
+```text
+Scanned: 11034
+Imported: 10554
+Skipped: 480
+```
+
+Production match result:
+
+```text
+Inspected: 10554
+Matched: 551
+Unmatched: 10003
+```
+
+Match strategy distribution:
+
+```text
+sku_exact: 447
+sku_normalized: 16
+name_normalized: 88
+unmatched: 10003
+```
+
+Manual production parser check:
+
+```php
+App\Models\LegacyProduct::where(
+    'source_path',
+    '/spiralny-val-helical-150mm-dlya-w0108-w0109d-w0106fl.php'
+)->first(['name', 'sku', 'manufacturer'])?->toArray();
+```
+
+Result:
+
+```php
+[
+    'name' => 'Спиральный вал Helical 150мм для W0108, W0109D, W0106FL',
+    'sku' => 'Helical 150мм',
+    'manufacturer' => 'Warrior',
+]
+```
+
+The resolver endpoint currently returns:
+
+- `302` with `Location: https://intertooler.ru/product/{slug}` when a matched active product has `redirect_enabled = true`.
+- Empty `404` when there is no enabled redirect. This is expected and is the future signal for nginx fallback to the original legacy page.
+
+Example unmatched resolver behavior:
+
+`https://intertooler.ru/_legacy/kraton/resolve?path=/sverlilnyy-patron-metalmaster-1-13-mt2.php`
+
+Expected result before nginx integration: empty `404`.
+
+Current local test command:
+
+```bash
+php artisan test --compact tests/Feature/LegacyKratonImportCommandTest.php tests/Feature/LegacyKratonMatchCommandTest.php tests/Feature/LegacyKratonRedirectResolverTest.php
+```
+
+Last local result:
+
+```text
+15 passed
+```
+
 ## Data Model
 
-Create a small table for parsed legacy products, for example `legacy_products`.
+Created a small table for parsed legacy products: `legacy_products`.
 
 Suggested columns:
 
@@ -73,7 +153,7 @@ The table does not need file hashes or sync metadata because the legacy site is 
 
 ## Import Command
 
-Create an Artisan command, for example:
+Implemented Artisan command:
 
 `php artisan legacy:kraton-import`
 
@@ -95,7 +175,7 @@ This command should not create or update current `products`.
 
 ## Matching Command
 
-Create a second Artisan command, for example:
+Implemented Artisan command:
 
 `php artisan legacy:kraton-match`
 
@@ -105,6 +185,8 @@ Primary matching order:
 2. Normalized SKU match.
 3. Exact normalized name match against `products.name`.
 4. Conservative soft name matching only if the result is unique enough.
+
+Current implementation covers steps 1-3. Broad soft name matching is intentionally not implemented yet.
 
 Suggested normalization:
 
@@ -164,6 +246,10 @@ Add an internal route such as:
 
 `/_legacy/kraton/resolve`
 
+Implemented route:
+
+`GET /_legacy/kraton/resolve`
+
 Expected input:
 
 - `path=/some-product.php`
@@ -189,14 +275,14 @@ Minimum programmatic tests:
 
 ## Rollout Plan
 
-1. Add migration, model, import command, match command, resolver route/controller, and tests.
-2. Deploy Laravel changes without nginx interception.
-3. Run import command on production.
-4. Run match command on production.
-5. Inspect counts and sample matches.
-6. Enable nginx interception with temporary `302` redirects.
-7. Watch access logs and redirect samples.
-8. Switch successful redirects from `302` to `301`.
+1. Done: add migration, model, import command, match command, resolver route/controller, and tests.
+2. Done: deploy Laravel changes without nginx interception.
+3. Done: run import command on production.
+4. Done: run match command on production.
+5. Done: inspect counts and sample matches.
+6. Pending client approval: enable nginx interception with temporary `302` redirects.
+7. Pending: watch access logs and redirect samples.
+8. Pending: switch successful redirects from `302` to `301`.
 
 ## Safety Rules
 

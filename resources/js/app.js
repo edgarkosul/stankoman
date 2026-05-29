@@ -291,13 +291,47 @@ const initProductCardSwipers = () => {
         });
 
         let rafId = 0;
+        let hoverTimerId = 0;
+        let isHoverActivated = false;
+        let lastMouseMoveEvent = null;
+        let hoverActivationX = 0;
+        let hoverActivationY = 0;
         let lastIndex = swiper.activeIndex;
+        const hoverActivationDelay = 500;
+        const hoverActivationMoveTolerance = 8;
         const desktopQuery = window.matchMedia('(min-width: 1024px)');
         const ignoreSelector = '[data-product-card-swiper-ignore]';
         const isIgnoredZone = (event) => {
             const topElement = document.elementFromPoint(event.clientX, event.clientY);
 
             return topElement instanceof Element && Boolean(topElement.closest(ignoreSelector));
+        };
+        const clearHoverActivation = () => {
+            window.clearTimeout(hoverTimerId);
+            hoverTimerId = 0;
+            isHoverActivated = false;
+            lastMouseMoveEvent = null;
+        };
+        const hasMovedOutsideHoverTolerance = (event) => {
+            return Math.abs(event.clientX - hoverActivationX) > hoverActivationMoveTolerance
+                || Math.abs(event.clientY - hoverActivationY) > hoverActivationMoveTolerance;
+        };
+        const scheduleHoverActivation = (event) => {
+            if (!desktopQuery.matches || hoverTimerId || isHoverActivated) {
+                return;
+            }
+
+            hoverActivationX = event.clientX;
+            hoverActivationY = event.clientY;
+            lastMouseMoveEvent = event;
+            hoverTimerId = window.setTimeout(() => {
+                hoverTimerId = 0;
+                isHoverActivated = true;
+
+                if (lastMouseMoveEvent) {
+                    handleMove(lastMouseMoveEvent);
+                }
+            }, hoverActivationDelay);
         };
 
         if (paginationEl) {
@@ -340,6 +374,16 @@ const initProductCardSwipers = () => {
                 return;
             }
 
+            if (!isHoverActivated) {
+                if (hoverTimerId && hasMovedOutsideHoverTolerance(event)) {
+                    clearHoverActivation();
+                }
+
+                scheduleHoverActivation(event);
+                lastMouseMoveEvent = event;
+                return;
+            }
+
             cancelAnimationFrame(rafId);
             rafId = requestAnimationFrame(() => handleMove(event));
         }, { passive: true });
@@ -348,6 +392,9 @@ const initProductCardSwipers = () => {
             if (!desktopQuery.matches || swiper.destroyed) {
                 return;
             }
+
+            clearHoverActivation();
+            cancelAnimationFrame(rafId);
 
             const relatedTarget = event.relatedTarget;
             if (relatedTarget instanceof Element && relatedTarget.closest(ignoreSelector)) {
