@@ -423,6 +423,7 @@ class LeafCategoryPage extends Component
         foreach ($slugs as $slug) {
             $category = Category::query()
                 ->active()
+                ->withoutStaging()
                 ->where('parent_id', $parentId)
                 ->where('slug', $slug)
                 ->firstOrFail();
@@ -470,9 +471,11 @@ class LeafCategoryPage extends Component
         if (! $this->category) {
             $subcategories = Category::query()
                 ->active()
+                ->withoutStaging()
                 ->where('parent_id', Category::defaultParentKey())
                 ->with(['children' => fn ($q) => $q
                     ->active()
+                    ->withoutStaging()
                     ->select(['id', 'name', 'slug', 'parent_id'])
                     ->orderBy('order')])
                 ->orderBy('order')
@@ -484,11 +487,13 @@ class LeafCategoryPage extends Component
             ])->layout('layouts.catalog', $this->catalogLayoutData());
         }
 
-        if ($this->category->children()->active()->exists()) {
+        if ($this->category->children()->active()->withoutStaging()->exists()) {
             $subcategories = $this->category->children()
                 ->active()
+                ->withoutStaging()
                 ->with(['children' => fn ($q) => $q
                     ->active()
+                    ->withoutStaging()
                     ->select(['id', 'name', 'slug', 'parent_id'])
                     ->orderBy('order')])
                 ->select(['id', 'name', 'slug', 'img', 'parent_id'])

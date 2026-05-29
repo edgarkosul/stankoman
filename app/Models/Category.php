@@ -72,6 +72,8 @@ class Category extends Model
 
     public const STAGING_NAME = 'Импортированные товары';
 
+    public const CATALOG_MENU_CACHE_KEY = 'catalog.menu.v2';
+
     protected $fillable = [
         'parent_id',
         'name',
@@ -311,11 +313,11 @@ class Category extends Model
         });
 
         static::saved(function () {
-            Cache::forget('catalog.menu.v1');
+            Cache::forget(static::CATALOG_MENU_CACHE_KEY);
         });
 
         static::deleted(function () {
-            Cache::forget('catalog.menu.v1');
+            Cache::forget(static::CATALOG_MENU_CACHE_KEY);
         });
 
     }

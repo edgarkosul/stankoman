@@ -110,7 +110,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         View::composer('components.layouts.partials.header', function ($view) {
-            $menu = Cache::remember('catalog.menu.v1', now()->addMinutes(30), function () {
+            $menu = Cache::remember(Category::CATALOG_MENU_CACHE_KEY, now()->addMinutes(30), function () {
                 return $this->buildCatalogMenu();
             });
 
@@ -129,6 +129,7 @@ class AppServiceProvider extends ServiceProvider
         $brandSlug = 'vybor-po-proizvoditelyu';
 
         $roots = Category::query()
+            ->withoutStaging()
             ->where('parent_id', Category::defaultParentKey())
             ->where('is_active', true)
             ->orderBy('order')
@@ -141,6 +142,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $children = Category::query()
+            ->withoutStaging()
             ->whereIn('parent_id', $roots->pluck('id'))
             ->where('is_active', true)
             ->orderBy('order')
@@ -151,6 +153,7 @@ class AppServiceProvider extends ServiceProvider
         $grandchildren = $children->isEmpty()
             ? collect()
             : Category::query()
+                ->withoutStaging()
                 ->whereIn('parent_id', $children->pluck('id'))
                 ->where('is_active', true)
                 ->orderBy('order')

@@ -83,6 +83,29 @@ it('hides inactive root categories on catalog page', function (): void {
         ->assertDontSee($inactiveCategory->name);
 });
 
+it('hides staging root category on catalog page and in header menu', function (): void {
+    $visibleCategory = Category::query()->create([
+        'name' => 'Visible Root Category',
+        'slug' => 'visible-root-category',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $stagingCategory = Category::query()->create([
+        'name' => Category::stagingName(),
+        'slug' => Category::stagingSlug(),
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 2,
+        'is_active' => true,
+    ]);
+
+    $this->get(route('catalog.leaf'))
+        ->assertSuccessful()
+        ->assertSee($visibleCategory->name)
+        ->assertDontSee($stagingCategory->name);
+});
+
 it('returns 404 for inactive category path', function (): void {
     $inactiveCategory = Category::query()->create([
         'name' => 'Unavailable Category',
@@ -93,6 +116,19 @@ it('returns 404 for inactive category path', function (): void {
     ]);
 
     $this->get(route('catalog.leaf', ['path' => $inactiveCategory->slug]))
+        ->assertNotFound();
+});
+
+it('returns 404 for staging category path', function (): void {
+    $stagingCategory = Category::query()->create([
+        'name' => Category::stagingName(),
+        'slug' => Category::stagingSlug(),
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $this->get(route('catalog.leaf', ['path' => $stagingCategory->slug]))
         ->assertNotFound();
 });
 
@@ -125,4 +161,35 @@ it('hides inactive branch subcategories', function (): void {
         ->assertSuccessful()
         ->assertSee($activeChild->name)
         ->assertDontSee($inactiveChild->name);
+});
+
+it('hides staging branch subcategories', function (): void {
+    $parentCategory = Category::query()->create([
+        'name' => 'Parent Category',
+        'slug' => 'parent-category',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $activeChild = Category::query()->create([
+        'name' => 'Visible Child Category',
+        'slug' => 'visible-child-category',
+        'parent_id' => $parentCategory->getKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $stagingChild = Category::query()->create([
+        'name' => Category::stagingName(),
+        'slug' => Category::stagingSlug(),
+        'parent_id' => $parentCategory->getKey(),
+        'order' => 2,
+        'is_active' => true,
+    ]);
+
+    $this->get(route('catalog.leaf', ['path' => $parentCategory->slug]))
+        ->assertSuccessful()
+        ->assertSee($activeChild->name)
+        ->assertDontSee($stagingChild->name);
 });
