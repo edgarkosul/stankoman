@@ -31,7 +31,7 @@ class MailPreviewFactory
                 'key' => 'order-submitted-customer',
                 'group' => 'Заказы',
                 'label' => 'Заказ клиенту',
-                'expectedText' => 'Ваш заказ',
+                'expectedText' => 'Спасибо за заказ',
             ],
             [
                 'key' => 'order-submitted-manager',

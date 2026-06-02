@@ -43,13 +43,13 @@ test('order submitted previews render stacked item facts under product name', fu
     $customerResponse = $this->get(route('mail.preview.show', 'order-submitted-customer'));
 
     $customerResponse->assertOk();
-    $customerResponse->assertSeeText('Ваш заказ №27-03-26/07 принят.');
-    $customerResponse->assertSeeText('Сумма заказа: 239 900,00 ₽.');
-    $customerResponse->assertSeeText('Контакты магазина:');
-    $customerResponse->assertDontSee('display: none; font-size: 0; line-height: 0; padding: 0;', escape: false);
-    $customerResponse->assertDontSee('class="order-item-name"', escape: false);
-    $customerResponse->assertDontSee('class="order-item-facts"', escape: false);
-    $customerResponse->assertDontSee('<a ', escape: false);
+    $customerResponse->assertSee('display: none; font-size: 0; line-height: 0; padding: 0;', escape: false);
+    $customerResponse->assertSee('class="order-item-name"', escape: false);
+    $customerResponse->assertSee('class="order-item-facts"', escape: false);
+    $customerResponse->assertSeeText('Кол-во');
+    $customerResponse->assertSeeText('Цена');
+    $customerResponse->assertSeeText('Сумма');
+    $customerResponse->assertSee('class="brand-logo-link"', escape: false);
     $customerResponse->assertDontSee('<img', escape: false);
 
     $managerResponse = $this->get(route('mail.preview.show', 'order-submitted-manager'));

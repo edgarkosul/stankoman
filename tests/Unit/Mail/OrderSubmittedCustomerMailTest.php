@@ -46,7 +46,7 @@ test('order submitted customer mail has simple plain text body', function (): vo
         ->assertDontSeeInText('|');
 });
 
-test('order submitted customer mail has simple html without uri links or hidden parts', function (): void {
+test('order submitted customer mail uses markdown html with text logo', function (): void {
     config()->set('company.public_email', 'sales@intertooler.ru');
     config()->set('company.phone', '+7 (900) 246-86-60');
     config()->set('settings.general.shop_name', 'InterTooler.ru');
@@ -58,20 +58,16 @@ test('order submitted customer mail has simple html without uri links or hidden 
     $html = $mail->render();
 
     expect($html)
-        ->toContain('<!doctype html>')
-        ->toContain('Ваш заказ №27-03-26/07 принят.')
-        ->toContain('Сумма заказа: 239 900,00 ₽.')
+        ->toContain('Спасибо за заказ')
+        ->toContain('Ваш заказ')
+        ->toContain('№27-03-26/07')
+        ->toContain('brand-logo-link')
         ->toContain('InterTooler.ru')
+        ->toContain('class="order-item-name"')
+        ->toContain('class="order-item-facts"')
         ->toContain('+7 (900) 246-86-60')
         ->toContain('sales@intertooler.ru')
-        ->not->toContain('<a ')
-        ->not->toContain('href=')
         ->not->toContain('<img')
-        ->not->toContain('src=')
-        ->not->toContain('mailto:')
-        ->not->toContain('tel:')
-        ->not->toContain('display: none')
-        ->not->toContain('font-size: 0')
-        ->not->toContain('<table')
-        ->not->toContain('<th');
+        ->not->toContain('images/logo.png')
+        ->not->toContain('images/logo.svg');
 });

@@ -35,8 +35,9 @@ test('user sends custom verification email notification', function () {
     Notification::assertSentTo($user, VerifyEmailNotification::class, function ($notification) use ($user) {
         expect((string) $notification->toMail($user)->render())
             ->toContain('Подтвердите e-mail')
-            ->not->toContain('brand-logo-link')
-            ->toContain('images/logo.png')
+            ->toContain('brand-logo-link')
+            ->toContain('InterTooler')
+            ->not->toContain('images/logo.png')
             ->not->toContain('images/logo.svg')
             ->toContain('padding: 16px 18px')
             ->toContain('background-color: #fff5f5')
@@ -56,8 +57,9 @@ test('user sends custom reset password notification', function () {
     Notification::assertSentTo($user, ResetPasswordNotification::class, function ($notification) use ($user) {
         expect((string) $notification->toMail($user)->render())
             ->toContain('Сброс пароля')
-            ->not->toContain('brand-logo-link')
-            ->toContain('images/logo.png')
+            ->toContain('brand-logo-link')
+            ->toContain('InterTooler')
+            ->not->toContain('images/logo.png')
             ->not->toContain('images/logo.svg')
             ->toContain('padding: 16px 18px')
             ->toContain('background-color: #fff5f5')
