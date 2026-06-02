@@ -43,8 +43,8 @@ test('mail theme partials render configured company brand and contacts', functio
         ->toContain('Test Brand')
         ->toContain('ООО Тестовая компания')
         ->toContain('г. Краснодар, ул. Тестовая, 10')
-        ->toContain('https://settings.example.com')
         ->toContain('settings.example.com')
+        ->not->toContain('href="https://settings.example.com"')
         ->toContain('+7 (999) 123-45-67')
         ->toContain('public@example.com')
         ->toContain('Footer note');

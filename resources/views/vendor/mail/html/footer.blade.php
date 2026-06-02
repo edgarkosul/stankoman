@@ -22,7 +22,7 @@
 @if (filled($address))
 <p class="footer-copy">{{ $address }}</p>
 @endif
-<p class="footer-link"><a href="{{ $siteUrl }}" target="_blank" rel="noopener">{{ $siteHost }}</a></p>
+<p class="footer-link">{{ $siteHost }}</p>
 @if (filled($phone))
 <p class="footer-link"><a href="tel:+{{ $phoneHref }}">{{ $phone }}</a></p>
 @endif
