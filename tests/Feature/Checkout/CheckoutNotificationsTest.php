@@ -50,6 +50,8 @@ it('dispatches order submitted event after checkout submit', function (): void {
 });
 
 it('queues customer and manager emails on order submitted event', function (): void {
+    config()->set('mail.from.address', 'noreply@intertooler.ru');
+    config()->set('settings.company.public_email', 'sales@intertooler.ru');
     config()->set('settings.general.manager_emails', [
         'manager.one@example.test',
         'manager.two@example.test',
@@ -94,13 +96,15 @@ it('queues customer and manager emails on order submitted event', function (): v
     Mail::assertQueued(OrderSubmittedManagerMail::class, function (OrderSubmittedManagerMail $mail) use ($order): bool {
         return $mail->order->is($order)
             && $mail->hasTo('manager.one@example.test')
-            && $mail->hasReplyTo('customer@example.test');
+            && $mail->hasReplyTo('sales@intertooler.ru')
+            && ! $mail->hasReplyTo('customer@example.test');
     });
 
     Mail::assertQueued(OrderSubmittedManagerMail::class, function (OrderSubmittedManagerMail $mail) use ($order): bool {
         return $mail->order->is($order)
             && $mail->hasTo('manager.two@example.test')
-            && $mail->hasReplyTo('customer@example.test');
+            && $mail->hasReplyTo('sales@intertooler.ru')
+            && ! $mail->hasReplyTo('customer@example.test');
     });
 
     Mail::assertQueuedCount(3);

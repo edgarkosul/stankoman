@@ -42,13 +42,7 @@ class SendOrderSubmittedEmails implements ShouldQueue
             ->values();
 
         foreach ($managerEmails as $managerEmail) {
-            $mailable = new OrderSubmittedManagerMail($order);
-
-            if (filter_var((string) $order->customer_email, FILTER_VALIDATE_EMAIL)) {
-                $mailable->replyTo((string) $order->customer_email);
-            }
-
-            Mail::to($managerEmail)->queue($mailable);
+            Mail::to($managerEmail)->queue(new OrderSubmittedManagerMail($order));
         }
 
         Log::info('SendOrderSubmittedEmails: queued mailables', [
