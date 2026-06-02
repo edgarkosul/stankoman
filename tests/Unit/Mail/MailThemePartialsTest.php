@@ -25,7 +25,7 @@ test('mail theme partials render configured company brand and contacts', functio
     ])->render();
 
     expect($header)
-        ->toContain('brand-logo-link')
+        ->not->toContain('brand-logo-link')
         ->toContain('images/logo.png')
         ->toContain('alt="InterTooler.ru"')
         ->not->toContain('images/logo.svg')
