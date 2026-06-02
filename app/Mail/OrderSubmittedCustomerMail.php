@@ -34,7 +34,7 @@ class OrderSubmittedCustomerMail extends Mailable implements ShouldQueue
     public function content(): Content
     {
         return new Content(
-            markdown: 'mail.orders.submitted_customer',
+            view: 'mail.orders.submitted_customer_simple',
             text: 'mail.orders.submitted_customer_text',
             with: [
                 'order' => $this->order,

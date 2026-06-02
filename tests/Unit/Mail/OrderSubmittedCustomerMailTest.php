@@ -45,3 +45,33 @@ test('order submitted customer mail has simple plain text body', function (): vo
         ->assertDontSeeInText('**')
         ->assertDontSeeInText('|');
 });
+
+test('order submitted customer mail has simple html without uri links or hidden parts', function (): void {
+    config()->set('company.public_email', 'sales@intertooler.ru');
+    config()->set('company.phone', '+7 (900) 246-86-60');
+    config()->set('settings.general.shop_name', 'InterTooler.ru');
+
+    $mail = app(MailPreviewFactory::class)->build('order-submitted-customer');
+
+    expect($mail)->toBeInstanceOf(OrderSubmittedCustomerMail::class);
+
+    $html = $mail->render();
+
+    expect($html)
+        ->toContain('<!doctype html>')
+        ->toContain('Ваш заказ №27-03-26/07 принят.')
+        ->toContain('Сумма заказа: 239 900,00 ₽.')
+        ->toContain('InterTooler.ru')
+        ->toContain('+7 (900) 246-86-60')
+        ->toContain('sales@intertooler.ru')
+        ->not->toContain('<a ')
+        ->not->toContain('href=')
+        ->not->toContain('<img')
+        ->not->toContain('src=')
+        ->not->toContain('mailto:')
+        ->not->toContain('tel:')
+        ->not->toContain('display: none')
+        ->not->toContain('font-size: 0')
+        ->not->toContain('<table')
+        ->not->toContain('<th');
+});
