@@ -25,8 +25,8 @@ class OrderSubmittedCustomerMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            from: $this->shopAddress(),
-            replyTo: [$this->shopAddress()],
+            from: $this->fromAddress(),
+            replyTo: [$this->replyToAddress()],
             subject: 'Ваш заказ №'.$this->order->order_number.' принят',
         );
     }
@@ -58,7 +58,15 @@ class OrderSubmittedCustomerMail extends Mailable implements ShouldQueue
         return [];
     }
 
-    private function shopAddress(): Address
+    private function fromAddress(): Address
+    {
+        return new Address(
+            (string) config('mail.from.address'),
+            (string) config('settings.general.shop_name', config('app.name')),
+        );
+    }
+
+    private function replyToAddress(): Address
     {
         $address = (string) config('company.public_email', config('mail.from.address'));
 

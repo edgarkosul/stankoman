@@ -92,9 +92,9 @@ it('queues customer and manager emails on order submitted event', function (): v
     Mail::assertQueued(OrderSubmittedCustomerMail::class, function (OrderSubmittedCustomerMail $mail) use ($order): bool {
         return $mail->order->is($order)
             && $mail->hasTo('customer@example.test')
-            && $mail->hasFrom('sales@intertooler.ru')
+            && $mail->hasFrom('noreply@intertooler.ru')
             && $mail->hasReplyTo('sales@intertooler.ru')
-            && ! $mail->hasFrom('noreply@intertooler.ru')
+            && ! $mail->hasFrom('sales@intertooler.ru')
             && ! $mail->hasReplyTo('customer@example.test');
     });
 

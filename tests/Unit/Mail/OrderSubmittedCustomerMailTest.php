@@ -15,7 +15,7 @@ test('order submitted customer mail uses shop address and auto generated headers
 
     expect($mail)->toBeInstanceOf(OrderSubmittedCustomerMail::class);
 
-    $mail->assertFrom('sales@intertooler.ru', 'InterTooler.ru');
+    $mail->assertFrom('noreply@intertooler.ru', 'InterTooler.ru');
     $mail->assertHasReplyTo('sales@intertooler.ru', 'InterTooler.ru');
 
     expect($mail->headers()->text)->toBe([
