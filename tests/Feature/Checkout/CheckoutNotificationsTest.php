@@ -51,7 +51,7 @@ it('dispatches order submitted event after checkout submit', function (): void {
 
 it('queues customer and manager emails on order submitted event', function (): void {
     config()->set('mail.from.address', 'noreply@intertooler.ru');
-    config()->set('settings.company.public_email', 'sales@intertooler.ru');
+    config()->set('company.public_email', 'sales@intertooler.ru');
     config()->set('settings.general.manager_emails', [
         'manager.one@example.test',
         'manager.two@example.test',

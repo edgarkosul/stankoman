@@ -51,7 +51,7 @@ class OrderSubmittedManagerMail extends Mailable implements ShouldQueue
     private function replyToAddress(): array
     {
         $fromAddress = (string) config('mail.from.address');
-        $publicAddress = (string) config('settings.company.public_email', $fromAddress);
+        $publicAddress = (string) config('company.public_email', $fromAddress);
         $replyToAddress = $this->isSameDomainAddress($publicAddress, $fromAddress)
             ? $publicAddress
             : $fromAddress;
