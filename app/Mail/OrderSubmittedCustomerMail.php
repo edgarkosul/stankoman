@@ -7,8 +7,10 @@ use App\Support\Mail\OrderMailViewData;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Mail\Mailables\Headers;
 use Illuminate\Queue\SerializesModels;
 
 class OrderSubmittedCustomerMail extends Mailable implements ShouldQueue
@@ -23,6 +25,8 @@ class OrderSubmittedCustomerMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
+            from: $this->shopAddress(),
+            replyTo: [$this->shopAddress()],
             subject: 'Ваш заказ №'.$this->order->order_number.' принят',
         );
     }
@@ -31,6 +35,7 @@ class OrderSubmittedCustomerMail extends Mailable implements ShouldQueue
     {
         return new Content(
             markdown: 'mail.orders.submitted_customer',
+            text: 'mail.orders.submitted_customer_text',
             with: [
                 'order' => $this->order,
                 'mailData' => new OrderMailViewData($this->order),
@@ -38,8 +43,29 @@ class OrderSubmittedCustomerMail extends Mailable implements ShouldQueue
         );
     }
 
+    public function headers(): Headers
+    {
+        return new Headers(
+            text: [
+                'Auto-Submitted' => 'auto-generated',
+                'X-Auto-Response-Suppress' => 'All',
+            ],
+        );
+    }
+
     public function attachments(): array
     {
         return [];
+    }
+
+    private function shopAddress(): Address
+    {
+        $address = (string) config('company.public_email', config('mail.from.address'));
+
+        if (filter_var($address, FILTER_VALIDATE_EMAIL) === false) {
+            $address = (string) config('mail.from.address');
+        }
+
+        return new Address($address, (string) config('settings.general.shop_name', config('app.name')));
     }
 }

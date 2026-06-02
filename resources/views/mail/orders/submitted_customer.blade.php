@@ -38,6 +38,6 @@
 {{ $mailData->shopName() }}
 
 <x-mail::subcopy>
-Если вы не оформляли этот заказ, просто ответьте на это письмо.
+Если вы не оформляли этот заказ, напишите нам на {{ config('company.public_email') }}.
 </x-mail::subcopy>
 </x-mail::message>
