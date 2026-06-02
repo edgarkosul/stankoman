@@ -7,7 +7,6 @@
     $phone = trim((string) config('company.phone'));
     $phoneHref = preg_replace('/\D+/', '', (string) $phone) ?? '';
     $publicEmail = trim((string) config('company.public_email', config('mail.from.address')));
-    $logoUrl = url('/images/logo.svg');
 @endphp
 
 <tr>
@@ -18,8 +17,8 @@
 <table class="header-top" width="100%" cellpadding="0" cellspacing="0" role="presentation">
 <tr>
 <td class="header-brand-column" width="52%" valign="top">
-<a href="{{ $siteUrl }}" class="brand-logo-link" target="_blank" rel="noopener" aria-label="{{ $shopName }}">
-<img src="{{ $logoUrl }}" alt="{{ $shopName }}" class="brand-logo" width="216">
+<a href="{{ $siteUrl }}" class="brand-logo-link" target="_blank" rel="noopener">
+{{ $shopName }}
 </a>
 </td>
 <td class="header-contact-column" width="48%" valign="top" align="right">
