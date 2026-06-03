@@ -18,7 +18,7 @@ class LegacyProductsRelationManager extends RelationManager
 {
     protected static string $relationship = 'legacyProducts';
 
-    protected static ?string $title = 'Legacy Kraton';
+    protected static ?string $title = 'KratonShop товары';
 
     public function table(Table $table): Table
     {
@@ -26,13 +26,13 @@ class LegacyProductsRelationManager extends RelationManager
             ->recordTitleAttribute('name')
             ->columns([
                 TextColumn::make('source_path')
-                    ->label('Legacy URL')
+                    ->label('Старый URL')
                     ->searchable()
                     ->copyable()
-                    ->url(fn (LegacyProduct $record): string => 'https://kratonkuban.ru'.$record->source_path)
+                    ->url(fn(LegacyProduct $record): string => 'https://kratonkuban.ru' . $record->source_path)
                     ->openUrlInNewTab(),
                 TextColumn::make('name')
-                    ->label('Legacy наименование')
+                    ->label('Название')
                     ->searchable()
                     ->wrap(),
                 TextColumn::make('sku')
@@ -56,19 +56,19 @@ class LegacyProductsRelationManager extends RelationManager
             ])
             ->headerActions([
                 Action::make('addLegacyMatch')
-                    ->label('Добавить legacy-матч')
+                    ->label('Добавить соответствие')
                     ->icon('heroicon-o-link')
                     ->form([
                         Select::make('legacy_product_id')
-                            ->label('Legacy товар')
+                            ->label('Товары из KratonShop')
                             ->searchable()
                             ->required()
                             ->getSearchResultsUsing(
-                                fn (string $search): array => $this->legacyProductSearchQuery($search)
+                                fn(string $search): array => $this->legacyProductSearchQuery($search)
                                     ->limit(50)
                                     ->get()
                                     ->mapWithKeys(
-                                        fn (LegacyProduct $legacyProduct): array => [
+                                        fn(LegacyProduct $legacyProduct): array => [
                                             $legacyProduct->getKey() => $this->legacyProductOptionLabel($legacyProduct),
                                         ]
                                     )
