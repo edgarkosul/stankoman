@@ -39,13 +39,13 @@ class LegacyProductResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn(Builder $query): Builder => $query->with('matchedProduct:id,name,slug,sku'))
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with('matchedProduct:id,name,slug,sku'))
             ->columns([
                 TextColumn::make('source_path')
                     ->label('KratonKuban URL')
                     ->searchable()
                     ->copyable()
-                    ->url(fn(LegacyProduct $record): string => static::legacyUrl($record))
+                    ->url(fn (LegacyProduct $record): string => static::legacyUrl($record))
                     ->openUrlInNewTab(),
                 TextColumn::make('name')
                     ->label('KratonKuban наименование')
@@ -70,7 +70,7 @@ class LegacyProductResource extends Resource
                                 ->orWhere('slug', 'like', "%{$search}%");
                         });
                     })
-                    ->url(fn(LegacyProduct $record): ?string => $record->matchedProduct
+                    ->url(fn (LegacyProduct $record): ?string => $record->matchedProduct
                         ? ProductResource::getUrl('edit', ['record' => $record->matchedProduct])
                         : null)
                     ->wrap()
@@ -78,12 +78,12 @@ class LegacyProductResource extends Resource
                 TextColumn::make('match_strategy')
                     ->label('Тип соответствия')
                     ->badge()
-                    ->formatStateUsing(fn(?string $state): string => static::matchStrategyLabel($state))
+                    ->formatStateUsing(fn (?string $state): string => static::matchStrategyLabel($state))
                     ->placeholder('Без соответствия'),
                 TextColumn::make('match_source')
                     ->label('Источник')
                     ->badge()
-                    ->formatStateUsing(fn(?string $state): string => static::matchSourceLabel($state))
+                    ->formatStateUsing(fn (?string $state): string => static::matchSourceLabel($state))
                     ->placeholder('Не указан')
                     ->toggleable(isToggledHiddenByDefault: true),
                 IconColumn::make('match_locked')
@@ -115,10 +115,10 @@ class LegacyProductResource extends Resource
                             'unmatched' => $query
                                 ->whereNull('matched_product_id')
                                 ->where(function (Builder $query): void {
-                                        $query
+                                    $query
                                         ->whereNull('match_strategy')
                                         ->orWhere('match_strategy', '!=', LegacyProduct::STRATEGY_MANUAL_REMOVED);
-                                    }),
+                                }),
                             'manual' => $query->where('match_source', LegacyProduct::MATCH_SOURCE_MANUAL),
                             'auto' => $query->where('match_source', LegacyProduct::MATCH_SOURCE_AUTO),
                             'removed' => $query->where('match_strategy', LegacyProduct::STRATEGY_MANUAL_REMOVED),
@@ -130,7 +130,7 @@ class LegacyProductResource extends Resource
                     ->options([
                         'sku_exact' => 'Артикул точно',
                         'sku_normalized' => 'Артикул нормализованный',
-                        'name_normalized' => 'Наименование нормализованное',
+                        'name_normalized' => 'Имя',
                         LegacyProduct::STRATEGY_MANUAL => 'Ручное',
                         LegacyProduct::STRATEGY_MANUAL_REMOVED => 'Убрано вручную',
                     ]),
@@ -151,7 +151,7 @@ class LegacyProductResource extends Resource
                             ->searchable()
                             ->required()
                             ->getSearchResultsUsing(
-                                fn(string $search): array => Product::query()
+                                fn (string $search): array => Product::query()
                                     ->where(function (Builder $query) use ($search): void {
                                         $query
                                             ->where('name', 'like', "%{$search}%")
@@ -162,7 +162,7 @@ class LegacyProductResource extends Resource
                                     ->limit(50)
                                     ->get(['id', 'name', 'sku'])
                                     ->mapWithKeys(
-                                        fn(Product $product): array => [
+                                        fn (Product $product): array => [
                                             $product->getKey() => static::productOptionLabel($product),
                                         ]
                                     )
@@ -204,13 +204,13 @@ class LegacyProductResource extends Resource
                 Action::make('openLegacy')
                     ->label('')
                     ->icon('heroicon-o-arrow-top-right-on-square')
-                    ->url(fn(LegacyProduct $record): string => static::legacyUrl($record))
+                    ->url(fn (LegacyProduct $record): string => static::legacyUrl($record))
                     ->openUrlInNewTab(),
                 Action::make('openProduct')
                     ->label('')
                     ->icon('heroicon-o-briefcase')
-                    ->visible(fn(LegacyProduct $record): bool => $record->matchedProduct instanceof Product)
-                    ->url(fn(LegacyProduct $record): ?string => $record->matchedProduct
+                    ->visible(fn (LegacyProduct $record): bool => $record->matchedProduct instanceof Product)
+                    ->url(fn (LegacyProduct $record): ?string => $record->matchedProduct
                         ? route('product.show', $record->matchedProduct)
                         : null)
                     ->openUrlInNewTab(),
@@ -252,7 +252,7 @@ class LegacyProductResource extends Resource
 
     private static function legacyUrl(LegacyProduct $record): string
     {
-        return 'https://kratonkuban.ru' . $record->source_path;
+        return 'https://kratonkuban.ru'.$record->source_path;
     }
 
     private static function matchStrategyLabel(?string $state): string
@@ -260,7 +260,7 @@ class LegacyProductResource extends Resource
         return match ($state) {
             'sku_exact' => 'Артикул точно',
             'sku_normalized' => 'Артикул нормализованный',
-            'name_normalized' => 'Наименование нормализованное',
+            'name_normalized' => 'Имя',
             LegacyProduct::STRATEGY_MANUAL => 'Ручное',
             LegacyProduct::STRATEGY_MANUAL_REMOVED => 'Убрано вручную',
             default => (string) $state,

@@ -157,7 +157,7 @@ class LegacyProductsRelationManager extends RelationManager
         return match ($state) {
             'sku_exact' => 'Артикул точно',
             'sku_normalized' => 'Артикул нормализованный',
-            'name_normalized' => 'Наименование нормализованное',
+            'name_normalized' => 'Имя',
             LegacyProduct::STRATEGY_MANUAL => 'Ручное',
             LegacyProduct::STRATEGY_MANUAL_REMOVED => 'Убрано вручную',
             default => (string) $state,
