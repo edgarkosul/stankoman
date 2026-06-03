@@ -19,6 +19,11 @@ Schedule::command('products:search-reindex')
     ->dailyAt('06:30')
     ->withoutOverlapping(180);
 
+Schedule::command('legacy:kraton-match')
+    ->dailyAt('05:20')
+    ->withoutOverlapping(180)
+    ->appendOutputTo(storage_path('logs/legacy-kraton-match.log'));
+
 Schedule::command('products:sync-currency-rates')
     ->dailyAt('00:00')
     ->withoutOverlapping(180);

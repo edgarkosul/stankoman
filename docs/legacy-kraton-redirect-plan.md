@@ -54,6 +54,8 @@ Status as of 2026-05-29:
 - Implemented and deployed: `php artisan legacy:kraton-import`.
 - Implemented and deployed: `php artisan legacy:kraton-match`.
 - Implemented and deployed: Laravel resolver endpoint `GET /_legacy/kraton/resolve`.
+- Implemented locally, pending deploy: append-only daily matching mode with manual match locks.
+- Implemented locally, pending deploy: Filament product edit relation manager for manual legacy matching/unmatching.
 - Not implemented yet: nginx interception for `kratonkuban.ru`.
 - Not enabled yet: browser-visible redirects from `kratonkuban.ru` legacy URLs.
 
@@ -124,6 +126,65 @@ Last local result:
 15 passed
 ```
 
+## Temporary Nginx Test Preparation
+
+Status as of 2026-06-03:
+
+- Full nginx test has not been applied yet.
+- Current SSH user can read nginx config but cannot write `/etc/nginx` and has no passwordless sudo.
+- Temporary nginx artifacts were prepared locally and uploaded to production `/tmp`.
+- The temporary nginx test is intentionally limited to `name_normalized` matches only.
+
+Reason for limiting the test:
+
+Several SKU-only matches were found to be unsafe during sample inspection. Examples:
+
+- Legacy `Аппарат плазменной резки FoxWeld VARTEG PLASMA 70` with SKU `6156` matched current `Масло компрессорное DALI OIL S-46 205л`.
+- Legacy `Электрогенератор бензиновый Huter DY5000L` with SKU `64/1/5` matched current `Аппарат ручной лазерной очистки MetMachine MLC-2000`.
+- Legacy `Машина для резки листов Start CG-30 I` with SKU `3EV255P` matched current `Установка аргонодуговой сварки Everlast PowerTig 255 EXT`.
+
+For this reason, the prepared nginx allowlist contains only 88 `name_normalized` matches. All other legacy PHP URLs continue through the original `kratonkuban.ru` PHP handler.
+
+Prepared local artifacts:
+
+- `docs/artifacts/legacy-kraton-redirects-20260603-140806.xlsx`
+- `docs/artifacts/kraton-legacy-redirect-test-locations.conf`
+- `docs/artifacts/kratonkuban.ru.before-legacy-test-20260603.conf`
+- `docs/artifacts/kratonkuban.ru.legacy-test-20260603.conf`
+
+Uploaded production temporary files:
+
+- `/tmp/kraton-legacy-redirect-test-locations.conf`
+- `/tmp/kratonkuban.ru.before-legacy-test-20260603.conf`
+- `/tmp/kratonkuban.ru.legacy-test-20260603.conf`
+
+Apply commands, to be run by a user with sudo:
+
+```bash
+sudo cp /etc/nginx/sites-available/kratonkuban.ru /etc/nginx/sites-available/kratonkuban.ru.before-legacy-test-20260603
+sudo install -o root -g root -m 0644 /tmp/kraton-legacy-redirect-test-locations.conf /etc/nginx/snippets/kraton-legacy-redirect-test-locations.conf
+sudo install -o root -g root -m 0644 /tmp/kratonkuban.ru.legacy-test-20260603.conf /etc/nginx/sites-available/kratonkuban.ru
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Rollback commands:
+
+```bash
+sudo install -o root -g root -m 0644 /tmp/kratonkuban.ru.before-legacy-test-20260603.conf /etc/nginx/sites-available/kratonkuban.ru
+sudo rm -f /etc/nginx/snippets/kraton-legacy-redirect-test-locations.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Expected behavior during temporary nginx test:
+
+- URLs in `/etc/nginx/snippets/kraton-legacy-redirect-test-locations.conf` return `302` to `https://intertooler.ru/product/{slug}`.
+- Any resolver `404` falls back internally to the old legacy PHP page.
+- All non-allowlisted PHP pages continue to be served by `/var/www/kratonkuban.ru` as before.
+
+Sample test URLs from different categories are listed in the `test_samples` sheet of the Excel file.
+
 ## Data Model
 
 Created a small table for parsed legacy products: `legacy_products`.
@@ -179,6 +240,20 @@ Implemented Artisan command:
 
 `php artisan legacy:kraton-match`
 
+Default mode is append-only:
+
+- Processes only unlocked legacy rows without `matched_product_id`.
+- Does not change existing automatic matches.
+- Does not change locked manual matches or manual removals.
+- Intended for daily scheduled execution.
+
+Refresh mode:
+
+`php artisan legacy:kraton-match --refresh`
+
+- Recalculates unlocked automatic rows.
+- Still does not touch locked manual decisions.
+
 Primary matching order:
 
 1. Exact non-empty SKU match against `products.sku`.
@@ -202,6 +277,38 @@ Redirect policy:
 - When in doubt, leave `redirect_enabled = false` so the old page continues to work.
 
 Because `intertooler` continues to evolve, this command can be rerun later without reparsing the old site.
+
+Daily schedule:
+
+```php
+Schedule::command('legacy:kraton-match')
+    ->dailyAt('05:20')
+    ->withoutOverlapping(180)
+    ->appendOutputTo(storage_path('logs/legacy-kraton-match.log'));
+```
+
+## Manual Matching
+
+Manual matching is implemented locally in the product edit screen via `LegacyProductsRelationManager`.
+
+Manual add from product edit:
+
+- Select a legacy product by path/name/SKU/manufacturer.
+- Set `matched_product_id` to the current product.
+- Set `match_strategy = manual`.
+- Set `match_source = manual`.
+- Set `match_locked = true`.
+- Set `redirect_enabled = true`.
+
+Manual remove from product edit:
+
+- Clear `matched_product_id`.
+- Set `match_strategy = manual_removed`.
+- Set `match_source = manual`.
+- Set `match_locked = true`.
+- Set `redirect_enabled = false`.
+
+Locked manual rows are skipped by scheduled automatic matching, including `--refresh`.
 
 ## Runtime Redirect Flow
 

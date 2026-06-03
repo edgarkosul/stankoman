@@ -22,6 +22,10 @@ class LegacyKratonRedirectController extends Controller
             ->where('source_site', config('legacy.kraton.source_site'))
             ->where('source_path', $sourcePath)
             ->where('redirect_enabled', true)
+            ->when(
+                config('legacy.kraton.allowed_match_strategies') !== [],
+                fn ($query) => $query->whereIn('match_strategy', config('legacy.kraton.allowed_match_strategies')),
+            )
             ->first();
 
         $product = $legacyProduct?->matchedProduct;

@@ -41,6 +41,48 @@ test('it returns not found when a legacy product has no enabled redirect', funct
         ->assertNotFound();
 });
 
+test('it can restrict redirects to configured match strategies', function (): void {
+    config()->set('legacy.kraton.redirect_base_url', 'https://intertooler.test');
+    config()->set('legacy.kraton.allowed_match_strategies', ['name_normalized']);
+
+    $product = createResolverProduct([
+        'slug' => 'sku-only-product',
+    ]);
+
+    LegacyProduct::query()->create([
+        'source_site' => 'kratonkuban.ru',
+        'source_path' => '/sku-only-product.php',
+        'name' => 'SKU only product',
+        'matched_product_id' => $product->id,
+        'match_strategy' => 'sku_exact',
+        'redirect_enabled' => true,
+    ]);
+
+    $this->get(route('legacy.kraton.resolve', ['path' => '/sku-only-product.php']))
+        ->assertNotFound();
+});
+
+test('it redirects configured allowed match strategies', function (): void {
+    config()->set('legacy.kraton.redirect_base_url', 'https://intertooler.test');
+    config()->set('legacy.kraton.allowed_match_strategies', ['name_normalized']);
+
+    $product = createResolverProduct([
+        'slug' => 'name-match-product',
+    ]);
+
+    LegacyProduct::query()->create([
+        'source_site' => 'kratonkuban.ru',
+        'source_path' => '/name-match-product.php',
+        'name' => 'Name match product',
+        'matched_product_id' => $product->id,
+        'match_strategy' => 'name_normalized',
+        'redirect_enabled' => true,
+    ]);
+
+    $this->get(route('legacy.kraton.resolve', ['path' => '/name-match-product.php']))
+        ->assertRedirect('https://intertooler.test/product/name-match-product');
+});
+
 test('it returns not found when a matched product is inactive', function (): void {
     $product = createResolverProduct([
         'is_active' => false,

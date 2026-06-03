@@ -135,6 +135,11 @@ class Product extends Model
         return 'stankoman_products';
     }
 
+    public function legacyProducts(): HasMany
+    {
+        return $this->hasMany(LegacyProduct::class, 'matched_product_id');
+    }
+
     public function toSearchableArray(): array
     {
         // Оригиналы

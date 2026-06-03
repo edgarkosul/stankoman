@@ -8,6 +8,7 @@ use App\Filament\Resources\Products\Pages\ListProducts;
 use App\Filament\Resources\Products\RelationManagers\AttributeOptionsRelationManager;
 use App\Filament\Resources\Products\RelationManagers\AttributeValuesRelationManager;
 use App\Filament\Resources\Products\RelationManagers\CategoriesRelationManager;
+use App\Filament\Resources\Products\RelationManagers\LegacyProductsRelationManager;
 use App\Filament\Resources\Products\Schemas\ProductForm;
 use App\Filament\Resources\Products\Tables\ProductsTable;
 use App\Models\Product;
@@ -60,6 +61,7 @@ class ProductResource extends Resource
                 AttributeOptionsRelationManager::class,
             ]),
             CategoriesRelationManager::class,
+            LegacyProductsRelationManager::class,
         ];
     }
 

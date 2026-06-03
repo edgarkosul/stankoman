@@ -2,6 +2,7 @@
 
 use App\Models\LegacyProduct;
 use App\Models\Product;
+use App\Models\User;
 use App\Support\NameNormalizer;
 use Illuminate\Support\Facades\Artisan;
 
@@ -26,6 +27,9 @@ test('it matches legacy products by exact sku', function (): void {
     expect($exitCode)->toBe(0)
         ->and($legacyProduct->matched_product_id)->toBe($product->id)
         ->and($legacyProduct->match_strategy)->toBe('sku_exact')
+        ->and($legacyProduct->match_source)->toBe('auto')
+        ->and($legacyProduct->match_locked)->toBeFalse()
+        ->and($legacyProduct->matched_at)->not->toBeNull()
         ->and($legacyProduct->redirect_enabled)->toBeTrue();
 });
 
@@ -104,7 +108,34 @@ test('it does not enable redirect for ambiguous exact sku matches', function ():
         ->and($legacyProduct->redirect_enabled)->toBeFalse();
 });
 
-test('it clears previous match when product is no longer uniquely matched', function (): void {
+test('it does not touch existing matches by default', function (): void {
+    $product = createMatchProduct([
+        'name' => 'Существующий матч',
+        'slug' => 'existing-match-product',
+        'sku' => 'CLEAR-ME',
+    ]);
+
+    $legacyProduct = LegacyProduct::query()->create([
+        'source_site' => 'kratonkuban.ru',
+        'source_path' => '/existing-match.php',
+        'name' => 'Legacy existing',
+        'sku' => 'UNKNOWN',
+        'matched_product_id' => $product->id,
+        'match_strategy' => 'sku_exact',
+        'match_source' => 'auto',
+        'redirect_enabled' => true,
+    ]);
+
+    Artisan::call('legacy:kraton-match');
+
+    $legacyProduct->refresh();
+
+    expect($legacyProduct->matched_product_id)->toBe($product->id)
+        ->and($legacyProduct->match_strategy)->toBe('sku_exact')
+        ->and($legacyProduct->redirect_enabled)->toBeTrue();
+});
+
+test('it clears previous unlocked automatic match in refresh mode when product is no longer uniquely matched', function (): void {
     $product = createMatchProduct([
         'name' => 'Удаляемый матч',
         'slug' => 'cleared-match-product',
@@ -118,15 +149,92 @@ test('it clears previous match when product is no longer uniquely matched', func
         'sku' => 'UNKNOWN',
         'matched_product_id' => $product->id,
         'match_strategy' => 'sku_exact',
+        'match_source' => 'auto',
+        'match_locked' => false,
         'redirect_enabled' => true,
     ]);
 
-    Artisan::call('legacy:kraton-match');
+    Artisan::call('legacy:kraton-match', [
+        '--refresh' => true,
+    ]);
 
     $legacyProduct->refresh();
 
     expect($legacyProduct->matched_product_id)->toBeNull()
         ->and($legacyProduct->match_strategy)->toBeNull()
+        ->and($legacyProduct->match_source)->toBeNull()
+        ->and($legacyProduct->redirect_enabled)->toBeFalse();
+});
+
+test('it never changes locked manual matches', function (): void {
+    $manualProduct = createMatchProduct([
+        'name' => 'Ручной товар',
+        'slug' => 'manual-product',
+        'sku' => 'MANUAL',
+    ]);
+
+    createMatchProduct([
+        'name' => 'Автоматический кандидат',
+        'slug' => 'automatic-candidate',
+        'sku' => 'AUTO-CANDIDATE',
+    ]);
+
+    $legacyProduct = LegacyProduct::query()->create([
+        'source_site' => 'kratonkuban.ru',
+        'source_path' => '/manual-match.php',
+        'name' => 'Автоматический кандидат',
+        'sku' => 'AUTO-CANDIDATE',
+        'matched_product_id' => $manualProduct->id,
+        'match_strategy' => 'manual',
+        'match_source' => 'manual',
+        'match_locked' => true,
+        'redirect_enabled' => true,
+    ]);
+
+    Artisan::call('legacy:kraton-match', [
+        '--refresh' => true,
+    ]);
+
+    $legacyProduct->refresh();
+
+    expect($legacyProduct->matched_product_id)->toBe($manualProduct->id)
+        ->and($legacyProduct->match_strategy)->toBe('manual')
+        ->and($legacyProduct->match_source)->toBe('manual')
+        ->and($legacyProduct->match_locked)->toBeTrue()
+        ->and($legacyProduct->redirect_enabled)->toBeTrue();
+});
+
+test('manual removal locks a legacy product from future automatic matching', function (): void {
+    $user = User::factory()->create();
+    $product = createMatchProduct([
+        'name' => 'Автоматический кандидат',
+        'slug' => 'manual-removal-candidate',
+        'sku' => 'REMOVE-CANDIDATE',
+    ]);
+
+    $legacyProduct = LegacyProduct::query()->create([
+        'source_site' => 'kratonkuban.ru',
+        'source_path' => '/manual-removal.php',
+        'name' => 'Автоматический кандидат',
+        'sku' => 'REMOVE-CANDIDATE',
+        'matched_product_id' => $product->id,
+        'match_strategy' => 'sku_exact',
+        'match_source' => 'auto',
+        'redirect_enabled' => true,
+    ]);
+
+    $legacyProduct->removeManualMatch($user);
+    Artisan::call('legacy:kraton-match', [
+        '--refresh' => true,
+    ]);
+
+    $legacyProduct->refresh();
+
+    expect($legacyProduct->matched_product_id)->toBeNull()
+        ->and($legacyProduct->match_strategy)->toBe('manual_removed')
+        ->and($legacyProduct->match_source)->toBe('manual')
+        ->and($legacyProduct->match_locked)->toBeTrue()
+        ->and($legacyProduct->matched_by_user_id)->toBe($user->id)
         ->and($legacyProduct->redirect_enabled)->toBeFalse();
 });
 
