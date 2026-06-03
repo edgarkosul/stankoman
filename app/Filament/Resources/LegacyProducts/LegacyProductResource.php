@@ -143,6 +143,8 @@ class LegacyProductResource extends Resource
                 Action::make('matchManually')
                     ->label('Добавить соответствие')
                     ->icon('heroicon-o-link')
+                    ->iconButton()
+                    ->tooltip('Добавить соответствие')
                     ->form([
                         Select::make('product_id')
                             ->label('Intertooler товар')
@@ -185,6 +187,8 @@ class LegacyProductResource extends Resource
                 Action::make('removeMatch')
                     ->label('Убрать соответствие')
                     ->icon('heroicon-o-link-slash')
+                    ->iconButton()
+                    ->tooltip('Убрать соответствие')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalHeading('Убрать соответствие с KratonKuban товаром?')
