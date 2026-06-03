@@ -92,24 +92,24 @@ class LegacyProductsRelationManager extends RelationManager
 
                         Notification::make()
                             ->success()
-                            ->title('Legacy-матч добавлен')
+                            ->title('Соответствие добавлено')
                             ->send();
                     }),
             ])
             ->recordActions([
                 Action::make('removeLegacyMatch')
-                    ->label('Снять матч')
+                    ->label('Снять соответствие')
                     ->icon('heroicon-o-link-slash')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->modalHeading('Снять legacy-матч?')
-                    ->modalDescription('Матч будет снят вручную и заблокирован от повторного автоматического матчинга.')
+                    ->modalHeading('Снять соответсвие?')
+                    ->modalDescription('Соответствие будет снято вручную и заблокировано от повторного автоматического матчинга.')
                     ->action(function (LegacyProduct $record): void {
                         $record->removeManualMatch($this->currentUser());
 
                         Notification::make()
                             ->success()
-                            ->title('Legacy-матч снят')
+                            ->title('Соответствие снято')
                             ->send();
                     }),
             ]);
