@@ -62,6 +62,8 @@ class LegacyProductsRelationManager extends RelationManager
                 Action::make('addLegacyMatch')
                     ->label('Добавить соответствие')
                     ->icon('heroicon-o-link')
+                    ->iconButton()
+                    ->tooltip('Добавить соответствие')
                     ->form([
                         Select::make('legacy_product_id')
                             ->label('KratonKuban товар')
@@ -104,6 +106,8 @@ class LegacyProductsRelationManager extends RelationManager
                 Action::make('removeLegacyMatch')
                     ->label('Убрать соответствие')
                     ->icon('heroicon-o-link-slash')
+                    ->iconButton()
+                    ->tooltip('Убрать соответствие')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalHeading('Убрать соответствие?')
