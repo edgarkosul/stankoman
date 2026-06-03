@@ -9,6 +9,8 @@ use App\Models\Product;
 use App\Models\User;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
+use Filament\Actions\BulkActionGroup;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -18,6 +20,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 
 class LegacyProductResource extends Resource
@@ -215,6 +218,67 @@ class LegacyProductResource extends Resource
                         : null)
                     ->openUrlInNewTab(),
             ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    BulkAction::make('bulkMatchManually')
+                        ->label('Добавить соответствие')
+                        ->icon('heroicon-o-link')
+                        ->form([
+                            Select::make('product_id')
+                                ->label('Intertooler товар')
+                                ->searchable()
+                                ->required()
+                                ->getSearchResultsUsing(
+                                    fn (string $search): array => static::productSearchQuery($search)
+                                        ->limit(50)
+                                        ->get(['id', 'name', 'sku'])
+                                        ->mapWithKeys(
+                                            fn (Product $product): array => [
+                                                $product->getKey() => static::productOptionLabel($product),
+                                            ]
+                                        )
+                                        ->all()
+                                )
+                                ->getOptionLabelUsing(function (mixed $value): ?string {
+                                    $product = Product::query()->find($value);
+
+                                    return $product instanceof Product ? static::productOptionLabel($product) : null;
+                                }),
+                        ])
+                        ->action(function (EloquentCollection $records, array $data): void {
+                            /** @var Product $product */
+                            $product = Product::query()->findOrFail($data['product_id']);
+
+                            $records->each(function (LegacyProduct $record) use ($product): void {
+                                $record->applyManualMatch($product, static::currentUser());
+                            });
+
+                            Notification::make()
+                                ->success()
+                                ->title('Соответствия добавлены')
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    BulkAction::make('bulkRemoveMatch')
+                        ->label('Убрать соответствия')
+                        ->icon('heroicon-o-link-slash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('Убрать соответствия с выбранных KratonKuban товаров?')
+                        ->modalDescription('Соответствия будут убраны вручную и заблокированы от повторного автоматического матчинга.')
+                        ->action(function (EloquentCollection $records): void {
+                            $records->each(function (LegacyProduct $record): void {
+                                $record->removeManualMatch(static::currentUser());
+                            });
+
+                            Notification::make()
+                                ->success()
+                                ->title('Соответствия убраны')
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                ]),
+            ])
             ->defaultSort('updated_at', 'desc');
     }
 
@@ -248,6 +312,22 @@ class LegacyProductResource extends Resource
     private static function productOptionLabel(Product $product): string
     {
         return trim("{$product->name} | {$product->sku}");
+    }
+
+    private static function productSearchQuery(string $search): Builder
+    {
+        $search = trim($search);
+
+        return Product::query()
+            ->when($search !== '', function (Builder $query) use ($search): void {
+                $query->where(function (Builder $query) use ($search): void {
+                    $query
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('sku', 'like', "%{$search}%")
+                        ->orWhere('slug', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy('name');
     }
 
     private static function legacyUrl(LegacyProduct $record): string
