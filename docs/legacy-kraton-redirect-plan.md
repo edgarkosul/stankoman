@@ -56,8 +56,8 @@ Status as of 2026-05-29:
 - Implemented and deployed: Laravel resolver endpoint `GET /_legacy/kraton/resolve`.
 - Implemented locally, pending deploy: append-only daily matching mode with manual match locks.
 - Implemented locally, pending deploy: Filament product edit relation manager for manual legacy matching/unmatching.
-- Not implemented yet: nginx interception for `kratonkuban.ru`.
-- Not enabled yet: browser-visible redirects from `kratonkuban.ru` legacy URLs.
+- Enabled on production: nginx interception for top-level `kratonkuban.ru/*.php`.
+- Enabled on production: browser-visible `302` redirects for current `redirect_enabled` legacy rows.
 
 Production import result:
 
@@ -130,12 +130,13 @@ Last local result:
 
 Status as of 2026-06-03:
 
-- Full nginx test has not been applied yet.
-- Current SSH user can read nginx config but cannot write `/etc/nginx` and has no passwordless sudo.
-- Temporary nginx artifacts were prepared locally and uploaded to production `/tmp`.
-- The temporary nginx test is intentionally limited to `name_normalized` matches only.
+- Universal nginx test has been applied on production.
+- Current production config intercepts top-level `/*.php` requests and sends them to Laravel resolver.
+- Resolver `302` is passed to the browser.
+- Resolver `404` falls back internally to `/var/www/kratonkuban.ru`.
+- Non-PHP pages and non-root PHP paths are still handled by the old legacy config.
 
-Reason for limiting the test:
+Earlier safety note:
 
 Several SKU-only matches were found to be unsafe during sample inspection. Examples:
 
@@ -143,45 +144,52 @@ Several SKU-only matches were found to be unsafe during sample inspection. Examp
 - Legacy `Электрогенератор бензиновый Huter DY5000L` with SKU `64/1/5` matched current `Аппарат ручной лазерной очистки MetMachine MLC-2000`.
 - Legacy `Машина для резки листов Start CG-30 I` with SKU `3EV255P` matched current `Установка аргонодуговой сварки Everlast PowerTig 255 EXT`.
 
-For this reason, the prepared nginx allowlist contains only 88 `name_normalized` matches. All other legacy PHP URLs continue through the original `kratonkuban.ru` PHP handler.
+Despite that, the current production test follows the original agreed flow and uses all `redirect_enabled` rows because `kratonkuban.ru` traffic has low value compared to `intertooler.ru`.
 
 Prepared local artifacts:
 
 - `docs/artifacts/legacy-kraton-redirects-20260603-140806.xlsx`
-- `docs/artifacts/kraton-legacy-redirect-test-locations.conf`
 - `docs/artifacts/kratonkuban.ru.before-legacy-test-20260603.conf`
 - `docs/artifacts/kratonkuban.ru.legacy-test-20260603.conf`
+- `docs/artifacts/kratonkuban.ru.before-universal-legacy-20260603.conf`
+- `docs/artifacts/kratonkuban.ru.universal-legacy-20260603.conf`
 
-Uploaded production temporary files:
+Production backup:
 
-- `/tmp/kraton-legacy-redirect-test-locations.conf`
-- `/tmp/kratonkuban.ru.before-legacy-test-20260603.conf`
-- `/tmp/kratonkuban.ru.legacy-test-20260603.conf`
+- `/etc/nginx/sites-available/kratonkuban.ru.before-universal-legacy-20260603`
 
-Apply commands, to be run by a user with sudo:
+Current applied nginx flow:
 
-```bash
-sudo cp /etc/nginx/sites-available/kratonkuban.ru /etc/nginx/sites-available/kratonkuban.ru.before-legacy-test-20260603
-sudo install -o root -g root -m 0644 /tmp/kraton-legacy-redirect-test-locations.conf /etc/nginx/snippets/kraton-legacy-redirect-test-locations.conf
-sudo install -o root -g root -m 0644 /tmp/kratonkuban.ru.legacy-test-20260603.conf /etc/nginx/sites-available/kratonkuban.ru
-sudo nginx -t
-sudo systemctl reload nginx
+```nginx
+location ~ ^/[^/]+\.php$ {
+    proxy_intercept_errors on;
+    error_page 404 = @legacy_php_fallback;
+
+    proxy_set_header Host intertooler.ru;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_ssl_server_name on;
+    proxy_ssl_name intertooler.ru;
+
+    proxy_pass https://127.0.0.1/_legacy/kraton/resolve?path=$uri;
+}
 ```
 
 Rollback commands:
 
 ```bash
-sudo install -o root -g root -m 0644 /tmp/kratonkuban.ru.before-legacy-test-20260603.conf /etc/nginx/sites-available/kratonkuban.ru
-sudo rm -f /etc/nginx/snippets/kraton-legacy-redirect-test-locations.conf
+sudo install -o root -g root -m 0644 /etc/nginx/sites-available/kratonkuban.ru.before-universal-legacy-20260603 /etc/nginx/sites-available/kratonkuban.ru
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Expected behavior during temporary nginx test:
+Verified production behavior:
 
-- URLs in `/etc/nginx/snippets/kraton-legacy-redirect-test-locations.conf` return `302` to `https://intertooler.ru/product/{slug}`.
-- Any resolver `404` falls back internally to the old legacy PHP page.
-- All non-allowlisted PHP pages continue to be served by `/var/www/kratonkuban.ru` as before.
+- `https://kratonkuban.ru/reyka-k-tss-vt-l-20.php` returns `302` to `https://intertooler.ru/product/reika-k-tss-vt-l-20`.
+- `https://kratonkuban.ru/sverlilnyy-patron-metalmaster-1-13-mt2.php` returns old legacy `200` page with `charset=windows-1251`.
+- `https://kratonkuban.ru/` remains `200` from the legacy static root.
+- SKU-only rows are active too. Example: `https://kratonkuban.ru/apparat-plazmennoy-rezki-foxweld-varteg-plasma-70.php` redirects to the currently matched intertooler product.
 
 Sample test URLs from different categories are listed in the `test_samples` sheet of the Excel file.
 

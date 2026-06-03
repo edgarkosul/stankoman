@@ -18,7 +18,7 @@ class LegacyProductsRelationManager extends RelationManager
 {
     protected static string $relationship = 'legacyProducts';
 
-    protected static ?string $title = 'KratonShop товары';
+    protected static ?string $title = 'KratonKuban товары';
 
     public function table(Table $table): Table
     {
@@ -26,32 +26,36 @@ class LegacyProductsRelationManager extends RelationManager
             ->recordTitleAttribute('name')
             ->columns([
                 TextColumn::make('source_path')
-                    ->label('Старый URL')
+                    ->label('KratonKuban URL')
                     ->searchable()
                     ->copyable()
-                    ->url(fn(LegacyProduct $record): string => 'https://kratonkuban.ru' . $record->source_path)
+                    ->url(fn (LegacyProduct $record): string => 'https://kratonkuban.ru'.$record->source_path)
                     ->openUrlInNewTab(),
                 TextColumn::make('name')
-                    ->label('Название')
+                    ->label('KratonKuban наименование')
                     ->searchable()
                     ->wrap(),
                 TextColumn::make('sku')
-                    ->label('Артикул')
+                    ->label('KratonKuban артикул')
                     ->searchable(),
                 TextColumn::make('manufacturer')
                     ->label('Производитель')
                     ->searchable(),
                 TextColumn::make('match_strategy')
-                    ->label('Стратегия')
-                    ->badge(),
+                    ->label('Тип соответствия')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => $this->matchStrategyLabel($state))
+                    ->placeholder('Без соответствия'),
                 TextColumn::make('match_source')
                     ->label('Источник')
-                    ->badge(),
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => $this->matchSourceLabel($state))
+                    ->placeholder('Не указан'),
                 IconColumn::make('match_locked')
-                    ->label('Locked')
+                    ->label('Заблокировано')
                     ->boolean(),
                 IconColumn::make('redirect_enabled')
-                    ->label('Redirect')
+                    ->label('Редирект')
                     ->boolean(),
             ])
             ->headerActions([
@@ -60,15 +64,15 @@ class LegacyProductsRelationManager extends RelationManager
                     ->icon('heroicon-o-link')
                     ->form([
                         Select::make('legacy_product_id')
-                            ->label('Товары из KratonShop')
+                            ->label('KratonKuban товар')
                             ->searchable()
                             ->required()
                             ->getSearchResultsUsing(
-                                fn(string $search): array => $this->legacyProductSearchQuery($search)
+                                fn (string $search): array => $this->legacyProductSearchQuery($search)
                                     ->limit(50)
                                     ->get()
                                     ->mapWithKeys(
-                                        fn(LegacyProduct $legacyProduct): array => [
+                                        fn (LegacyProduct $legacyProduct): array => [
                                             $legacyProduct->getKey() => $this->legacyProductOptionLabel($legacyProduct),
                                         ]
                                     )
@@ -98,18 +102,18 @@ class LegacyProductsRelationManager extends RelationManager
             ])
             ->recordActions([
                 Action::make('removeLegacyMatch')
-                    ->label('Снять соответствие')
+                    ->label('Убрать соответствие')
                     ->icon('heroicon-o-link-slash')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->modalHeading('Снять соответсвие?')
-                    ->modalDescription('Соответствие будет снято вручную и заблокировано от повторного автоматического матчинга.')
+                    ->modalHeading('Убрать соответствие?')
+                    ->modalDescription('Соответствие будет убрано вручную и заблокировано от повторного автоматического матчинга.')
                     ->action(function (LegacyProduct $record): void {
                         $record->removeManualMatch($this->currentUser());
 
                         Notification::make()
                             ->success()
-                            ->title('Соответствие снято')
+                            ->title('Соответствие убрано')
                             ->send();
                     }),
             ]);
@@ -142,6 +146,27 @@ class LegacyProductsRelationManager extends RelationManager
             : '';
 
         return trim("{$legacyProduct->source_path} | {$legacyProduct->name} | {$legacyProduct->sku}{$matchedLabel}");
+    }
+
+    private function matchStrategyLabel(?string $state): string
+    {
+        return match ($state) {
+            'sku_exact' => 'Артикул точно',
+            'sku_normalized' => 'Артикул нормализованный',
+            'name_normalized' => 'Наименование нормализованное',
+            LegacyProduct::STRATEGY_MANUAL => 'Ручное',
+            LegacyProduct::STRATEGY_MANUAL_REMOVED => 'Убрано вручную',
+            default => (string) $state,
+        };
+    }
+
+    private function matchSourceLabel(?string $state): string
+    {
+        return match ($state) {
+            LegacyProduct::MATCH_SOURCE_AUTO => 'Авто',
+            LegacyProduct::MATCH_SOURCE_MANUAL => 'Ручное',
+            default => (string) $state,
+        };
     }
 
     private function currentUser(): ?User
