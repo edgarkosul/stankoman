@@ -25,7 +25,8 @@ it('shows filament edit link on product page for configured filament admin', fun
         ->get(route('product.show', ['product' => $product]))
         ->assertSuccessful()
         ->assertSee($editUrl, false)
-        ->assertSee('Редактировать', false);
+        ->assertSee('Редактировать', false)
+        ->assertSeeInOrder(['Скачать PDF', 'Поделиться', 'Редактировать'], false);
 });
 
 it('hides filament edit link on product page for authenticated non admin user', function (): void {

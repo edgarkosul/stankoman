@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Products\Pages;
 
 use App\Filament\Concerns\QueuesContentImageDerivatives;
 use App\Filament\Resources\Products\ProductResource;
+use App\Filament\Resources\Products\Schemas\ProductForm;
 use App\Support\Products\ProductSpecsAttributesSyncService;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
@@ -17,6 +18,17 @@ class EditProduct extends EditRecord
     use QueuesContentImageDerivatives;
 
     protected static string $resource = ProductResource::class;
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function mutateFormDataBeforeFill(array $data): array
+    {
+        $data['specs'] = ProductForm::normalizeSpecsState($data['specs'] ?? null) ?? [];
+
+        return $data;
+    }
 
     /**
      * @param  array<string, mixed>  $data

@@ -3,6 +3,7 @@
 use App\Filament\Resources\Products\Pages\EditProduct;
 use App\Models\Product;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
@@ -24,6 +25,30 @@ test('edit product header actions render with incomplete specs rows', function (
             ['name' => 'Мощность', 'value' => '', 'source' => 'manual'],
             ['name' => '', 'value' => '2200 Вт', 'source' => 'manual'],
         ])
+        ->assertSee('Сгенерировать WebP');
+});
+
+test('edit product form opens when specs contains a json string scalar', function (): void {
+    $this->actingAs(User::factory()->create());
+
+    $product = Product::query()->create([
+        'name' => 'Тестовый товар со строковыми specs',
+        'slug' => 'test-product-string-specs',
+        'price_amount' => 5_000,
+        'is_active' => false,
+        'specs' => [],
+    ]);
+
+    DB::table('products')
+        ->where('id', $product->id)
+        ->update([
+            'specs' => json_encode('Sint maxime debitis sit qui quidem quia eos.', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+
+    Livewire::test(EditProduct::class, [
+        'record' => $product->getRouteKey(),
+    ])
+        ->assertSet('data.specs', [])
         ->assertSee('Сгенерировать WebP');
 });
 

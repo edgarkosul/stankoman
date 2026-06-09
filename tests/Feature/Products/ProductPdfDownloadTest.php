@@ -18,6 +18,29 @@ it('shows product pdf download link on product page', function (): void {
         ->assertSee('Скачать PDF', false);
 });
 
+it('shows product share action with native share and clipboard fallback', function (): void {
+    $product = Product::query()->create([
+        'name' => 'Тестовый товар для шаринга',
+        'slug' => 'test-product-share-action',
+        'is_active' => true,
+        'price_amount' => 125_000,
+    ]);
+
+    $shareUrl = route('product.show', ['product' => $product]);
+
+    $this->get(route('product.show', ['product' => $product]))
+        ->assertSuccessful()
+        ->assertSee('js-share-product', false)
+        ->assertSee('aria-label="Поделиться"', false)
+        ->assertSee('data-title="Тестовый товар для шаринга"', false)
+        ->assertSee('data-text="Тестовый товар для шаринга"', false)
+        ->assertSee('data-url="'.$shareUrl.'"', false)
+        ->assertSee('navigator.share', false)
+        ->assertSee('navigator.clipboard.writeText', false)
+        ->assertSee('Ссылка скопирована', false)
+        ->assertSeeInOrder(['Скачать PDF', 'Поделиться'], false);
+});
+
 it('downloads product pdf when dl query parameter is set', function (): void {
     $product = Product::query()->create([
         'name' => 'Тестовый товар PDF download',

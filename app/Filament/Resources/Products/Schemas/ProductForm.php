@@ -458,6 +458,16 @@ class ProductForm
      */
     public static function normalizeSpecsState(mixed $state): ?array
     {
+        if (is_string($state)) {
+            $decoded = json_decode(trim($state), true);
+
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $state = $decoded;
+            } else {
+                $state = self::parseLegacySpecsText($state);
+            }
+        }
+
         if (! is_array($state)) {
             return null;
         }
@@ -465,10 +475,12 @@ class ProductForm
         $normalized = [];
         $keys = [];
 
-        foreach ($state as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
+        foreach ($state as $key => $row) {
+            $row = is_array($row) ? $row : [
+                'name' => $key,
+                'value' => $row,
+                'source' => 'legacy',
+            ];
 
             $name = self::sanitizeSpecsString($row['name'] ?? null);
             $value = self::sanitizeSpecsString($row['value'] ?? null);
@@ -493,6 +505,31 @@ class ProductForm
         }
 
         return $normalized === [] ? null : $normalized;
+    }
+
+    /**
+     * @return array<int, array{name: string, value: string, source: string}>
+     */
+    private static function parseLegacySpecsText(string $state): array
+    {
+        $rows = [];
+        $lines = preg_split('/\R+/', trim($state)) ?: [];
+
+        foreach ($lines as $line) {
+            $parts = preg_split('/\s*:\s*/u', trim((string) $line), 2);
+
+            if (! is_array($parts) || count($parts) !== 2) {
+                continue;
+            }
+
+            $rows[] = [
+                'name' => $parts[0],
+                'value' => $parts[1],
+                'source' => 'legacy',
+            ];
+        }
+
+        return $rows;
     }
 
     private static function recalculatePricingFromSource(Get $get, Set $set): void
