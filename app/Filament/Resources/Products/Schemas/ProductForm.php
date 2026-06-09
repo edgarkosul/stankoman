@@ -474,13 +474,20 @@ class ProductForm
 
         $normalized = [];
         $keys = [];
+        $isList = array_is_list($state);
 
         foreach ($state as $key => $row) {
-            $row = is_array($row) ? $row : [
-                'name' => $key,
-                'value' => $row,
-                'source' => 'legacy',
-            ];
+            if (! is_array($row)) {
+                if ($isList) {
+                    continue;
+                }
+
+                $row = [
+                    'name' => $key,
+                    'value' => $row,
+                    'source' => 'legacy',
+                ];
+            }
 
             $name = self::sanitizeSpecsString($row['name'] ?? null);
             $value = self::sanitizeSpecsString($row['value'] ?? null);
