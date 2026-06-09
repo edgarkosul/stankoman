@@ -107,7 +107,7 @@
     --color-accent-content: var(--color-neutral-800);
     --color-accent-foreground: var(--color-white);
 
-    --breakpoint-xs: 480px;
+    --breakpoint-xs: 30rem;
 }
 
 @utility wght-100 {
@@ -527,7 +527,7 @@ select:focus[data-flux-control] {
         @apply object-contain;
     }
 
-    @media (min-width: 480px) {
+    @media (min-width: 30rem) {
         .product-image-gallery {
             grid-template-columns: 5.5rem minmax(0, 1fr);
             grid-template-areas: "thumbs main";

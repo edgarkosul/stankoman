@@ -18,6 +18,21 @@ it('shows product pdf download link on product page', function (): void {
         ->assertSee('Скачать PDF', false);
 });
 
+it('stacks product sku below actions below the xs breakpoint', function (): void {
+    $product = Product::query()->create([
+        'name' => 'Тестовый товар с мобильным артикулом',
+        'slug' => 'test-product-mobile-sku-layout',
+        'sku' => 'MOBILE-SKU-1',
+        'is_active' => true,
+        'price_amount' => 125_000,
+    ]);
+
+    $this->get(route('product.show', ['product' => $product]))
+        ->assertSuccessful()
+        ->assertSee('flex flex-col items-start gap-3 xs:flex-row xs:items-center xs:justify-between', false)
+        ->assertSee('Артикул</span>: MOBILE-SKU-1', false);
+});
+
 it('shows product share action with native share and clipboard fallback', function (): void {
     $product = Product::query()->create([
         'name' => 'Тестовый товар для шаринга',
