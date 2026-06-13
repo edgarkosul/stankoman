@@ -23,13 +23,20 @@ class RutubeVideoBlock extends RichContentCustomBlock
     {
         return $action
             ->modalHeading('Видео Rutube')
-            ->modalDescription('Укажите ID видео Rutube, при необходимости ширину и выравнивание.')
+            ->modalDescription('Вставьте ссылку на видео Rutube — идентификатор определится автоматически.')
             ->schema([
-                TextInput::make('rutube_id')
-                    ->label('Rutube ID')
-                    ->helperText('Например: 1b883a32340ac3c8f33b77695879a227')
+                TextInput::make('url')
+                    ->label('Ссылка на видео Rutube')
+                    ->helperText('Например: https://rutube.ru/video/1b883a32340ac3c8f33b77695879a227/')
                     ->required()
-                    ->maxLength(64),
+                    ->maxLength(1024)
+                    ->rule(static function () {
+                        return static function (string $attribute, mixed $value, \Closure $fail): void {
+                            if (self::parseVideoId(is_string($value) ? $value : null) === null) {
+                                $fail('Не удалось распознать ссылку на видео Rutube.');
+                            }
+                        };
+                    }),
 
                 TextInput::make('width')
                     ->belowContent('Ширина видео в пикселях. Оставьте пустым для адаптивной ширины.')
@@ -50,12 +57,56 @@ class RutubeVideoBlock extends RichContentCustomBlock
     }
 
     /**
+     * Извлекает ID видео Rutube из ссылки или принимает уже готовый ID.
+     *
+     * Поддерживаемые форматы:
+     *  - https://rutube.ru/video/1b883a32340ac3c8f33b77695879a227/
+     *  - https://rutube.ru/play/embed/1b883a32340ac3c8f33b77695879a227
+     *  - 1b883a32340ac3c8f33b77695879a227 (голый ID для обратной совместимости)
+     */
+    public static function parseVideoId(?string $input): ?string
+    {
+        if (! is_string($input) || trim($input) === '') {
+            return null;
+        }
+
+        $input = trim($input);
+
+        // Голый ID (старый формат / ручной ввод).
+        if (preg_match('#^[a-f0-9]{32}$#i', $input) === 1) {
+            return strtolower($input);
+        }
+
+        // .../video/<id>, .../play/embed/<id>, .../video/private/<id>
+        if (preg_match('#([a-f0-9]{32})#i', $input, $matches) === 1) {
+            return strtolower($matches[1]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Возвращает ID видео из конфигурации блока с учётом старого поля rutube_id.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private static function resolveVideoId(array $config): ?string
+    {
+        if (isset($config['url'])) {
+            return self::parseVideoId(is_string($config['url']) ? $config['url'] : null);
+        }
+
+        // Обратная совместимость со старыми блоками.
+        return self::parseVideoId($config['rutube_id'] ?? null);
+    }
+
+    /**
      * @param  array<string, mixed>  $config
      */
     public static function toPreviewHtml(array $config): string
     {
         return view('filament.forms.components.rich-editor.rich-content-custom-blocks.rutube-video.preview', [
-            'rutubeId' => $config['rutube_id'] ?? null,
+            'rutubeId' => self::resolveVideoId($config),
         ])->render();
     }
 
@@ -66,7 +117,7 @@ class RutubeVideoBlock extends RichContentCustomBlock
     public static function toHtml(array $config, array $data): string
     {
         return view('filament.forms.components.rich-editor.rich-content-custom-blocks.rutube-video.index', [
-            'rutubeId' => $config['rutube_id'] ?? null,
+            'rutubeId' => self::resolveVideoId($config),
             'width' => is_numeric($config['width'] ?? null) ? (int) $config['width'] : null,
             'alignment' => $config['alignment'] ?? 'center',
         ])->render();

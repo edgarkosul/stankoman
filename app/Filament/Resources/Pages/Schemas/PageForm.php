@@ -10,6 +10,7 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBloc
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\SellerRequisitesBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\VkVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YandexMapBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
 use Filament\Actions\Action;
@@ -96,6 +97,7 @@ class PageForm
                         SellerRequisitesBlock::class,
                         RutubeVideoBlock::class,
                         YoutubeVideoBlock::class,
+                        VkVideoBlock::class,
                         HeroSliderBlock::class,
                         YandexMapBlock::class,
                         RawHtmlBlock::class,

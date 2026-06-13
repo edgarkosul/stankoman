@@ -10,6 +10,7 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBloc
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\SellerRequisitesBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\VkVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
 use App\Models\Product;
 use App\Support\Products\ProductCurrencyRateSyncService;
@@ -449,6 +450,7 @@ class ProductForm
                 SellerRequisitesBlock::class,
                 RutubeVideoBlock::class,
                 YoutubeVideoBlock::class,
+                VkVideoBlock::class,
                 RawHtmlBlock::class,
             ]);
     }

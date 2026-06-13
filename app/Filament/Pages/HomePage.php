@@ -11,6 +11,7 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBloc
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\SellerRequisitesBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\VkVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YandexMapBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
 use App\Models\Page;
@@ -123,6 +124,7 @@ class HomePage extends FilamentPage
                                 SellerRequisitesBlock::class,
                                 RutubeVideoBlock::class,
                                 YoutubeVideoBlock::class,
+                                VkVideoBlock::class,
                                 HeroSliderBlock::class,
                                 YandexMapBlock::class,
                                 RawHtmlBlock::class,

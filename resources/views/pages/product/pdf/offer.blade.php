@@ -401,6 +401,7 @@
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\SellerRequisitesBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock::class,
+                App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\VkVideoBlock::class,
                 App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBlock::class,
             ])->toUnsafeHtml() !!}
     @endif
