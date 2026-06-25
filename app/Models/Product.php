@@ -31,6 +31,8 @@ use Laravel\Scout\Searchable;
  * @property string|null $country
  * @property int $price_amount
  * @property int|null $discount_price
+ * @property string|null $discount_percent
+ * @property-read int|null $display_discount_percent
  * @property string $currency
  * @property string|null $wholesale_price
  * @property string|null $wholesale_currency
@@ -79,6 +81,7 @@ class Product extends Model
         'price_amount',
         'currency',
         'discount_price',
+        'discount_percent',
         'wholesale_price',
         'wholesale_currency',
         'exchange_rate',
@@ -111,6 +114,7 @@ class Product extends Model
     protected $casts = [
         'price_amount' => 'int',
         'discount_price' => 'int',
+        'discount_percent' => 'decimal:2',
         'wholesale_price' => 'decimal:4',
         'exchange_rate' => 'decimal:2',
         'wholesale_price_rub' => 'decimal:0',
@@ -363,6 +367,32 @@ class Product extends Model
 
     protected static function booted(): void
     {
+        // Процентная скидка — источник истины. Если задан discount_percent,
+        // discount_price всегда выводим из него (whole-ruble цена). discount_percent === null
+        // означает «процентной скидки нет»: discount_price (если есть) — «старая цена» поставщика
+        // и трогать её не нужно.
+        static::saving(function (self $product): void {
+            $attributes = $product->getAttributes();
+
+            if (! array_key_exists('discount_percent', $attributes)) {
+                return;
+            }
+
+            $percent = $attributes['discount_percent'];
+
+            if ($percent === null) {
+                return;
+            }
+
+            if (! array_key_exists('price_amount', $attributes)) {
+                return;
+            }
+
+            $product->discount_price = (float) $percent <= 0
+                ? null
+                : self::calculateDiscountPrice($product->price_amount, $percent);
+        });
+
         static::saving(function (self $product): void {
             $attributes = $product->getAttributes();
             $hasLoadedName = array_key_exists('name', $attributes);
@@ -530,11 +560,20 @@ class Product extends Model
         );
     }
 
-    /** Процент скидки (целое число) */
-    protected function discountPercent(): EloquentAttribute
+    /**
+     * Эффективный процент скидки для витрины (целое число).
+     * Предпочитает сохранённый `discount_percent`; иначе вычисляет из `discount_price`
+     * (для «старых цен» поставщиков, у которых процент не задан).
+     */
+    protected function displayDiscountPercent(): EloquentAttribute
     {
         return EloquentAttribute::make(
             get: function ($value, $attr) {
+                $storedPercent = $attr['discount_percent'] ?? null;
+                if ($storedPercent !== null && (float) $storedPercent > 0) {
+                    return (int) round((float) $storedPercent);
+                }
+
                 $price = (int) ($attr['price_amount'] ?? 0);
                 $discount = $attr['discount_price'] ?? null;
                 if ($discount === null) {

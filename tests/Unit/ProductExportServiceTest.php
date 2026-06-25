@@ -26,6 +26,7 @@ beforeEach(function () {
         $table->string('country')->nullable();
         $table->unsignedInteger('price_amount')->default(0);
         $table->unsignedInteger('discount_price')->nullable();
+        $table->decimal('discount_percent', 5, 2)->nullable();
         $table->char('currency', 3)->default('RUB');
         $table->decimal('wholesale_price', 14, 4)->nullable();
         $table->char('wholesale_currency', 3)->nullable();
@@ -263,6 +264,30 @@ it('locks service columns and keeps other columns editable', function () {
     expect($sheet->getStyle('B2')->getProtection()->getLocked())->toBe(CellProtection::PROTECTION_UNPROTECTED);
     expect($sheet->getStyle('C2')->getProtection()->getLocked())->toBe(CellProtection::PROTECTION_UNPROTECTED);
     expect($sheet->getStyle('D2')->getProtection()->getLocked())->toBe(CellProtection::PROTECTION_PROTECTED);
+
+    $spreadsheet->disconnectWorksheets();
+    unlink($result['path']);
+});
+
+it('exports the stored discount percent instead of the value rounded back from price', function () {
+    // price 710 + percent 5% → discount_price 675 (эффективные 4.93%).
+    // В выгрузке должен быть сохранённый 5, а не пересчитанный 4.93.
+    Product::query()->create([
+        'name' => 'Stored Percent Export Tool',
+        'sku' => 'PCT-1',
+        'price_amount' => 710,
+        'discount_price' => 675,
+        'discount_percent' => 5,
+    ]);
+
+    $service = new ProductExportService;
+    $result = $service->exportToXlsx(Product::query(), ['discount_percent', 'discount_price']);
+
+    $spreadsheet = IOFactory::createReader('Xlsx')->load($result['path']);
+    $sheet = $spreadsheet->getActiveSheet();
+
+    expect((float) $sheet->getCell('B2')->getValue())->toBe(5.0)
+        ->and((int) $sheet->getCell('C2')->getValue())->toBe(675);
 
     $spreadsheet->disconnectWorksheets();
     unlink($result['path']);

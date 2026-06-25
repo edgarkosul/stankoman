@@ -399,7 +399,10 @@ it('updates discount price for selected products in fields mass edit mode', func
     $secondProduct->refresh();
 
     expect($firstProduct->discount_price)->toBe(900)
-        ->and($secondProduct->discount_price)->toBe(3000);
+        ->and($secondProduct->discount_price)->toBe(3000)
+        // discount_percent — источник истины, сохраняется как заданные 10%
+        ->and((float) $firstProduct->discount_percent)->toBe(10.0)
+        ->and((float) $secondProduct->discount_percent)->toBe(10.0);
 });
 
 it('updates pricing levers and recalculates selected product prices in fields mass edit mode', function () {
@@ -1211,6 +1214,7 @@ function rebuildProductsTableSpecsMatchSchemas(): void
         $table->string('country')->nullable();
         $table->unsignedInteger('price_amount')->default(0);
         $table->unsignedInteger('discount_price')->nullable();
+        $table->decimal('discount_percent', 5, 2)->nullable();
         $table->char('currency', 3)->default('RUB');
         $table->decimal('wholesale_price', 14, 4)->nullable();
         $table->char('wholesale_currency', 3)->nullable();

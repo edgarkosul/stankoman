@@ -105,7 +105,7 @@ class ProductController extends Controller
                 'final' => $finalPrice,
                 'discount' => $discountPrice,
                 'has_discount' => (bool) $product->has_discount,
-                'discount_percent' => $product->discount_percent,
+                'discount_percent' => $product->display_discount_percent,
             ],
             'details' => $details,
             'promo_info' => $product->promo_info,

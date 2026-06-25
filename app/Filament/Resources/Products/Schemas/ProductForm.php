@@ -293,8 +293,15 @@ class ProductForm
                             ->step('0.01')
                             ->minValue(0)
                             ->maxValue(100)
-                            ->dehydrated(false)
-                            ->formatStateUsing(function (Get $get): ?float {
+                            // Источник истины. discount_price пересчитывается из этого значения
+                            // в saving-хуке модели Product.
+                            ->formatStateUsing(function (mixed $state, Get $get): ?float {
+                                // Сохранённый процент имеет приоритет; для «старых цен»
+                                // поставщиков (процент не задан) показываем вычисленный.
+                                if ($state !== null && $state !== '' && (float) $state > 0) {
+                                    return (float) $state;
+                                }
+
                                 return Product::calculateDiscountPercent(
                                     $get('price_amount'),
                                     $get('discount_price'),

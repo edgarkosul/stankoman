@@ -4,7 +4,7 @@
     $basePrice = $product->price_int;
     $discount = $product->discount;
     $hasDiscount = $product->has_discount;
-    $pct = $product->discount_percent;
+    $pct = $product->display_discount_percent;
 
     $gallery = $product->gallery ?? [];
     if (is_string($gallery)) {

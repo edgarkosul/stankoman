@@ -135,6 +135,13 @@ class ProductExportService
 
         $dbColumns = array_values(array_diff($columns, $virtual));
 
+        // discount_percent помечен virtual (вычисляется в extractCellValue), но теперь это
+        // и реальная колонка — подгружаем её, чтобы отдавать сохранённый процент, а не
+        // пересчитанный из округлённой цены.
+        if (in_array('discount_percent', $columns, true)) {
+            $dbColumns[] = 'discount_percent';
+        }
+
         return array_values(
             array_unique(
                 array_merge($base, $dbColumns)
@@ -149,6 +156,13 @@ class ProductExportService
         }
 
         if ($col === 'discount_percent') {
+            // Сохранённый процент имеет приоритет; иначе считаем из discount_price
+            // (для «старых цен» поставщиков, у которых процент не задан).
+            $storedPercent = $product->discount_percent ?? null;
+            if ($storedPercent !== null && (float) $storedPercent > 0) {
+                return (float) $storedPercent;
+            }
+
             return Product::calculateDiscountPercent(
                 $product->price_amount ?? null,
                 $product->discount_price ?? null,
