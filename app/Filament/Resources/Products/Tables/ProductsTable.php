@@ -992,16 +992,13 @@ class ProductsTable
                                     case 'discount_percent':
                                         $percent = min(100, max(0, (float) ($data['discount_percent_value'] ?? 0)));
 
+                                        // discount_percent — источник истины; discount_price
+                                        // пересчитывается из него в saving-хуке модели Product.
                                         $q->select(['id', 'price_amount'])
                                             ->chunkById(200, function (EloquentCollection $chunk) use ($percent): void {
                                                 /** @var Product $product */
                                                 foreach ($chunk as $product) {
-                                                    $discountPrice = Product::calculateDiscountPrice(
-                                                        $product->price_amount,
-                                                        $percent,
-                                                    );
-
-                                                    $product->update(['discount_price' => $discountPrice]);
+                                                    $product->update(['discount_percent' => $percent]);
                                                 }
                                             });
                                         break;

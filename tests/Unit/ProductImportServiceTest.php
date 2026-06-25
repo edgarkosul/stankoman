@@ -30,6 +30,7 @@ beforeEach(function () {
         $table->string('country')->nullable();
         $table->unsignedInteger('price_amount')->default(0);
         $table->unsignedInteger('discount_price')->nullable();
+        $table->decimal('discount_percent', 5, 2)->nullable();
         $table->char('currency', 3)->default('RUB');
         $table->decimal('wholesale_price', 14, 4)->nullable();
         $table->char('wholesale_currency', 3)->nullable();
@@ -605,7 +606,8 @@ it('imports discount percent and recalculates discount price with priority over 
         ->and($apply['updated'])->toBe(1);
 
     expect($product->fresh()->price_amount)->toBe(1200)
-        ->and($product->fresh()->discount_price)->toBe(1050);
+        ->and($product->fresh()->discount_price)->toBe(1050)
+        ->and((float) $product->fresh()->discount_percent)->toBe(12.5);
 
     unlink($path);
 });

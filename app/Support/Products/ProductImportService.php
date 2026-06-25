@@ -711,8 +711,15 @@ class ProductImportService
 
         foreach ($headers as $h) {
             if ($h === 'discount_percent') {
+                // Сохранённый процент имеет приоритет; для «старых цен» поставщиков
+                // (процент не задан) сравниваем с вычисленным из discount_price.
+                $storedPercent = $product->discount_percent;
+                $dbPercent = ($storedPercent !== null && (float) $storedPercent > 0)
+                    ? (float) $storedPercent
+                    : Product::calculateDiscountPercent($product->price_amount, $product->discount_price);
+
                 $dbCanon = $this->canonical(
-                    Product::calculateDiscountPercent($product->price_amount, $product->discount_price),
+                    $dbPercent,
                     $whitelist[$h]['type'] ?? 'decimal(5,2)',
                     $h,
                 );
@@ -811,6 +818,10 @@ class ProductImportService
                 $whitelist['discount_percent']['type'] ?? 'decimal(5,2)',
                 'discount_percent',
             );
+
+            // discount_percent — источник истины: сохраняем сам процент в колонку
+            // и выводим из него discount_price (UPDATE минует saving-хук модели).
+            $this->putCalculatedPayloadValue($payload, $product, 'discount_percent', $discountPercent, $whitelist);
 
             $calculatedDiscountPrice = Product::calculateDiscountPrice($sitePriceAmount, $discountPercent);
 
