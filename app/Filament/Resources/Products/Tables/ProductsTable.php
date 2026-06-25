@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Products\Tables;
 
 use App\Enums\ProductWarranty;
 use App\Enums\ProductWholesaleCurrency;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock;
 use App\Filament\Resources\Products\Pages\CreateProduct;
 use App\Filament\Resources\Products\ProductResource;
 use App\Jobs\RunSpecsMatchJob;
@@ -13,6 +14,7 @@ use App\Models\ImportRun;
 use App\Models\Product;
 use App\Models\ProductAttributeValue;
 use App\Models\Unit;
+use App\Support\Filament\PdfLinkBlockConfigNormalizer;
 use App\Support\Products\ProductCurrencyRateSyncService;
 use App\Support\Products\ProductSearchSync;
 use App\Support\Products\SpecsMatchService;
@@ -21,12 +23,14 @@ use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Forms\Components\ToggleButtons;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Text;
 use Filament\Schemas\Components\Utilities\Get;
@@ -225,6 +229,7 @@ class ProductsTable
                                 'categories' => 'Категории товара',
                                 'filters' => 'Значения фильтров',
                                 'specs_match' => 'Характеристики → фильтры',
+                                'instructions_pdf' => 'PDF в «Инструкции»',
                             ])
                             ->required()
                             ->live()
@@ -340,6 +345,68 @@ class ProductsTable
                             ->label('Промо информация')
                             ->visible(fn ($get) => $get('mode') === 'fields' && $get('field') === 'promo_info')
                             ->required(fn ($get) => $get('mode') === 'fields' && $get('field') === 'promo_info'),
+
+                        // --- PDF В «ИНСТРУКЦИИ» ---
+                        Text::make('Блок «PDF документ» будет добавлен в конец вкладки «Инструкции» каждого выбранного товара.')
+                            ->color('info')
+                            ->visible(fn ($get) => $get('mode') === 'instructions_pdf'),
+
+                        ToggleButtons::make('pdf_source_type')
+                            ->label('Источник PDF')
+                            ->options([
+                                PdfLinkBlockConfigNormalizer::SOURCE_UPLOAD => 'С компьютера',
+                                PdfLinkBlockConfigNormalizer::SOURCE_DOWNLOAD_URL => 'Скачать по URL',
+                                PdfLinkBlockConfigNormalizer::SOURCE_DIRECT_URL => 'Внешний URL',
+                            ])
+                            ->default(PdfLinkBlockConfigNormalizer::SOURCE_UPLOAD)
+                            ->grouped()
+                            ->live()
+                            ->visible(fn ($get) => $get('mode') === 'instructions_pdf')
+                            ->required(fn ($get) => $get('mode') === 'instructions_pdf'),
+
+                        FileUpload::make('pdf_file')
+                            ->label('PDF-файл')
+                            ->acceptedFileTypes(['application/pdf'])
+                            ->disk(PdfLinkBlockConfigNormalizer::DISK)
+                            ->directory(PdfLinkBlockConfigNormalizer::DIRECTORY)
+                            ->maxSize(PdfLinkBlockConfigNormalizer::MAX_FILE_SIZE_KB)
+                            ->storeFileNamesIn('pdf_original_file_name')
+                            ->helperText('Файл будет храниться локально и открываться по публичной ссылке.')
+                            ->visible(fn ($get) => $get('mode') === 'instructions_pdf' && $get('pdf_source_type') === PdfLinkBlockConfigNormalizer::SOURCE_UPLOAD)
+                            ->required(fn ($get) => $get('mode') === 'instructions_pdf' && $get('pdf_source_type') === PdfLinkBlockConfigNormalizer::SOURCE_UPLOAD),
+
+                        TextInput::make('pdf_url')
+                            ->label('URL PDF')
+                            ->url()
+                            ->maxLength(2048)
+                            ->helperText(fn ($get): string => $get('pdf_source_type') === PdfLinkBlockConfigNormalizer::SOURCE_DOWNLOAD_URL
+                                ? 'Файл будет скачан по ссылке и сохранён локально.'
+                                : 'Ссылка останется внешней и будет открываться напрямую.')
+                            ->visible(fn ($get) => $get('mode') === 'instructions_pdf' && in_array($get('pdf_source_type'), [
+                                PdfLinkBlockConfigNormalizer::SOURCE_DOWNLOAD_URL,
+                                PdfLinkBlockConfigNormalizer::SOURCE_DIRECT_URL,
+                            ], true))
+                            ->required(fn ($get) => $get('mode') === 'instructions_pdf' && in_array($get('pdf_source_type'), [
+                                PdfLinkBlockConfigNormalizer::SOURCE_DOWNLOAD_URL,
+                                PdfLinkBlockConfigNormalizer::SOURCE_DIRECT_URL,
+                            ], true)),
+
+                        TextInput::make('pdf_link_text')
+                            ->label('Текст ссылки')
+                            ->maxLength(255)
+                            ->helperText('Если оставить пустым, текст будет взят из имени файла или URL.')
+                            ->visible(fn ($get) => $get('mode') === 'instructions_pdf'),
+
+                        ToggleButtons::make('pdf_target')
+                            ->label('Открывать')
+                            ->options([
+                                PdfLinkBlockConfigNormalizer::TARGET_SAME_TAB => 'В этой вкладке',
+                                PdfLinkBlockConfigNormalizer::TARGET_NEW_TAB => 'В новой вкладке',
+                            ])
+                            ->default(PdfLinkBlockConfigNormalizer::TARGET_NEW_TAB)
+                            ->grouped()
+                            ->visible(fn ($get) => $get('mode') === 'instructions_pdf')
+                            ->required(fn ($get) => $get('mode') === 'instructions_pdf'),
 
                         // --- КАТЕГОРИИ ---
                         Select::make('cat_op')
@@ -944,6 +1011,58 @@ class ProductsTable
                             return;
                         }
 
+                        if (($data['mode'] ?? null) === 'instructions_pdf') {
+                            if ($ids === []) {
+                                Notification::make()
+                                    ->warning()
+                                    ->title('Не выбраны товары')
+                                    ->body('Выберите минимум один товар для добавления PDF.')
+                                    ->send();
+
+                                return;
+                            }
+
+                            // normalize() может скачать файл по URL — делаем это один раз,
+                            // полученный блок переиспользуется для всех выбранных товаров.
+                            $config = app(PdfLinkBlockConfigNormalizer::class)->normalize([
+                                'source_type' => $data['pdf_source_type'] ?? null,
+                                'file' => $data['pdf_file'] ?? null,
+                                'original_file_name' => $data['pdf_original_file_name'] ?? null,
+                                'url' => $data['pdf_url'] ?? null,
+                                'link_text' => $data['pdf_link_text'] ?? null,
+                                'target' => $data['pdf_target'] ?? null,
+                            ]);
+
+                            $blockHtml = self::buildPdfCustomBlockHtml($config);
+                            $updated = 0;
+
+                            Product::query()
+                                ->whereKey($ids)
+                                ->select(['id', 'instructions'])
+                                ->chunkById(200, function (EloquentCollection $chunk) use ($blockHtml, &$updated): void {
+                                    /** @var Product $product */
+                                    foreach ($chunk as $product) {
+                                        $existing = trim((string) ($product->instructions ?? ''));
+
+                                        $product->update([
+                                            'instructions' => ($existing === '' || $existing === '<p></p>')
+                                                ? $blockHtml
+                                                : $existing.$blockHtml,
+                                        ]);
+
+                                        $updated++;
+                                    }
+                                });
+
+                            Notification::make()
+                                ->success()
+                                ->title('PDF добавлен в «Инструкции»')
+                                ->body('Обновлено товаров: '.$updated.'.')
+                                ->send();
+
+                            return;
+                        }
+
                         $shouldSyncSearch = $data['mode'] === 'fields';
                         $stagingCategoryIdToDetach = self::resolveStagingCategoryIdToDetachAfterPrimaryCategorySwitch(
                             $livewire,
@@ -1216,6 +1335,23 @@ class ProductsTable
                 'create_additional_unit_ids' => [],
             ];
         }, $suggestions);
+    }
+
+    /**
+     * Сериализует конфиг PDF-блока в HTML кастомного блока RichEditor —
+     * в том же виде, в каком его сохраняет редактор контента товара.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private static function buildPdfCustomBlockHtml(array $config): string
+    {
+        $json = json_encode($config, JSON_UNESCAPED_UNICODE);
+
+        return sprintf(
+            '<div data-type="customBlock" data-config="%s" data-id="%s"></div>',
+            htmlspecialchars((string) $json, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            PdfLinkBlock::getId(),
+        );
     }
 
     /**
