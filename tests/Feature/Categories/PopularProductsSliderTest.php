@@ -102,6 +102,36 @@ test('popular products component on category page uses current category and desc
         ->not->toContain($otherProduct->id);
 });
 
+test('popular products component excludes out of stock products', function (): void {
+    $category = createPopularSliderCategory([
+        'name' => 'Popular Stock Category',
+        'slug' => 'popular-stock-category',
+        'order' => 701,
+    ]);
+
+    $inStock = createPopularSliderProduct([
+        'name' => 'Popular In Stock Product',
+        'slug' => 'popular-in-stock-product',
+        'popularity' => 100,
+    ]);
+    $inStock->categories()->attach($category->id, ['is_primary' => true]);
+
+    $outOfStock = createPopularSliderProduct([
+        'name' => 'Popular Out Of Stock Product',
+        'slug' => 'popular-out-of-stock-product',
+        'popularity' => 900,
+        'in_stock' => false,
+    ]);
+    $outOfStock->categories()->attach($category->id, ['is_primary' => true]);
+
+    $component = new Popular(category: $category);
+    $ids = $component->products->pluck('id');
+
+    expect($ids)
+        ->toContain($inStock->id)
+        ->not->toContain($outOfStock->id);
+});
+
 test('category page renders popular products slider only when at least five scoped products exist', function (): void {
     $parentCategory = createPopularSliderCategory([
         'name' => 'Rendered Popular Branch Category',

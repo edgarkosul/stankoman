@@ -35,6 +35,7 @@ class Popular extends Component
     {
         $query = Product::query()
             ->where('is_active', true)
+            ->where('in_stock', true)
             ->with([
                 'categories' => fn ($query) => $query
                     ->wherePivot('is_primary', true)

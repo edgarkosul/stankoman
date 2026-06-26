@@ -40,6 +40,24 @@ test('recent products slider keeps request order and excludes inactive products'
         ->not->toContain($inactive->id);
 });
 
+test('recent products slider keeps out of stock products', function (): void {
+    $outOfStock = Product::query()->create([
+        'name' => 'Recent out of stock',
+        'slug' => 'recent-out-of-stock',
+        'price_amount' => 140_000,
+        'discount_price' => null,
+        'is_active' => true,
+        'in_stock' => false,
+    ]);
+
+    $test = Livewire::test(RecentProductsSlider::class)
+        ->call('load', [$outOfStock->id]);
+
+    $resolvedIds = $test->instance()->products->pluck('id')->all();
+
+    expect($resolvedIds)->toBe([$outOfStock->id]);
+});
+
 test('product page registers current product in recent store', function (): void {
     $product = Product::query()->create([
         'name' => 'Recent trackable product',

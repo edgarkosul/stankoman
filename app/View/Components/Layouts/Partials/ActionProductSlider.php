@@ -16,6 +16,7 @@ class ActionProductSlider extends Component
     {
         $this->products = Product::query()
             ->where('is_active', true)
+            ->where('in_stock', true)
             ->where('discount_price', '>', 0)
             ->with([
                 'categories' => fn ($query) => $query

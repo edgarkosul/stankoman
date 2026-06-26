@@ -41,6 +41,7 @@ class Similar extends Component
 
         $productsQuery = Product::query()
             ->where('is_active', true)
+            ->where('in_stock', true)
             ->whereKeyNot($this->product->getKey())
             ->whereHas('categories', fn ($query) => $query->whereIn('categories.id', $categoryIds->all()))
             ->with([

@@ -35,13 +35,20 @@ test('action slider component contains only active products with discount', func
         'is_active' => false,
     ]);
 
+    $excludedOutOfStock = createHomeSliderProduct([
+        'name' => 'Out Of Stock Product',
+        'slug' => 'out-of-stock-product',
+        'in_stock' => false,
+    ]);
+
     $component = new ActionProductSlider;
     $ids = $component->products->pluck('id');
 
     expect($ids)
         ->toContain($included->id)
         ->not->toContain($excludedWithoutDiscount->id)
-        ->not->toContain($excludedInactive->id);
+        ->not->toContain($excludedInactive->id)
+        ->not->toContain($excludedOutOfStock->id);
 });
 
 test('home page renders action product slider when discounted products exist', function (): void {

@@ -105,6 +105,43 @@ test('similar products slider picks active products from the same category and p
         );
 });
 
+test('similar products slider excludes out of stock products', function (): void {
+    $category = createSimilarSliderCategory([
+        'name' => 'Stock Similar Category',
+        'slug' => 'stock-similar-category',
+        'order' => 151,
+    ]);
+
+    $currentProduct = createSimilarSliderProduct([
+        'name' => 'Stock Current Similar Product',
+        'slug' => 'stock-current-similar-product',
+        'price_amount' => 100_000,
+    ]);
+    $currentProduct->categories()->attach($category->id, ['is_primary' => true]);
+
+    $inStock = createSimilarSliderProduct([
+        'name' => 'In Stock Similar Product',
+        'slug' => 'in-stock-similar-product',
+        'price_amount' => 100_000,
+    ]);
+    $inStock->categories()->attach($category->id, ['is_primary' => true]);
+
+    $outOfStock = createSimilarSliderProduct([
+        'name' => 'Out Of Stock Similar Product',
+        'slug' => 'out-of-stock-similar-product',
+        'price_amount' => 100_000,
+        'in_stock' => false,
+    ]);
+    $outOfStock->categories()->attach($category->id, ['is_primary' => true]);
+
+    $component = new Similar($currentProduct);
+    $ids = $component->products->pluck('id');
+
+    expect($ids)
+        ->toContain($inStock->id)
+        ->not->toContain($outOfStock->id);
+});
+
 test('product page renders similar products slider section', function (): void {
     $category = createSimilarSliderCategory([
         'name' => 'Visible Similar Category',
