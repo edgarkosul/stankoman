@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Models\ImportRun;
+use App\Support\CatalogImport\Enums\ImportRunType;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Arr;
@@ -132,16 +133,6 @@ class ImportRunObserver
 
     private function typeLabel(string $type): string
     {
-        return match ($type) {
-            'products' => 'Excel товары',
-            'category_filters' => 'Категорийные фильтры',
-            'vactool_products' => 'Vactool',
-            'metalmaster_products' => 'Metalmaster',
-            'yandex_market_feed_products' => 'Yandex Market Feed',
-            'yandex_market_feed_deactivation' => 'Деактивация Yandex Feed',
-            'stalex_yml_products' => 'Stalex',
-            'specs_match' => 'Specs match',
-            default => $type !== '' ? $type : 'unknown',
-        };
+        return ImportRunType::labelFor($type);
     }
 }

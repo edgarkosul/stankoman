@@ -4,6 +4,7 @@ namespace App\Filament\Resources\ImportRuns\Tables;
 
 use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Models\ImportRun;
+use App\Support\CatalogImport\Enums\ImportRunType;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -29,24 +30,9 @@ class ImportRunsTable
 
                 TextColumn::make('type')
                     ->label('Тип')
-                    ->formatStateUsing(fn ($state): string => match ($state) {
-                        'products' => 'Excel товары',
-                        'category_filters' => 'Категорийные фильтры',
-                        'vactool_products' => 'Vactool',
-                        'metalmaster_products' => 'Metalmaster',
-                        'yandex_market_feed_products' => 'Yandex Market Feed',
-                        'stalex_yml_products' => 'Stalex',
-                        'specs_match' => 'Specs match',
-                        default => (string) $state,
-                    })
+                    ->formatStateUsing(fn ($state): string => ImportRunType::labelFor((string) $state))
                     ->badge()
-                    ->colors([
-                        'gray' => 'products',
-                        'warning' => ['category_filters', 'yandex_market_feed_products'],
-                        'primary' => 'vactool_products',
-                        'success' => ['metalmaster_products', 'stalex_yml_products'],
-                        'info' => 'specs_match',
-                    ])
+                    ->color(fn ($state): string => ImportRunType::colorFor((string) $state))
                     ->sortable(),
 
                 TextColumn::make('supplier.name')

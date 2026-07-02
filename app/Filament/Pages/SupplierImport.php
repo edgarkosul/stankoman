@@ -11,6 +11,7 @@ use App\Support\CatalogImport\Drivers\DriverAvailability;
 use App\Support\CatalogImport\Drivers\ImportDriverRegistry;
 use App\Support\CatalogImport\Drivers\MetaltecXmlDriver;
 use App\Support\CatalogImport\Drivers\YandexMarketFeedDriver;
+use App\Support\CatalogImport\Enums\ImportRunType;
 use App\Support\CatalogImport\Processing\ExistingProductUpdateSelection;
 use App\Support\CatalogImport\Runs\ImportRunOrchestrator;
 use App\Support\CatalogImport\Yml\YandexMarketFeedSourceHistoryService;
@@ -2292,15 +2293,7 @@ class SupplierImport extends Page implements HasForms
 
     private function typeLabel(string $type): string
     {
-        return match ($type) {
-            'vactool_products' => 'Vactool',
-            'metalmaster_products' => 'Metalmaster',
-            'metaltec_products' => 'Metaltec',
-            'yandex_market_feed_products' => 'Yandex Market Feed',
-            'yandex_market_feed_deactivation' => 'Деактивация Yandex Feed',
-            'stalex_yml_products' => 'Stalex',
-            default => $type !== '' ? $type : 'unknown',
-        };
+        return ImportRunType::labelFor($type);
     }
 
     /**
@@ -2308,14 +2301,7 @@ class SupplierImport extends Page implements HasForms
      */
     private function runSummaryTypes(): array
     {
-        return [
-            'vactool_products',
-            'metalmaster_products',
-            'metaltec_products',
-            'yandex_market_feed_products',
-            'yandex_market_feed_deactivation',
-            'stalex_yml_products',
-        ];
+        return ImportRunType::supplierImportSummaryValues();
     }
 
     private function normalizeNullableInt(mixed $value): ?int
