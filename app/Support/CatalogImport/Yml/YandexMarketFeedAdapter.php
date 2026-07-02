@@ -11,7 +11,14 @@ use App\Support\Filament\PdfLinkBlockConfigNormalizer;
 use Illuminate\Validation\ValidationException;
 use SimpleXMLElement;
 
-final class YandexMarketFeedAdapter implements SupplierAdapterInterface
+/**
+ * Адаптер стандартного Yandex Market YML-фида.
+ *
+ * Не помечен final намеренно: поставщик-специфичные адаптеры (например,
+ * Suppliers\Stalex\StalexSupplierAdapter) наследуются от него и
+ * переопределяют лишь extractPictures()/extractDescription().
+ */
+class YandexMarketFeedAdapter implements SupplierAdapterInterface
 {
     private const PDF_LINK_BLOCK_ID = 'pdf-link';
 
@@ -22,7 +29,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
     private const RUTUBE_VIDEO_BLOCK_ALIGNMENT = 'center';
 
     public function __construct(
-        private readonly YandexMarketFeedProfile $profile = new YandexMarketFeedProfile,
+        protected readonly YandexMarketFeedProfile $profile = new YandexMarketFeedProfile,
         private readonly VendorModelOfferNameResolver $vendorModelOfferNameResolver = new VendorModelOfferNameResolver,
     ) {}
 
@@ -279,7 +286,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
     /**
      * @param  array<int, string>  $pictures
      */
-    private function extractDescription(SimpleXMLElement $xml, array $pictures): ?string
+    protected function extractDescription(SimpleXMLElement $xml, array $pictures): ?string
     {
         $description = $this->textOrNull($xml->description ?? null);
 
@@ -622,7 +629,7 @@ final class YandexMarketFeedAdapter implements SupplierAdapterInterface
     /**
      * @return array<int, string>
      */
-    private function extractPictures(SimpleXMLElement $xml): array
+    protected function extractPictures(SimpleXMLElement $xml): array
     {
         $pictures = [];
         $seen = [];

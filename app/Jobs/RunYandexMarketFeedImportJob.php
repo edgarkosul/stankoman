@@ -39,13 +39,27 @@ class RunYandexMarketFeedImportJob implements ShouldQueue
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping('catalog_import_yandex_market_feed'))
+            (new WithoutOverlapping($this->overlappingKey()))
                 ->releaseAfter(30)
                 ->expireAfter($this->timeout + 60),
         ];
     }
 
+    /**
+     * Ключ WithoutOverlapping. Наследники (напр. Stalex) переопределяют его,
+     * чтобы их прогоны не блокировали штатный Yandex-импорт и наоборот.
+     */
+    protected function overlappingKey(): string
+    {
+        return 'catalog_import_yandex_market_feed';
+    }
+
     public function handle(YandexMarketFeedImportService $service, ImportRunOrchestrator $runs): void
+    {
+        $this->runImport($service, $runs);
+    }
+
+    protected function runImport(YandexMarketFeedImportService $service, ImportRunOrchestrator $runs): void
     {
         $run = ImportRun::query()->find($this->runId);
 

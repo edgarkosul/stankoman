@@ -2,7 +2,7 @@
 
 namespace App\Support\CatalogImport\Yml;
 
-final class YandexMarketFeedProfile
+class YandexMarketFeedProfile
 {
     public function profileKey(): string
     {

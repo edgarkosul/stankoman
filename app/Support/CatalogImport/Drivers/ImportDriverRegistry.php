@@ -16,6 +16,7 @@ class ImportDriverRegistry
         private readonly VactoolHtmlDriver $vactool,
         private readonly MetalmasterHtmlDriver $metalmaster,
         private readonly MetaltecXmlDriver $metaltec,
+        private readonly StalexYmlDriver $stalex,
         private readonly YandexMarketFeedDriver $yandex,
     ) {}
 
@@ -32,6 +33,7 @@ class ImportDriverRegistry
             $this->vactool,
             $this->metalmaster,
             $this->metaltec,
+            $this->stalex,
             $this->yandex,
         ])
             ->mapWithKeys(fn (SupplierImportDriver $driver): array => [$driver->key() => $driver])

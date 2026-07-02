@@ -26,7 +26,14 @@ use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use RuntimeException;
 use Throwable;
 
-final class YandexMarketFeedDriver implements SupplierImportDriver
+/**
+ * Драйвер стандартного Yandex Market YML-фида.
+ *
+ * Не помечен final намеренно: поставщик-специфичные YML-драйверы (например,
+ * {@see StalexYmlDriver}) наследуются от
+ * него, чтобы переиспользовать UI-обвязку источника и загрузку категорий.
+ */
+class YandexMarketFeedDriver implements SupplierImportDriver
 {
     public function __construct(
         private readonly YandexMarketFeedProfile $profile,

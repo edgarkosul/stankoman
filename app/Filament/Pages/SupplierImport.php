@@ -753,7 +753,7 @@ class SupplierImport extends Page implements HasForms
             $this->data['source_name'] = $driver->defaultSourceName();
         }
 
-        if ($driver->key() === 'yandex_market_feed') {
+        if (in_array($driver->key(), ['yandex_market_feed', 'stalex'], true)) {
             $this->applySyncScenario('standard');
         }
 
