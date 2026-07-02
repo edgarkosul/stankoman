@@ -139,6 +139,7 @@ class ImportRunObserver
             'metalmaster_products' => 'Metalmaster',
             'yandex_market_feed_products' => 'Yandex Market Feed',
             'yandex_market_feed_deactivation' => 'Деактивация Yandex Feed',
+            'stalex_yml_products' => 'Stalex',
             'specs_match' => 'Specs match',
             default => $type !== '' ? $type : 'unknown',
         };

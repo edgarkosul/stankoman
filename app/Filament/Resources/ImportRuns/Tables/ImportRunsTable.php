@@ -35,6 +35,7 @@ class ImportRunsTable
                         'vactool_products' => 'Vactool',
                         'metalmaster_products' => 'Metalmaster',
                         'yandex_market_feed_products' => 'Yandex Market Feed',
+                        'stalex_yml_products' => 'Stalex',
                         'specs_match' => 'Specs match',
                         default => (string) $state,
                     })
@@ -43,7 +44,7 @@ class ImportRunsTable
                         'gray' => 'products',
                         'warning' => ['category_filters', 'yandex_market_feed_products'],
                         'primary' => 'vactool_products',
-                        'success' => 'metalmaster_products',
+                        'success' => ['metalmaster_products', 'stalex_yml_products'],
                         'info' => 'specs_match',
                     ])
                     ->sortable(),

@@ -2298,6 +2298,7 @@ class SupplierImport extends Page implements HasForms
             'metaltec_products' => 'Metaltec',
             'yandex_market_feed_products' => 'Yandex Market Feed',
             'yandex_market_feed_deactivation' => 'Деактивация Yandex Feed',
+            'stalex_yml_products' => 'Stalex',
             default => $type !== '' ? $type : 'unknown',
         };
     }
@@ -2313,6 +2314,7 @@ class SupplierImport extends Page implements HasForms
             'metaltec_products',
             'yandex_market_feed_products',
             'yandex_market_feed_deactivation',
+            'stalex_yml_products',
         ];
     }
 
