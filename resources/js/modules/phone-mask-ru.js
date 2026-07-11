@@ -11,16 +11,20 @@ const normalizeRuDigits = (value) => {
         return '';
     }
 
+    // Ведущая «8» — транк-префикс, не только у готовых 11 цифр (вставка):
+    // раньше посимвольный ввод «8 900 …» давал +7 (890) 0… со съехавшим
+    // на цифру номером. Исключение — ровно 10 цифр: это готовый
+    // национальный номер, где 8xx — код (вставка «800 123-45-67»).
+    if (digits.startsWith('8') && digits.length !== 10) {
+        digits = `7${digits.slice(1)}`;
+    }
+
     if (digits.length > 11) {
         digits = digits.slice(0, 11);
     }
 
     if (digits.length === 10) {
         return digits.startsWith('7') ? digits : `7${digits}`;
-    }
-
-    if (digits.length === 11 && digits.startsWith('8')) {
-        return `7${digits.slice(1)}`;
     }
 
     if (!digits.startsWith('7')) {
