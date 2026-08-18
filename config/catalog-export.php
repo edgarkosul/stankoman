@@ -42,6 +42,7 @@ return [
             'aliases' => ['Цена'],
             'type' => 'integer',
             'importable' => true,
+            'nullable' => false,
             'export_default' => true,
         ],
         'wholesale_price' => [
@@ -105,30 +106,35 @@ return [
             'header' => 'Валюта сайта',
             'type' => 'string',
             'importable' => true,
+            'nullable' => false,
             'export_default' => false,
         ],
         'in_stock' => [
             'header' => 'В наличии',
             'type' => 'boolean',
             'importable' => true,
+            'nullable' => false,
             'export_default' => true,
         ],
         'is_active' => [
             'header' => 'Показывать на сайте',
             'type' => 'boolean',
             'importable' => true,
+            'nullable' => false,
             'export_default' => true,
         ],
         'is_in_yml_feed' => [
             'header' => 'Выгружать в фид YML',
             'type' => 'boolean',
             'importable' => true,
+            'nullable' => false,
             'export_default' => true,
         ],
         'with_dns' => [
             'header' => 'С НДС',
             'type' => 'boolean',
             'importable' => true,
+            'nullable' => false,
             'export_default' => true,
         ],
         'warranty' => [

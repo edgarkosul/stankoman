@@ -3,6 +3,7 @@
 use App\Models\ImportRun;
 use App\Models\Product;
 use App\Support\NameNormalizer;
+use App\Support\Products\ProductExportService;
 use App\Support\Products\ProductImportService;
 use App\Support\Products\ProductSearchSync;
 use Illuminate\Database\Schema\Blueprint;
@@ -729,6 +730,117 @@ it('rejects markup multiplier values below one during import', function () {
     expect($dryRun['totals']['error'])->toBe(1)
         ->and($apply['error'])->toBe(1)
         ->and($product->fresh()->markup_multiplier)->toBe('1.20');
+
+    unlink($path);
+});
+
+it('keeps NOT NULL columns untouched when the cell is empty', function () {
+    // Регресс 13.08.2026: заказчик очистил расчётные колонки, и весь файл падал
+    // на «Column price_amount cannot be null» с полным откатом транзакции.
+    $product = Product::query()->create([
+        'name' => 'Compressor With Empty Cells',
+        'sku' => 'EMPTY-1',
+        'price_amount' => 109767,
+        'wholesale_price' => '109767.0000',
+        'wholesale_currency' => 'RUR',
+        'exchange_rate' => '1.000000',
+        'wholesale_price_rub' => '109767.00',
+        'markup_multiplier' => '1.0000',
+        'is_active' => true,
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'wholesale_price', 'wholesale_currency', 'exchange_rate', 'wholesale_price_rub', 'markup_multiplier', 'price_amount', 'is_active', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        '1155',
+        'USD',
+        '',
+        '',
+        '1,2',
+        '',
+        '',
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service = new ProductImportService;
+
+    $dryRun = $service->dryRunFromXlsx($run, $path);
+    $apply = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($apply)->toMatchArray([
+        'created' => 0,
+        'updated' => 1,
+        'conflict' => 0,
+        'error' => 0,
+        'scanned' => 1,
+    ]);
+
+    expect($dryRun['totals']['update'])->toBe($apply['updated']);
+
+    $product->refresh();
+
+    // NOT NULL-колонки сохранили значения, редактируемые поля обновились.
+    expect($product->price_amount)->toBe(109767)
+        ->and((bool) $product->is_active)->toBeTrue()
+        ->and($product->wholesale_price)->toBe('1155.0000')
+        ->and($product->wholesale_currency)->toBe('USD')
+        ->and($product->markup_multiplier)->toBe('1.20');
+
+    unlink($path);
+});
+
+it('reports no changes when a freshly exported file is imported back', function () {
+    // Регресс прогона 435: dry-run обещал 249 обновлений, apply записал 1028,
+    // а автообновление курса ЦБ молча выключалось у всего каталога.
+    $product = Product::query()->create([
+        'name' => 'Round Trip Product',
+        'sku' => 'ROUND-1',
+        'price_amount' => 1096,
+        'wholesale_price' => '10.0000',
+        'wholesale_currency' => 'USD',
+        'exchange_rate' => '91.25',
+        'auto_update_exchange_rate' => true,
+        'wholesale_price_rub' => '913',
+        'markup_multiplier' => '1.20',
+        'margin_amount_rub' => '183.00',
+        'qty' => 2,
+        'warranty' => '12',
+    ]);
+
+    $path = (new ProductExportService)->exportToXlsx(Product::query()->whereKey($product->getKey()), [])['path'];
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $service = new ProductImportService;
+
+    $dryRun = $service->dryRunFromXlsx($run, $path);
+    $apply = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($dryRun['totals'])->toMatchArray([
+        'create' => 0,
+        'update' => 0,
+        'same' => 1,
+        'conflict' => 0,
+        'error' => 0,
+    ]);
+
+    expect($apply)->toMatchArray([
+        'created' => 0,
+        'updated' => 0,
+        'same' => 1,
+        'conflict' => 0,
+        'error' => 0,
+    ]);
+
+    expect((bool) $product->fresh()->auto_update_exchange_rate)->toBeTrue();
 
     unlink($path);
 });

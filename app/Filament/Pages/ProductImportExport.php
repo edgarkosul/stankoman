@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Models\Category;
 use App\Models\ImportRun;
 use App\Models\Product;
@@ -293,12 +294,19 @@ class ProductImportExport extends Page implements HasForms
         $this->dryRunPreviewConflict = $preview['conflict'] ?? [];
 
         $unchanged = $totals['same'] ?? 0;
+        $hasProblems = ($totals['error'] ?? 0) > 0 || ($totals['conflict'] ?? 0) > 0;
 
-        Notification::make()
-            ->title('Dry-run завершён')
-            ->body("Создастся: {$totals['create']}, обновится: {$totals['update']}, без изменений: {$unchanged}, конфликтов: {$totals['conflict']}, ошибок: {$totals['error']}")
-            ->success()
-            ->send();
+        $notification = Notification::make()
+            ->title('Проверка завершена — изменения НЕ применены')
+            ->body("Создастся: {$totals['create']}, обновится: {$totals['update']}, без изменений: {$unchanged}, конфликтов: {$totals['conflict']}, ошибок: {$totals['error']}. Чтобы записать изменения, нажмите «Применить последний загруженный Excel».");
+
+        if ($hasProblems) {
+            $notification->warning()->persistent()->actions([$this->openImportRunAction($run)]);
+        } else {
+            $notification->success();
+        }
+
+        $notification->send();
     }
 
     protected function storeImportFileAndGetAbsolutePath(TemporaryUploadedFile $file): ?string
@@ -372,17 +380,60 @@ class ProductImportExport extends Page implements HasForms
             'filters' => $this->buildImportFilters(),
         ]);
 
+        $run->refresh();
+
+        $counters =
+            'Создано: '.($totals['created'] ?? 0).', '.
+            'обновлено: '.($totals['updated'] ?? 0).', '.
+            'без изменений: '.($totals['same'] ?? 0).', '.
+            'конфликтов: '.($totals['conflict'] ?? 0).', '.
+            'ошибок: '.($totals['error'] ?? 0);
+
+        // Прогон помечается applied внутри транзакции: статус не сменился —
+        // значит был откат и в базу не записалось ничего.
+        if ($run->status !== 'applied') {
+            $reason = (string) $run->issues()
+                ->where('code', 'exception')
+                ->latest('id')
+                ->value('message');
+
+            Notification::make()
+                ->title('Импорт НЕ применён — изменения откачены')
+                ->body(trim($reason) !== '' ? $reason : 'Ошибка при записи, подробности в прогоне импорта.')
+                ->danger()
+                ->persistent()
+                ->actions([$this->openImportRunAction($run)])
+                ->send();
+
+            return;
+        }
+
+        if (($totals['error'] ?? 0) > 0 || ($totals['conflict'] ?? 0) > 0) {
+            Notification::make()
+                ->title('Импорт применён частично')
+                ->body($counters.'. Часть строк пропущена — откройте прогон, чтобы увидеть причины.')
+                ->warning()
+                ->persistent()
+                ->actions([$this->openImportRunAction($run)])
+                ->send();
+
+            return;
+        }
+
         Notification::make()
             ->title('Импорт применён')
-            ->body(
-                'Создано: '.($totals['created'] ?? 0).', '.
-                'обновлено: '.($totals['updated'] ?? 0).', '.
-                'без изменений: '.($totals['same'] ?? 0).', '.
-                'конфликтов: '.($totals['conflict'] ?? 0).', '.
-                'ошибок: '.($totals['error'] ?? 0)
-            )
+            ->body($counters)
             ->success()
             ->send();
+    }
+
+    protected function openImportRunAction(ImportRun $run): FormAction
+    {
+        return FormAction::make('open_import_run')
+            ->label("Открыть прогон #{$run->id}")
+            ->button()
+            ->url(ImportRunResource::getUrl('view', ['record' => $run]))
+            ->openUrlInNewTab();
     }
 
     protected function applyFiltersToProductQuery(Builder $query): Builder

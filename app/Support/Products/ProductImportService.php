@@ -13,12 +13,31 @@ use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use Stringable;
 use UnitEnum;
 
 class ProductImportService
 {
+    /**
+     * Поля, участвующие в пересчёте цен. Подгружаем их всегда, даже если их нет
+     * в колонках файла: без них сравнение «изменилось / не изменилось» врёт —
+     * незагруженный атрибут читается как null и строка выглядит изменённой.
+     */
+    private const CALCULATION_COLUMNS = [
+        'wholesale_price',
+        'wholesale_currency',
+        'exchange_rate',
+        'auto_update_exchange_rate',
+        'wholesale_price_rub',
+        'markup_multiplier',
+        'margin_amount_rub',
+        'price_amount',
+        'discount_percent',
+        'discount_price',
+    ];
+
     public function __construct(
         private readonly ProductSearchSync $searchSync = new ProductSearchSync,
     ) {}
@@ -249,10 +268,7 @@ class ProductImportService
             }
         }
 
-        $selectCols = array_values(array_unique(array_merge(
-            ['id', 'name', 'name_normalized', 'updated_at'],
-            $importCols,
-        )));
+        $selectCols = $this->existingProductSelectColumns($importCols);
 
         // Полный список существующих продуктов по name_normalized
         $existingAll = Product::query()
@@ -388,8 +404,12 @@ class ProductImportService
                     }
                 }
 
-                // есть ли реальные изменения
-                if ($this->rowHasChanges($product, $data, $headers, $whitelist)) {
+                // Изменения считаем тем же payload, что и при применении:
+                // иначе dry-run обещает одно, а apply пишет другое.
+                $payload = $this->buildUpdatePayload($product, $data, $headers, $whitelist);
+                unset($payload['__rename_conflict__']);
+
+                if ($payload !== []) {
                     $totals['update']++;
                     $preview['update'][] = $this->makeRowPreview($rowIndex, $data, $product);
                 } else {
@@ -702,64 +722,33 @@ class ProductImportService
         return '0';
     }
 
-    protected function rowHasChanges(Product $product, array $data, array $headers, array $whitelist): bool
+    /** Можно ли писать в поле NULL (в БД колонка объявлена NOT NULL — нельзя). */
+    protected function isNullableField(string $field, array $whitelist): bool
     {
-        $newName = trim((string) ($data['new_name'] ?? ''));
-        if ($newName !== '' && NameNormalizer::normalize($newName) !== (string) $product->name_normalized) {
-            return true;
+        return ($whitelist[$field]['nullable'] ?? true) !== false;
+    }
+
+    /**
+     * Колонки, которые нужно вытащить из БД для сравнения строки файла с товаром.
+     *
+     * @param  array<int, string>  $importCols
+     * @return array<int, string>
+     */
+    protected function existingProductSelectColumns(array $importCols): array
+    {
+        $columns = array_values(array_unique(array_merge(
+            ['id', 'name', 'name_normalized', 'updated_at'],
+            $importCols,
+            self::CALCULATION_COLUMNS,
+        )));
+
+        $available = Schema::getColumnListing((new Product)->getTable());
+
+        if ($available === []) {
+            return $columns;
         }
 
-        foreach ($headers as $h) {
-            if ($h === 'discount_percent') {
-                // Сохранённый процент имеет приоритет; для «старых цен» поставщиков
-                // (процент не задан) сравниваем с вычисленным из discount_price.
-                $storedPercent = $product->discount_percent;
-                $dbPercent = ($storedPercent !== null && (float) $storedPercent > 0)
-                    ? (float) $storedPercent
-                    : Product::calculateDiscountPercent($product->price_amount, $product->discount_price);
-
-                $dbCanon = $this->canonical(
-                    $dbPercent,
-                    $whitelist[$h]['type'] ?? 'decimal(5,2)',
-                    $h,
-                );
-                $xlsCanon = $this->canonical(
-                    $data[$h] ?? null,
-                    $whitelist[$h]['type'] ?? 'decimal(5,2)',
-                    $h,
-                );
-
-                if ($dbCanon !== $xlsCanon) {
-                    return true;
-                }
-
-                continue;
-            }
-
-            if (in_array($h, ['name', 'new_name', 'updated_at'], true)) {
-                continue;
-            }
-            $meta = $whitelist[$h] ?? null;
-            if (! $meta || ! ($meta['importable'] ?? false) || ($meta['virtual'] ?? false)) {
-                continue;
-            }
-
-            $type = $meta['type'] ?? 'string';
-            $dbValue = $product->getAttribute($h);
-            if (! array_key_exists($h, $product->getAttributes())) {
-                $dbValue = Product::query()->whereKey($product->id)->value($h);
-            }
-            $xlsValue = $data[$h] ?? null;
-
-            $dbCanon = $this->canonical($dbValue, $type, $h);
-            $xlsCanon = $this->canonical($xlsValue, $type, $h);
-
-            if ($dbCanon !== $xlsCanon) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_values(array_intersect($columns, $available));
     }
 
     protected function toDatabaseValue($canon, string $type)
@@ -804,24 +793,49 @@ class ProductImportService
             $this->putCalculatedPayloadValue($payload, $product, 'margin_amount_rub', $calculatedMarginAmountRub, $whitelist);
         }
 
-        if (in_array('exchange_rate', $headers, true) && $this->canonical(
-            $data['exchange_rate'] ?? null,
-            $whitelist['exchange_rate']['type'] ?? 'decimal(14,2)',
-            'exchange_rate',
-        ) !== null) {
+        $exchangeRateType = $whitelist['exchange_rate']['type'] ?? 'decimal(14,2)';
+
+        $fileExchangeRate = in_array('exchange_rate', $headers, true)
+            ? $this->canonical($data['exchange_rate'] ?? null, $exchangeRateType, 'exchange_rate')
+            : null;
+
+        // Курс считаем «вписанным вручную», только если он отличается от того, что
+        // уже стоит у товара: в выгрузке колонка всегда заполнена, и без этой проверки
+        // любая обратная загрузка каталога молча выключала автообновление по ЦБ.
+        $manualExchangeRate = $fileExchangeRate !== null && (
+            $product === null
+            || $fileExchangeRate !== $this->canonical($product->getAttribute('exchange_rate'), $exchangeRateType, 'exchange_rate')
+        );
+
+        if ($manualExchangeRate && (int) ($product?->getAttribute('auto_update_exchange_rate') ?? 1) !== 0) {
             $payload['auto_update_exchange_rate'] = 0;
         }
 
         if (in_array('discount_percent', $headers, true)) {
+            $percentType = $whitelist['discount_percent']['type'] ?? 'decimal(5,2)';
+
             $discountPercent = $this->canonical(
                 $data['discount_percent'] ?? null,
-                $whitelist['discount_percent']['type'] ?? 'decimal(5,2)',
+                $percentType,
                 'discount_percent',
             );
 
-            // discount_percent — источник истины: сохраняем сам процент в колонку
-            // и выводим из него discount_price (UPDATE минует saving-хук модели).
-            $this->putCalculatedPayloadValue($payload, $product, 'discount_percent', $discountPercent, $whitelist);
+            // У «старых цен» поставщиков процент в БД не задан, но экспорт отдаёт
+            // вычисленный из discount_price. Такую строку не считаем изменённой,
+            // иначе любая обратная загрузка превращала старую цену в процентную скидку.
+            $storedPercent = $product?->getAttribute('discount_percent');
+            $effectivePercent = ($storedPercent !== null && (float) $storedPercent > 0)
+                ? (float) $storedPercent
+                : Product::calculateDiscountPercent(
+                    $product?->getAttribute('price_amount'),
+                    $product?->getAttribute('discount_price'),
+                );
+
+            if ($discountPercent !== $this->canonical($effectivePercent, $percentType, 'discount_percent')) {
+                // discount_percent — источник истины: сохраняем сам процент в колонку
+                // и выводим из него discount_price (UPDATE минует saving-хук модели).
+                $this->putCalculatedPayloadValue($payload, $product, 'discount_percent', $discountPercent, $whitelist);
+            }
 
             $calculatedDiscountPrice = Product::calculateDiscountPrice($sitePriceAmount, $discountPercent);
 
@@ -837,6 +851,10 @@ class ProductImportService
     {
         $type = $whitelist[$field]['type'] ?? 'string';
         $calculatedCanonical = $this->canonical($value, $type, $field);
+
+        if ($calculatedCanonical === null && ! $this->isNullableField($field, $whitelist)) {
+            return;
+        }
 
         if ($product !== null) {
             $databaseCanonical = $this->canonical($product->getAttribute($field), $type, $field);
@@ -895,9 +913,17 @@ class ProductImportService
             $dbCanon = $this->canonical($dbValue, $type, $h);
             $xlsCanon = $this->canonical($xlsValue, $type, $h);
 
-            if ($dbCanon !== $xlsCanon) {
-                $payload[$h] = $this->toDatabaseValue($xlsCanon, $type);
+            if ($dbCanon === $xlsCanon) {
+                continue;
             }
+
+            // Пустая ячейка в NOT NULL-колонке роняла весь файл (SQLSTATE 23000),
+            // поэтому такое значение просто не трогаем.
+            if ($xlsCanon === null && ! $this->isNullableField($h, $whitelist)) {
+                continue;
+            }
+
+            $payload[$h] = $this->toDatabaseValue($xlsCanon, $type);
         }
 
         $payload = $this->applyPricingCalculationsToPayload($payload, $product, $data, $headers, $whitelist);
@@ -937,6 +963,11 @@ class ProductImportService
             $type = $meta['type'] ?? 'string';
             $xlsValue = $data[$h] ?? null;
             $xlsCanon = $this->canonical($xlsValue, $type, $h);
+
+            // Для NOT NULL-колонок пустая ячейка означает «оставить значение по умолчанию».
+            if ($xlsCanon === null && ! $this->isNullableField($h, $whitelist)) {
+                continue;
+            }
 
             $payload[$h] = $this->toDatabaseValue($xlsCanon, $type);
         }
@@ -1061,10 +1092,7 @@ class ProductImportService
         }
 
         $namesUnique = array_values(array_unique(array_filter($fileNames)));
-        $selectCols = array_values(array_unique(array_merge(
-            ['id', 'name', 'name_normalized', 'updated_at'],
-            $importCols
-        )));
+        $selectCols = $this->existingProductSelectColumns($importCols);
 
         // Полный список существующих продуктов по name_normalized
         $existingAll = Product::query()
