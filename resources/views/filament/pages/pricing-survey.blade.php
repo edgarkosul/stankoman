@@ -324,13 +324,21 @@
                         </template>
                     </fieldset>
 
-                    <div class="ps-nav">
+                    <div class="ps-nav" x-show="! editing">
                         <button type="button" class="ps-btn ps-btn-ghost" @click="go(step - 1)">Назад</button>
                         <button type="button" class="ps-btn ps-btn-primary" :disabled="! answers[q.id]" @click="go(step + 1)"
                                 x-text="i === questions.length - 1 ? 'Посмотреть ответы' : 'Далее'"></button>
                     </div>
 
+                    <div class="ps-nav" x-show="editing" x-cloak>
+                        <button type="button" class="ps-btn ps-btn-ghost" @click="cancelEdit()">Отмена</button>
+                        <button type="button" class="ps-btn ps-btn-primary" :disabled="! answers[q.id]" @click="finishEdit()">
+                            Сохранить и вернуться к ответам
+                        </button>
+                    </div>
+
                     <p class="ps-hint" x-show="! answers[q.id]">Выберите один вариант, чтобы продолжить.</p>
+                    <p class="ps-hint" x-show="editing && answers[q.id]" x-cloak>Правите один ответ — остальные останутся как были.</p>
                 </div>
             </template>
         </template>
@@ -350,7 +358,7 @@
                                 <i x-text="answers[q.id] || '—'"></i>
                                 <span x-text="chosen(q) ? chosen(q).title : 'нет ответа'"></span>
                             </div>
-                            <button type="button" class="ps-sum-edit" @click="go(i)">Изменить</button>
+                            <button type="button" class="ps-sum-edit" @click="edit(i)">Изменить</button>
                             <template x-if="chosen(q) && chosen(q).effect">
                                 <div class="ps-sum-effect" x-html="chosen(q).effect"></div>
                             </template>
@@ -378,6 +386,9 @@
                 answers: {},
                 step: -1,
                 sending: false,
+                editing: false,
+                editId: null,
+                editSnapshot: null,
                 storageKey: 'intertooler-pricing-survey-v1',
 
                 init() {
@@ -416,6 +427,43 @@
                     this.answers = Object.assign({}, this.answers, { [id]: key });
                 },
 
+                edit(index) {
+                    const question = this.questions[index];
+
+                    this.editing = true;
+                    this.editId = question.id;
+                    this.editSnapshot = this.answers[question.id] || null;
+                    this.go(index);
+                },
+
+                finishEdit() {
+                    this.stopEditing();
+                    this.go(this.questions.length);
+                },
+
+                cancelEdit() {
+                    if (this.editId) {
+                        const restored = Object.assign({}, this.answers);
+
+                        if (this.editSnapshot) {
+                            restored[this.editId] = this.editSnapshot;
+                        } else {
+                            delete restored[this.editId];
+                        }
+
+                        this.answers = restored;
+                    }
+
+                    this.stopEditing();
+                    this.go(this.questions.length);
+                },
+
+                stopEditing() {
+                    this.editing = false;
+                    this.editId = null;
+                    this.editSnapshot = null;
+                },
+
                 chosen(q) {
                     return q.options.find((opt) => opt.key === this.answers[q.id]) || null;
                 },
@@ -436,6 +484,11 @@
 
                 go(next) {
                     this.step = Math.max(-1, Math.min(this.questions.length, next));
+
+                    if (this.editing && this.questions[this.step]?.id !== this.editId) {
+                        this.stopEditing();
+                    }
+
                     this.$el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 },
 
