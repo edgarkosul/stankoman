@@ -68,7 +68,6 @@ yarn-error.log*
 /.phpactor.json
 /auth.json
 /changes.diff
-/vite.config.js
 
 # Локальные папки окружения/инструментов
 /.osp/
