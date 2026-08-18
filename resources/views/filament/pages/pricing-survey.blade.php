@@ -30,23 +30,6 @@
             line-height: 1.55;
         }
 
-        .dark .ps {
-            --ps-surface: #141e22;
-            --ps-surface-2: #1a262a;
-            --ps-ink: #e6edee;
-            --ps-ink-2: #a5b6bb;
-            --ps-ink-3: #7a9096;
-            --ps-line: #253439;
-            --ps-line-strong: #35494f;
-            --ps-accent: #58c4ce;
-            --ps-accent-ink: #06272c;
-            --ps-accent-soft: #10333a;
-            --ps-accent-line: #2f6e78;
-            --ps-note-bg: #2a2113;
-            --ps-note-ink: #e9c68c;
-            --ps-note-line: #4a3a1d;
-        }
-
         .ps [x-cloak] { display: none !important; }
 
         .ps-bar { display: flex; flex-direction: column; gap: 8px; }
