@@ -222,11 +222,9 @@ class YandexMarketFeedGenerator
         $xml->writeAttribute('available', $product->in_stock ? 'true' : 'false');
 
         $xml->writeElement('url', $this->productUrl($product));
-        $xml->writeElement('price', (string) $product->price_final);
-
-        if ($product->has_discount && $product->price_int > 0 && $product->price_final < $product->price_int) {
-            $xml->writeElement('oldprice', (string) $product->price_int);
-        }
+        // Фид читают незарегистрированные покупатели, а цена со скидкой доступна
+        // только зарегистрированным — отдаём обычную цену без oldprice.
+        $xml->writeElement('price', (string) $product->price_int);
 
         $xml->writeElement('currencyId', 'RUR');
         $xml->writeElement('categoryId', (string) $categoryId);

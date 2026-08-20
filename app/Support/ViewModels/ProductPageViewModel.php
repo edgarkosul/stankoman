@@ -5,6 +5,7 @@ namespace App\Support\ViewModels;
 use App\Models\Product;
 use App\Models\ProductTab;
 use App\Support\ImageDerivativesResolver;
+use App\Support\Products\DiscountVisibility;
 use App\Support\Products\ProductEcommerceDataBuilder;
 use App\Support\Seo\SeoTextExtractor;
 use Illuminate\Support\Collection;
@@ -26,7 +27,7 @@ class ProductPageViewModel
             return $this->product->meta_title;
         }
 
-        $finalPrice = (int) $this->product->price_final;
+        $finalPrice = (int) $this->product->price_int;
 
         if ($finalPrice > 0) {
             $price = number_format($finalPrice, 0, ' ', ' ');
@@ -209,8 +210,14 @@ class ProductPageViewModel
                 'id' => $this->product->id,
                 'name' => $this->product->name,
                 'price' => $this->product->price_int,
-                'price_final' => $this->product->price_final,
-                'has_discount' => $this->product->has_discount,
+                'price_final' => DiscountVisibility::finalPriceFor(
+                    (int) $this->product->price_int,
+                    $this->product->discount === null ? null : (int) $this->product->discount,
+                ),
+                'has_discount' => DiscountVisibility::isDiscounted(
+                    (int) $this->product->price_int,
+                    $this->product->discount === null ? null : (int) $this->product->discount,
+                ),
                 'image' => $imageUrl,
                 'webpSrcset' => $webpSrcset,
                 'slug' => $this->product->slug,

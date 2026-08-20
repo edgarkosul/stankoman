@@ -58,8 +58,9 @@ it('generates the market feed file for eligible products', function (): void {
         ->toContain('<currency id="RUR" rate="1"')
         ->toContain('<offer id="'.$product->id.'" available="true">')
         ->toContain('<url>https://settings.example.com/product/frezernyj-stanok-test-200</url>')
-        ->toContain('<price>275000</price>')
-        ->toContain('<oldprice>300000</oldprice>')
+        // Фид публичный, а цена со скидкой доступна только зарегистрированным.
+        ->toContain('<price>300000</price>')
+        ->not->toContain('<oldprice>')
         ->toContain('<categoryId>'.$category->id.'</categoryId>')
         ->toContain('<vendor>InterTooler</vendor>')
         ->toContain('<picture>https://settings.example.com/storage/products/test-200.jpg</picture>')

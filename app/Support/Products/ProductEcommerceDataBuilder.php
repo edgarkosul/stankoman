@@ -100,7 +100,10 @@ class ProductEcommerceDataBuilder
         $item = [
             'id' => $this->productAnalyticsId($product),
             'name' => (string) $product->name,
-            'price' => (int) $product->price_final,
+            'price' => DiscountVisibility::finalPriceFor(
+                (int) $product->price_int,
+                $product->discount === null ? null : (int) $product->discount,
+            ),
             'quantity' => max(1, $quantity),
         ];
 

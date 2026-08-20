@@ -3,6 +3,7 @@
 use App\Models\Category;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\User;
 use App\Support\Products\ProductEcommerceDataBuilder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -54,7 +55,7 @@ it('builds ecommerce payloads and schema from the same product snapshot', functi
             'products' => [[
                 'id' => 'TEST-700',
                 'name' => 'Токарный станок TEST-700',
-                'price' => 135000,
+                'price' => 150000,
                 'brand' => 'Stankoman',
                 'category' => 'Каталог / Токарные станки',
                 'quantity' => 1,
@@ -78,7 +79,7 @@ it('builds ecommerce payloads and schema from the same product snapshot', functi
             'offers' => [
                 '@type' => 'Offer',
                 'priceCurrency' => 'RUB',
-                'price' => '135000',
+                'price' => '150000',
                 'availability' => 'https://schema.org/InStock',
                 'url' => 'https://example.test/product/tokarnyj-stanok-test-700',
             ],
@@ -131,4 +132,25 @@ it('builds purchase payload from order item snapshots', function (): void {
             ]],
         ],
     ]);
+});
+
+it('uses the discounted price in analytics for authenticated customers', function (): void {
+    $product = Product::query()->create([
+        'name' => 'Станок со скидкой',
+        'slug' => 'stanok-so-skidkoj',
+        'sku' => 'DISC-700',
+        'price_amount' => 150000,
+        'discount_price' => 135000,
+        'in_stock' => true,
+    ]);
+
+    $builder = app(ProductEcommerceDataBuilder::class);
+
+    // Гость видит обычную цену.
+    expect($builder->productLineItem($product)['price'])->toBe(150000);
+
+    $this->actingAs(User::factory()->create());
+
+    // Зарегистрированный — цену со скидкой.
+    expect($builder->productLineItem($product)['price'])->toBe(135000);
 });

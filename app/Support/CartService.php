@@ -6,6 +6,7 @@ use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\Products\DiscountVisibility;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cookie;
@@ -55,7 +56,10 @@ class CartService
             $item = $this->cart->items()->create([
                 'product_id' => $productId,
                 'quantity' => max(1, $quantity),
-                'price_snapshot' => (float) ($product->price_final ?? $product->price_int ?? 0),
+                'price_snapshot' => (float) DiscountVisibility::finalPriceFor(
+                    (int) ($product->price_int ?? 0),
+                    $product->discount === null ? null : (int) $product->discount,
+                ),
                 'options' => $options,
             ]);
 

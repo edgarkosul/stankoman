@@ -102,7 +102,7 @@
                             </div>
 
                             <div class="whitespace-nowrap pl-3 text-sm font-semibold">
-                                @if ($product->discount_price > 0)
+                                @if ($product->discount_price > 0 && \App\Support\Products\DiscountVisibility::isDiscounted((int) $product->price, (int) $product->discount_price))
                                     @if ($product->price > 0)
                                         <span class="mr-2 text-zinc-400 line-through">
                                             {{ price($product->price) }}

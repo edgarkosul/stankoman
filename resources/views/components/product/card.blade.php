@@ -3,8 +3,8 @@
 @php
     $basePrice = $product->price_int;
     $discount = $product->discount;
-    $hasDiscount = $product->has_discount;
-    $pct = $product->display_discount_percent;
+    $hasDiscount = \App\Support\Products\DiscountVisibility::isDiscounted($basePrice, $discount === null ? null : (int) $discount);
+    $pct = $hasDiscount ? $product->display_discount_percent : null;
 
     $gallery = $product->gallery ?? [];
     if (is_string($gallery)) {

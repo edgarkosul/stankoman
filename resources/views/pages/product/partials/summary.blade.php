@@ -16,6 +16,14 @@
             @endif
             @endif
         </div>
+
+        @if (data_get($summary, 'price.discount_for_members'))
+            <p class="wght-500 wdth-70 text-zinc-700">
+                Цена со скидкой — для зарегистрированных.
+                <a href="{{ route('login') }}" class="underline decoration-brand-red underline-offset-2">Войти</a>
+                или <a href="{{ route('register') }}" class="underline decoration-brand-red underline-offset-2">зарегистрироваться</a>.
+            </p>
+        @endif
          @if ($finalPrice !== 0)
         <div class="wght-500 wdth-70 text-zinc-700">В том числе НДС {{ config('settings.product.stavka_nds') }} %</div>
         @endif

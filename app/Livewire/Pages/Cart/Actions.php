@@ -4,6 +4,7 @@ namespace App\Livewire\Pages\Cart;
 
 use App\Models\Product;
 use App\Support\CartService;
+use App\Support\Products\DiscountVisibility;
 use App\Support\Products\ProductEcommerceDataBuilder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Schema;
@@ -270,8 +271,14 @@ class Actions extends Component
             'image' => $product->image_url,
             'webp_srcset' => $product->image_webp_srcset,
             'price_formatted' => price($product->price_int),
-            'price_final_formatted' => price($product->price_final),
-            'has_discount' => (bool) $product->has_discount,
+            'price_final_formatted' => price(DiscountVisibility::finalPriceFor(
+                (int) $product->price_int,
+                $product->discount === null ? null : (int) $product->discount,
+            )),
+            'has_discount' => DiscountVisibility::isDiscounted(
+                (int) $product->price_int,
+                $product->discount === null ? null : (int) $product->discount,
+            ),
         ];
     }
 

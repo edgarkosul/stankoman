@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Support\ImageDerivativesResolver;
+use App\Support\Products\DiscountVisibility;
 use App\Support\ViewModels\ProductPageViewModel;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Storage;
@@ -85,8 +86,10 @@ class ProductController extends Controller
     private function buildSummary(Product $product): array
     {
         $basePrice = (int) $product->price_int;
-        $finalPrice = (int) $product->price_final;
         $discountPrice = $product->discount;
+        $discountPrice = $discountPrice === null ? null : (int) $discountPrice;
+        $hasDiscount = DiscountVisibility::isDiscounted($basePrice, $discountPrice);
+        $finalPrice = DiscountVisibility::finalPriceFor($basePrice, $discountPrice);
 
         $details = collect([
             ['label' => 'Наличие', 'value' => $product->in_stock ? 'В наличии' : 'Нет в наличии'],
@@ -103,9 +106,11 @@ class ProductController extends Controller
             'price' => [
                 'base' => $basePrice,
                 'final' => $finalPrice,
-                'discount' => $discountPrice,
-                'has_discount' => (bool) $product->has_discount,
-                'discount_percent' => $product->display_discount_percent,
+                'discount' => $hasDiscount ? $discountPrice : null,
+                'has_discount' => $hasDiscount,
+                'discount_percent' => $hasDiscount ? $product->display_discount_percent : null,
+                // Скидка есть, но покупатель не авторизован — показываем подсказку вместо цены.
+                'discount_for_members' => ! $hasDiscount && DiscountVisibility::isDiscounted($basePrice, $discountPrice, true),
             ],
             'details' => $details,
             'promo_info' => $product->promo_info,

@@ -4,6 +4,7 @@ namespace App\Livewire\Pages\Cart;
 
 use App\Models\CartItem;
 use App\Support\CartService;
+use App\Support\Products\DiscountVisibility;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Component;
@@ -118,7 +119,10 @@ class Index extends Component
 
             $price = (float) ($product?->price_int ?? 0);
             $discountPrice = (float) ($product?->discount ?? 0);
-            $hasDiscount = (bool) ($product?->has_discount ?? false);
+            $hasDiscount = DiscountVisibility::isDiscounted(
+                (int) $price,
+                $product?->discount === null ? null : (int) $product->discount,
+            );
 
             $subtotal = $price * $quantity;
             $lineTotal = $hasDiscount ? ($discountPrice * $quantity) : $subtotal;
