@@ -425,6 +425,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
                         $attributes = $this->sanitizeExistingProductUpdateAttributes(
                             attributes: $attributes,
                             payload: $payload,
+                            product: $product,
                             options: $options,
                             queueMedia: $queueMedia,
                             hasPayloadImages: $payload->images !== [],
@@ -1286,12 +1287,17 @@ final class ProductImportProcessor implements ImportProcessorInterface
     private function sanitizeExistingProductUpdateAttributes(
         array $attributes,
         ProductPayload $payload,
+        Product $product,
         array $options,
         bool $queueMedia,
         bool $hasPayloadImages,
         bool $preserveMissingPrice,
     ): array {
         $attributes = $this->filterExistingProductUpdateAttributes($attributes, $options);
+
+        if ($this->shouldProtectManualPricing($product, $options)) {
+            $attributes = array_diff_key($attributes, array_flip(['price_amount', 'discount_price']));
+        }
 
         if ($preserveMissingPrice && $payload->priceAmount === null && $payload->discountPrice === null) {
             $attributes = array_diff_key($attributes, array_flip(['price_amount', 'discount_price', 'currency']));
@@ -1302,6 +1308,26 @@ final class ProductImportProcessor implements ImportProcessorInterface
         }
 
         return array_diff_key($attributes, array_flip(self::DEFERRED_MEDIA_EVENT_FIELDS));
+    }
+
+    /**
+     * Товар считает цену сам, если у него заполнены «Цена опт» и «Наценка».
+     * Прайс поставщика такую цену не трогает — если только при запуске импорта
+     * явно не включили «Обновлять цену даже у товаров с ручной формулой».
+     *
+     * @param  array<string, mixed>  $options
+     */
+    private function shouldProtectManualPricing(Product $product, array $options): bool
+    {
+        if (($options['update_prices_for_manual_pricing'] ?? false) === true) {
+            return false;
+        }
+
+        $wholesalePrice = $product->getAttribute('wholesale_price');
+        $markupMultiplier = $product->getAttribute('markup_multiplier');
+
+        return $wholesalePrice !== null && (float) $wholesalePrice > 0
+            && $markupMultiplier !== null && (float) $markupMultiplier > 0;
     }
 
     /**

@@ -1484,7 +1484,15 @@ function prepareProductImportProcessorTables(): void
         $table->string('country')->nullable();
         $table->unsignedInteger('price_amount')->default(0);
         $table->unsignedInteger('discount_price')->nullable();
+        $table->decimal('discount_percent', 5, 2)->nullable();
         $table->char('currency', 3)->default('RUB');
+        $table->decimal('wholesale_price', 14, 4)->nullable();
+        $table->char('wholesale_currency', 3)->nullable();
+        $table->decimal('exchange_rate', 14, 6)->nullable();
+        $table->boolean('auto_update_exchange_rate')->default(false);
+        $table->decimal('wholesale_price_rub', 14, 2)->nullable();
+        $table->decimal('markup_multiplier', 8, 4)->nullable();
+        $table->decimal('margin_amount_rub', 14, 2)->nullable();
         $table->boolean('in_stock')->default(true)->index();
         $table->unsignedInteger('qty')->nullable();
         $table->unsignedInteger('popularity')->default(0)->index();
@@ -1585,3 +1593,64 @@ function productImportPdfLinkBlock(
         .str_replace('/', '\\/', htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'))
         .'&quot;}" data-id="pdf-link"></div>';
 }
+
+it('keeps the site price of products that calculate it from wholesale price and markup', function (): void {
+    $firstRun = createImportRun('catalog_import_yml');
+    $secondRun = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Товар с ручной формулой',
+        'slug' => 'manual-formula-product',
+        'price_amount' => 117990,
+        'currency' => 'RUB',
+        'wholesale_price' => '1155.0000',
+        'wholesale_currency' => 'USD',
+        'exchange_rate' => '85.13',
+        'wholesale_price_rub' => '98325.00',
+        'markup_multiplier' => '1.2000',
+        'in_stock' => true,
+        'is_active' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'yandex_market',
+        'external_id' => 'offer-manual',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $firstRun->id,
+        'last_seen_run_id' => $firstRun->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $payload = fn (): ProductPayload => new ProductPayload(
+        externalId: 'offer-manual',
+        name: 'Товар с ручной формулой',
+        priceAmount: 90000,
+        qty: 7,
+    );
+
+    // Обычный прогон: цену поставщика к таким товарам не применяем.
+    $processor->processBatch([$payload()], [
+        'supplier' => 'yandex_market',
+        'run_id' => $secondRun->id,
+        'update_existing' => true,
+    ]);
+
+    $product->refresh();
+
+    expect($product->price_amount)->toBe(117990)
+        ->and($product->qty)->toBe(7);
+
+    // Прогон с явно включённой галочкой: цена поставщика продавливается.
+    $thirdRun = createImportRun('catalog_import_yml');
+
+    $processor->processBatch([$payload()], [
+        'supplier' => 'yandex_market',
+        'run_id' => $thirdRun->id,
+        'update_existing' => true,
+        'update_prices_for_manual_pricing' => true,
+    ]);
+
+    expect($product->fresh()->price_amount)->toBe(90000);
+});

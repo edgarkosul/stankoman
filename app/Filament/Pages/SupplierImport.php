@@ -1364,6 +1364,7 @@ class SupplierImport extends Page implements HasForms
             'update_existing' => true,
             'update_existing_mode' => ExistingProductUpdateSelection::MODE_ALL,
             'update_existing_fields' => ExistingProductUpdateSelection::defaultFields(),
+            'update_prices_for_manual_pricing' => false,
             'error_threshold_count' => null,
             'error_threshold_percent' => null,
             'scope' => '',
@@ -1456,6 +1457,10 @@ class SupplierImport extends Page implements HasForms
                 ->live()
                 ->visible(fn (Get $get): bool => $this->shouldShowSelectedUpdateFields($get))
                 ->helperText('Цена обновляет только основную цену. Наличие обновляет только признак наличия. Новые товары создаются полностью.'),
+            Toggle::make('runtime.update_prices_for_manual_pricing')
+                ->label('Обновлять цену даже у товаров с ручной формулой')
+                ->visible(fn (Get $get): bool => $this->shouldShowExistingUpdateControls($get))
+                ->helperText('Обычно товары с заполненными «Цена опт» и «Наценка» считают цену сами, и прайс поставщика их не трогает. Включите, если в этот раз нужно продавить цены поставщика и на них.'),
             Toggle::make('runtime.force_media_recheck')
                 ->label('Обновлять картинки, даже если ссылка не изменилась')
                 ->helperText('Используйте это, если поставщик может заменить изображение по старой ссылке. Может немного замедлить импорт.')
@@ -1810,6 +1815,7 @@ class SupplierImport extends Page implements HasForms
             'update_existing' => (bool) ($runtime['update_existing'] ?? true),
             'update_existing_mode' => $updateExistingMode,
             'update_existing_fields' => $updateExistingFields,
+            'update_prices_for_manual_pricing' => (bool) ($runtime['update_prices_for_manual_pricing'] ?? false),
             'error_threshold_count' => $this->normalizeNullableInt($runtime['error_threshold_count'] ?? null),
             'error_threshold_percent' => $this->normalizeNullableFloat($runtime['error_threshold_percent'] ?? null),
             'scope' => trim((string) ($runtime['scope'] ?? '')),

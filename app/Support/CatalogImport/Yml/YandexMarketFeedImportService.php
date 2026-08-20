@@ -568,6 +568,10 @@ class YandexMarketFeedImportService
             'update_existing_fields' => ExistingProductUpdateSelection::normalizeFields(
                 $options['update_existing_fields'] ?? $options['update-existing-fields'] ?? null,
             ),
+            'update_prices_for_manual_pricing' => $this->normalizeBoolOption(
+                $options['update_prices_for_manual_pricing'] ?? $options['update-prices-for-manual-pricing'] ?? null,
+                false,
+            ),
         ];
     }
 
@@ -669,6 +673,7 @@ class YandexMarketFeedImportService
             'force_media_recheck' => $normalized['force_media_recheck'],
             'update_existing_mode' => $normalized['update_existing_mode'],
             'update_existing_fields' => $normalized['update_existing_fields'],
+            'update_prices_for_manual_pricing' => $normalized['update_prices_for_manual_pricing'],
             'use_source_slug' => false,
             'mode' => $normalized['mode'],
             'event_logger' => $eventLogger,
