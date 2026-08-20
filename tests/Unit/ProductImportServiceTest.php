@@ -784,9 +784,13 @@ it('keeps NOT NULL columns untouched when the cell is empty', function () {
 
     $product->refresh();
 
-    // NOT NULL-колонки сохранили значения, редактируемые поля обновились.
+    // Пустые ячейки ничего не стёрли, заполненные — применились.
+    // Курса ЦБ в тестовом окружении нет, валюту сменили — цену не пересчитываем,
+    // чтобы не выставить на сайт себестоимость.
     expect($product->price_amount)->toBe(109767)
         ->and((bool) $product->is_active)->toBeTrue()
+        ->and($product->exchange_rate)->toBe('1.00')
+        ->and($product->wholesale_price_rub)->toBe('109767')
         ->and($product->wholesale_price)->toBe('1155.0000')
         ->and($product->wholesale_currency)->toBe('USD')
         ->and($product->markup_multiplier)->toBe('1.20');
@@ -841,6 +845,63 @@ it('reports no changes when a freshly exported file is imported back', function 
     ]);
 
     expect((bool) $product->fresh()->auto_update_exchange_rate)->toBeTrue();
+
+    unlink($path);
+});
+
+it('fills the empty exchange rate from the CBR settings and keeps untouched columns', function () {
+    // Сценарий заказчика: в файле заполнены только «Цена опт» и «Валюта»,
+    // курс, опт в рублях, цена на сайте и наценка оставлены пустыми.
+    config()->set('settings.product_currency.usd_to_rub', 83.81);
+
+    $product = Product::query()->create([
+        'name' => 'CBR Rate Product',
+        'sku' => 'CBR-1',
+        'price_amount' => 109767,
+        'wholesale_price' => '109767.0000',
+        'wholesale_currency' => 'RUR',
+        'exchange_rate' => '1.000000',
+        'auto_update_exchange_rate' => true,
+        'wholesale_price_rub' => '109767.00',
+        'markup_multiplier' => '1.2000',
+        'qty' => null,
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'wholesale_price', 'wholesale_currency', 'exchange_rate', 'wholesale_price_rub', 'markup_multiplier', 'price_amount', 'qty', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        '1155',
+        'USD',
+        '',
+        '',
+        '',
+        '',
+        '2',
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service = new ProductImportService;
+
+    $dryRun = $service->dryRunFromXlsx($run, $path);
+    $apply = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($dryRun['totals']['update'])->toBe(1)
+        ->and($apply)->toMatchArray(['updated' => 1, 'error' => 0, 'conflict' => 0]);
+
+    $product->refresh();
+
+    // 1155 × 83,81 = 96 801 ₽, дальше × 1,2 (наценка из базы) = 116 161 ₽.
+    expect($product->exchange_rate)->toBe('83.81')
+        ->and($product->wholesale_price_rub)->toBe('96801')
+        ->and($product->markup_multiplier)->toBe('1.20')
+        ->and($product->price_amount)->toBe(116161)
+        ->and($product->qty)->toBe(2)
+        ->and($product->auto_update_exchange_rate)->toBeTrue();
 
     unlink($path);
 });

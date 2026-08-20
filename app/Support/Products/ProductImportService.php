@@ -40,6 +40,7 @@ class ProductImportService
 
     public function __construct(
         private readonly ProductSearchSync $searchSync = new ProductSearchSync,
+        private readonly ProductCurrencyRateSyncService $currencyRates = new ProductCurrencyRateSyncService,
     ) {}
 
     public function whitelist(): array
@@ -768,7 +769,12 @@ class ProductImportService
     protected function applyPricingCalculationsToPayload(array $payload, ?Product $product, array $data, array $headers, array $whitelist): array
     {
         $wholesalePrice = $this->pricingValue('wholesale_price', $payload, $product, $data, $headers, $whitelist);
-        $exchangeRate = $this->pricingValue('exchange_rate', $payload, $product, $data, $headers, $whitelist);
+        $exchangeRate = $this->resolveExchangeRate($payload, $product, $data, $headers, $whitelist);
+
+        if ($exchangeRate !== null) {
+            $this->putCalculatedPayloadValue($payload, $product, 'exchange_rate', $exchangeRate, $whitelist);
+        }
+
         $wholesalePriceRub = $this->pricingValue('wholesale_price_rub', $payload, $product, $data, $headers, $whitelist);
         $markupMultiplier = $this->pricingValue('markup_multiplier', $payload, $product, $data, $headers, $whitelist);
         $sitePriceAmount = $this->pricingValue('price_amount', $payload, $product, $data, $headers, $whitelist);
@@ -778,6 +784,11 @@ class ProductImportService
         if ($calculatedWholesalePriceRub !== null) {
             $wholesalePriceRub = $calculatedWholesalePriceRub;
             $this->putCalculatedPayloadValue($payload, $product, 'wholesale_price_rub', $wholesalePriceRub, $whitelist);
+        } elseif (array_key_exists('wholesale_price', $payload) || array_key_exists('wholesale_currency', $payload)) {
+            // Закупку поменяли, а пересчитать её в рубли нечем (нет курса). Старый
+            // рублёвый опт относится к прежней валюте, поэтому цепочку обрываем:
+            // цена на сайте останется прежней, а не превратится в себестоимость.
+            $wholesalePriceRub = null;
         }
 
         $calculatedSitePriceAmount = Product::calculateSitePriceAmount($wholesalePriceRub, $markupMultiplier);
@@ -837,9 +848,13 @@ class ProductImportService
                 $this->putCalculatedPayloadValue($payload, $product, 'discount_percent', $discountPercent, $whitelist);
             }
 
-            $calculatedDiscountPrice = Product::calculateDiscountPrice($sitePriceAmount, $discountPercent);
+            // Ноль в «Скидка в %» = скидки нет: цена со скидкой очищается,
+            // ровно как это делает saving-хук модели при правке карточки.
+            $calculatedDiscountPrice = $discountPercent !== null && (float) $discountPercent <= 0
+                ? null
+                : Product::calculateDiscountPrice($sitePriceAmount, $discountPercent);
 
-            if ($calculatedDiscountPrice !== null) {
+            if ($calculatedDiscountPrice !== null || ($discountPercent !== null && (float) $discountPercent <= 0)) {
                 $this->putCalculatedPayloadValue($payload, $product, 'discount_price', $calculatedDiscountPrice, $whitelist);
             }
         }
@@ -867,6 +882,49 @@ class ProductImportService
         $payload[$field] = $this->toDatabaseValue($calculatedCanonical, $type);
     }
 
+    /**
+     * Курс валюты для расчёта: из файла, а если ячейка пуста — курс ЦБ
+     * (для товаров на автокурсе и когда в файле сменили валюту закупки).
+     * Ручной замороженный курс без смены валюты остаётся нетронутым.
+     */
+    protected function resolveExchangeRate(array $payload, ?Product $product, array $data, array $headers, array $whitelist): mixed
+    {
+        $type = $whitelist['exchange_rate']['type'] ?? 'decimal(14,2)';
+
+        $fromFile = in_array('exchange_rate', $headers, true)
+            ? $this->canonical($data['exchange_rate'] ?? null, $type, 'exchange_rate')
+            : null;
+
+        if ($fromFile !== null) {
+            return $fromFile;
+        }
+
+        $currency = $this->pricingValue('wholesale_currency', $payload, $product, $data, $headers, $whitelist);
+
+        $currencyChanged = $product !== null && $this->canonical($currency, 'string', 'wholesale_currency')
+            !== $this->canonical($product->getAttribute('wholesale_currency'), 'string', 'wholesale_currency');
+
+        $followsCbr = $product === null
+            || (int) ($product->getAttribute('auto_update_exchange_rate') ?? 1) === 1;
+
+        if ($followsCbr || $currencyChanged) {
+            $cbrRate = $this->currencyRates->storedRateForCurrency($currency);
+
+            if ($cbrRate !== null) {
+                return $this->canonical($cbrRate, $type, 'exchange_rate');
+            }
+
+            // Валюту сменили, а курса ЦБ нет: старый курс заведомо не от этой валюты
+            // (например 1,00 у рублёвого товара). Лучше не пересчитывать цену вовсе,
+            // чем выставить на сайт себестоимость.
+            if ($currencyChanged) {
+                return null;
+            }
+        }
+
+        return $product?->getAttribute('exchange_rate');
+    }
+
     protected function pricingValue(string $field, array $payload, ?Product $product, array $data, array $headers, array $whitelist): mixed
     {
         if (array_key_exists($field, $payload)) {
@@ -874,11 +932,16 @@ class ProductImportService
         }
 
         if (in_array($field, $headers, true)) {
-            return $this->canonical(
+            $fromFile = $this->canonical(
                 $data[$field] ?? null,
                 $whitelist[$field]['type'] ?? 'string',
                 $field,
             );
+
+            // Пустая ячейка не перебивает то, что уже записано у товара.
+            if ($fromFile !== null) {
+                return $fromFile;
+            }
         }
 
         if ($product !== null) {
@@ -917,9 +980,9 @@ class ProductImportService
                 continue;
             }
 
-            // Пустая ячейка в NOT NULL-колонке роняла весь файл (SQLSTATE 23000),
-            // поэтому такое значение просто не трогаем.
-            if ($xlsCanon === null && ! $this->isNullableField($h, $whitelist)) {
+            // Пустая ячейка = «это поле я не трогал» (решение заказчика от 20.08.2026).
+            // Обнулить значение можно, явно написав 0.
+            if ($xlsCanon === null) {
                 continue;
             }
 

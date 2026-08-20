@@ -78,6 +78,27 @@ class ProductCurrencyRateSyncService
         return $this->sync()['rates'];
     }
 
+    /**
+     * Курс из уже сохранённых настроек, без похода в ЦБ.
+     * null — валюта неизвестна или курс ещё ни разу не синхронизирован.
+     */
+    public function storedRateForCurrency(mixed $currency): ?float
+    {
+        $currencyCase = ProductWholesaleCurrency::fromInput($currency);
+
+        if (! $currencyCase instanceof ProductWholesaleCurrency) {
+            return null;
+        }
+
+        if ($currencyCase === ProductWholesaleCurrency::Rur) {
+            return 1.0;
+        }
+
+        $configuredRate = config($this->settingsConfigKey($currencyCase->value));
+
+        return is_numeric($configuredRate) ? (float) $configuredRate : null;
+    }
+
     public function resolveRateForCurrency(mixed $currency, bool $refresh = false): ?float
     {
         $currencyCase = ProductWholesaleCurrency::fromInput($currency);
