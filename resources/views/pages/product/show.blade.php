@@ -4,13 +4,15 @@
     @endif
 
     <div class="mx-auto w-full min-w-0 max-w-7xl px-4 py-6">
-        <header class="space-y-8 border-b border-brand-gray/50 pb-4">
-            <h1 class="text-3xl font-semibold">{{ $meta['heading'] }}</h1>
+        <header class="space-y-6 border-b border-brand-gray/50 pb-4">
+            <div>
+                <h1 class="text-3xl font-semibold">{{ $meta['heading'] }}</h1>
+                @if (filled($product->sku))
+                    <p class="mt-1 text-sm text-zinc-500"><span class="text-zinc-800">Артикул</span>: {{ $product->sku }}</p>
+                @endif
+            </div>
             <div class="flex flex-col items-start gap-3 xs:flex-row xs:items-center xs:justify-between">
                 @include('pages.product.partials.actions')
-                @if (filled($product->sku))
-                    <p class="text-sm text-zinc-500"><span class="text-zinc-800">Артикул</span>: {{ $product->sku }}</p>
-                @endif
             </div>
         </header>
 
