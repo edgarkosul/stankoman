@@ -793,7 +793,11 @@ class ProductImportService
 
         $calculatedSitePriceAmount = Product::calculateSitePriceAmount($wholesalePriceRub, $markupMultiplier);
 
-        if ($calculatedSitePriceAmount !== null) {
+        // «Цена на сайт» в файле отличается от базы = вписана руками, и она главнее
+        // формулы (решение заказчика от 20.08.2026). Иначе цену считаем сами.
+        $manualSitePrice = array_key_exists('price_amount', $payload);
+
+        if ($calculatedSitePriceAmount !== null && ! $manualSitePrice) {
             $sitePriceAmount = $calculatedSitePriceAmount;
             $this->putCalculatedPayloadValue($payload, $product, 'price_amount', $calculatedSitePriceAmount, $whitelist);
         }
@@ -818,11 +822,26 @@ class ProductImportService
             || $fileExchangeRate !== $this->canonical($product->getAttribute('exchange_rate'), $exchangeRateType, 'exchange_rate')
         );
 
-        if ($manualExchangeRate && (int) ($product?->getAttribute('auto_update_exchange_rate') ?? 1) !== 0) {
+        // Колонку «Обновлять по курсу ЦБ» заказчик может выставить руками — тогда
+        // она главнее автоматики (payload уже содержит её значение из файла).
+        if ($manualExchangeRate
+            && ! array_key_exists('auto_update_exchange_rate', $payload)
+            && (int) ($product?->getAttribute('auto_update_exchange_rate') ?? 1) !== 0
+        ) {
             $payload['auto_update_exchange_rate'] = 0;
         }
 
-        if (in_array('discount_percent', $headers, true)) {
+        // «Цена со скидкой» вписана руками — она главнее процента, а сам процент
+        // выводим из неё, чтобы бейдж скидки на витрине совпадал с ценой.
+        if (array_key_exists('discount_price', $payload)) {
+            $this->putCalculatedPayloadValue(
+                $payload,
+                $product,
+                'discount_percent',
+                Product::calculateDiscountPercent($sitePriceAmount, $payload['discount_price']),
+                $whitelist,
+            );
+        } elseif (in_array('discount_percent', $headers, true)) {
             $percentType = $whitelist['discount_percent']['type'] ?? 'decimal(5,2)';
 
             $discountPercent = $this->canonical(

@@ -64,6 +64,13 @@ return [
             'importable' => true,
             'export_default' => true,
         ],
+        'auto_update_exchange_rate' => [
+            'header' => 'Обновлять по курсу ЦБ',
+            'type' => 'boolean',
+            'importable' => true,
+            'nullable' => false,
+            'export_default' => true,
+        ],
         'wholesale_price_rub' => [
             'header' => 'Опт, руб',
             'type' => 'decimal(14,0)',
@@ -223,6 +230,7 @@ return [
         'wholesale_price',
         'wholesale_currency',
         'exchange_rate',
+        'auto_update_exchange_rate',
         'wholesale_price_rub',
         'markup_multiplier',
         'price_amount',

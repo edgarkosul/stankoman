@@ -577,7 +577,7 @@ it('imports pricing parameters and recalculates site price and margin', function
     unlink($path);
 });
 
-it('imports discount percent and recalculates discount price with priority over direct discount price', function () {
+it('recalculates the discount price from the percent when only the percent was edited', function () {
     $product = Product::query()->create([
         'name' => 'Discount Percent Import Product',
         'sku' => 'DISC-1',
@@ -595,7 +595,7 @@ it('imports discount percent and recalculates discount price with priority over 
         $product->name,
         1200,
         '12,5',
-        1,
+        900,
         $product->updated_at->format('Y-m-d H:i:s'),
     ]]);
 
@@ -902,6 +902,110 @@ it('fills the empty exchange rate from the CBR settings and keeps untouched colu
         ->and($product->price_amount)->toBe(116161)
         ->and($product->qty)->toBe(2)
         ->and($product->auto_update_exchange_rate)->toBeTrue();
+
+    unlink($path);
+});
+
+it('keeps a hand written site price and discount price over the formula', function () {
+    // Вопросы 3 и 4 анкеты: что заказчик поменял руками, то и главное.
+    config()->set('settings.product_currency.usd_to_rub', 85.13);
+
+    $product = Product::query()->create([
+        'name' => 'Manual Price Product',
+        'sku' => 'MANUAL-1',
+        'price_amount' => 117990,
+        'discount_price' => 110000,
+        'discount_percent' => '6.77',
+        'wholesale_price' => '1155.0000',
+        'wholesale_currency' => 'USD',
+        'exchange_rate' => '85.13',
+        'auto_update_exchange_rate' => true,
+        'wholesale_price_rub' => '98325.00',
+        'markup_multiplier' => '1.2000',
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'wholesale_price', 'wholesale_currency', 'exchange_rate', 'wholesale_price_rub', 'markup_multiplier', 'price_amount', 'discount_percent', 'discount_price', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        '1155',
+        'USD',
+        '85,13',
+        '98325',
+        '1,2',
+        '125000',   // цена вписана руками — формула дала бы 117 990
+        '6,77',     // процент не трогали
+        '100000',   // цена со скидкой вписана руками
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service = new ProductImportService;
+
+    $dryRun = $service->dryRunFromXlsx($run, $path);
+    $apply = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($dryRun['totals']['update'])->toBe(1)
+        ->and($apply)->toMatchArray(['updated' => 1, 'error' => 0, 'conflict' => 0]);
+
+    $product->refresh();
+
+    // Цена и цена со скидкой остались как вписаны, процент выведен из них: 1 - 100000/125000 = 20 %.
+    expect($product->price_amount)->toBe(125000)
+        ->and($product->discount_price)->toBe(100000)
+        ->and((float) $product->discount_percent)->toBe(20.0)
+        ->and($product->markup_multiplier)->toBe('1.20');
+
+    unlink($path);
+});
+
+it('recalculates the site price from the formula when the wholesale price was edited', function () {
+    config()->set('settings.product_currency.usd_to_rub', 85.13);
+
+    $product = Product::query()->create([
+        'name' => 'Formula Price Product',
+        'sku' => 'FORMULA-1',
+        'price_amount' => 117990,
+        'wholesale_price' => '1155.0000',
+        'wholesale_currency' => 'USD',
+        'exchange_rate' => '85.13',
+        'auto_update_exchange_rate' => true,
+        'wholesale_price_rub' => '98325.00',
+        'markup_multiplier' => '1.2000',
+    ]);
+
+    $run = ImportRun::query()->create([
+        'type' => 'products',
+        'status' => 'pending',
+    ]);
+
+    $headers = ['name', 'wholesale_price', 'wholesale_currency', 'exchange_rate', 'wholesale_price_rub', 'markup_multiplier', 'price_amount', 'updated_at'];
+    $path = makeProductsImportXlsx($headers, [[
+        $product->name,
+        '1200',      // опт поменяли
+        'USD',
+        '85,13',
+        '98325',     // старый рублёвый опт из выгрузки — пересчитается сам
+        '1,2',
+        '117990',    // старая цена из выгрузки — не считается ручной правкой
+        $product->updated_at->format('Y-m-d H:i:s'),
+    ]]);
+
+    $service = new ProductImportService;
+
+    $service->dryRunFromXlsx($run, $path);
+    $apply = $service->applyFromXlsx($run->fresh(), $path, ['write' => true]);
+
+    expect($apply)->toMatchArray(['updated' => 1, 'error' => 0]);
+
+    $product->refresh();
+
+    // 1200 × 85,13 = 102 156 ₽, × 1,2 = 122 587 ₽.
+    expect($product->wholesale_price_rub)->toBe('102156')
+        ->and($product->price_amount)->toBe(122587);
 
     unlink($path);
 });
