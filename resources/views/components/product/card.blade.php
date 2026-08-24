@@ -3,8 +3,10 @@
 @php
     $basePrice = $product->price_int;
     $discount = $product->discount;
-    $hasDiscount = \App\Support\Products\DiscountVisibility::isDiscounted($basePrice, $discount === null ? null : (int) $discount);
-    $pct = $hasDiscount ? $product->display_discount_percent : null;
+    $discountPrice = $discount === null ? null : (int) $discount;
+    $hasMemberDiscount = \App\Support\Products\DiscountVisibility::isDiscounted($basePrice, $discountPrice, true);
+    $hasDiscount = \App\Support\Products\DiscountVisibility::isDiscounted($basePrice, $discountPrice);
+    $pct = $hasMemberDiscount ? (int) $product->display_discount_percent : null;
 
     $gallery = $product->gallery ?? [];
     if (is_string($gallery)) {
@@ -91,7 +93,7 @@
     class="relative h-full w-full overflow-hidden bg-white flex flex-col justify-between shadow-sm ring-0 ring-transparent transition-shadow duration-200 ease-out hover:shadow-xl hover:ring-6 hover:ring-white">
     <a href="{{ route('product.show', $product->slug) }}" rel="noopener noreferrer"
         class="relative flex min-h-0 flex-1 flex-col" aria-label="Открыть товар">
-        @if ($pct)
+        @if ($pct > 0)
             <div
                 class="absolute left-0 inline-flex items-center justify-center text-lg py-2 px-3 font-medium bg-brand-red/70 text-white z-30">
                 −{{ $pct }}%

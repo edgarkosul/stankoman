@@ -16,6 +16,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Laravel\Scout\Searchable;
 
 /**
@@ -627,16 +628,36 @@ class Product extends Model
      */
     public function setPrimaryCategory(int|Category $category): void
     {
-        $categoryId = $category instanceof Category ? $category->getKey() : $category;
+        $categoryId = (int) ($category instanceof Category ? $category->getKey() : $category);
 
-        DB::table('product_categories')
-            ->where('product_id', $this->getKey())
-            ->update(['is_primary' => false]);
+        DB::transaction(function () use ($categoryId): void {
+            $categoryCanBePrimary = $this->categories()
+                ->select('categories.id')
+                ->whereKey($categoryId)
+                ->leaf()
+                ->lockForUpdate()
+                ->exists();
 
-        DB::table('product_categories')
-            ->where('product_id', $this->getKey())
-            ->where('category_id', $categoryId)
-            ->update(['is_primary' => true]);
+            if (! $categoryCanBePrimary) {
+                throw ValidationException::withMessages([
+                    'category_id' => 'Основной можно назначить только уже привязанную листовую категорию.',
+                ]);
+            }
+
+            DB::table('product_categories')
+                ->where('product_id', $this->getKey())
+                ->lockForUpdate()
+                ->get(['category_id']);
+
+            DB::table('product_categories')
+                ->where('product_id', $this->getKey())
+                ->update(['is_primary' => false]);
+
+            DB::table('product_categories')
+                ->where('product_id', $this->getKey())
+                ->where('category_id', $categoryId)
+                ->update(['is_primary' => true]);
+        });
 
         $this->unsetRelation('categories');
     }

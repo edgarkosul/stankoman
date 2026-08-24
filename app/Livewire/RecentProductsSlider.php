@@ -49,6 +49,7 @@ class RecentProductsSlider extends Component
                 'sku',
                 'price_amount',
                 'discount_price',
+                'discount_percent',
                 'image',
                 'thumb',
                 'gallery',

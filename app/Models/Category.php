@@ -15,6 +15,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use SolutionForest\FilamentTree\Concern\ModelTree;
 
 /**
@@ -159,6 +160,15 @@ class Category extends Model
         return ! $this->children()->exists();
     }
 
+    public function acceptsChildren(): bool
+    {
+        if ($this->getAttribute('products_count') !== null) {
+            return (int) $this->getAttribute('products_count') === 0;
+        }
+
+        return ! $this->products()->exists();
+    }
+
     // ===== Скоупы =====
 
     public function scopeRoots(Builder $q): Builder
@@ -185,11 +195,7 @@ class Category extends Model
     {
         return $q
             ->withoutStaging()
-            ->where(function (Builder $query): void {
-                $query
-                    ->whereHas('children')
-                    ->orWhereDoesntHave('products');
-            });
+            ->whereDoesntHave('products');
     }
 
     // ===== Навигация =====
@@ -293,6 +299,25 @@ class Category extends Model
 
             $model->name = static::stagingName();
             $model->parent_id = static::defaultParentKey();
+        });
+
+        static::saving(function (Category $model): void {
+            $parentId = (int) $model->parent_id;
+
+            if ($parentId === static::defaultParentKey()) {
+                return;
+            }
+
+            $parentHasProducts = static::query()
+                ->whereKey($parentId)
+                ->whereHas('products')
+                ->exists();
+
+            if ($parentHasProducts) {
+                throw ValidationException::withMessages([
+                    'parent_id' => 'Нельзя создавать подкатегорию внутри категории, в которой уже есть товары.',
+                ]);
+            }
         });
 
         // удаляем старый файл при замене

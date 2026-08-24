@@ -75,7 +75,7 @@ it('allows the same category slug under a different parent', function (): void {
         ->exists())->toBeTrue();
 });
 
-it('allows creating a subcategory for parent from tree query string even if it is excluded from default parent options', function (): void {
+it('rejects creating a subcategory inside a category with products', function (): void {
     $leafParent = Category::query()->create([
         'name' => 'Листовая категория',
         'slug' => 'leaf-parent',
@@ -95,17 +95,18 @@ it('allows creating a subcategory for parent from tree query string even if it i
     Livewire::withQueryParams(['parent_id' => $leafParent->getKey()])
         ->test(CreateCategory::class)
         ->fillForm([
+            'parent_id' => $leafParent->getKey(),
             'name' => 'Новая подкатегория',
             'slug' => 'novaia-podkategoriia',
             'is_active' => true,
         ])
         ->call('create')
-        ->assertHasNoFormErrors();
+        ->assertHasFormErrors(['parent_id']);
 
     expect(Category::query()
         ->where('parent_id', $leafParent->getKey())
         ->where('slug', 'novaia-podkategoriia')
-        ->exists())->toBeTrue();
+        ->exists())->toBeFalse();
 });
 
 it('allows keeping the current category slug when editing', function (): void {

@@ -51,7 +51,9 @@ class CategoryTree extends TreePage
 
     protected function getTreeQuery(): Builder
     {
-        return Category::query()->withoutStaging();
+        return Category::query()
+            ->withoutStaging()
+            ->withCount('products');
     }
 
     protected function getActions(): array
@@ -168,7 +170,8 @@ class CategoryTree extends TreePage
                 ->hiddenLabel()
                 ->tooltip('Создать подкатегорию')
                 ->visible(
-                    fn (Category $record): bool => $this->recordDepth($record) < static::$maxDepth - 1
+                    fn (Category $record): bool => $record->acceptsChildren()
+                        && $this->recordDepth($record) < static::$maxDepth - 1
                 )
                 ->url(
                     fn (Category $record): string => CategoryResource::getUrl('create', ['parent_id' => $record])
@@ -331,7 +334,7 @@ class CategoryTree extends TreePage
     {
         // Заберём всё дерево и развернём в плоский список с depth
         $all = Category::query()
-            ->withoutStaging()
+            ->availableAsParent()
             ->orderBy('parent_id')
             ->orderBy('order')
             ->get()

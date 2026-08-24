@@ -89,3 +89,30 @@ it('does not render a zero percent badge for a small member discount', function 
         ->assertSee('Зарегистрируйтесь и получите скидку', false)
         ->assertDontSee(price(999), false);
 });
+
+it('shows the possible discount percent but not the discounted price on a guest product card', function (): void {
+    $product = discountedProduct();
+
+    $html = view('components.product.card', [
+        'product' => $product,
+    ])->render();
+
+    expect($html)
+        ->toContain('−10%')
+        ->toContain(price(300_000))
+        ->not->toContain(price(270_000));
+});
+
+it('shows the discounted price and percent on an authenticated product card', function (): void {
+    $product = discountedProduct();
+    $this->actingAs(User::factory()->create());
+
+    $html = view('components.product.card', [
+        'product' => $product,
+    ])->render();
+
+    expect($html)
+        ->toContain('−10%')
+        ->toContain(price(300_000))
+        ->toContain(price(270_000));
+});

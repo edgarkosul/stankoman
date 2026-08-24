@@ -3,8 +3,8 @@
 namespace App\Models\Pivots;
 
 use App\Models\Category;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Eloquent\Relations\Pivot;
+use Illuminate\Validation\ValidationException;
 
 class ProductCategory extends Pivot
 {
@@ -16,7 +16,7 @@ class ProductCategory extends Pivot
 
     protected static function booted(): void
     {
-        static::saving(function (self $pivot) {
+        static::saving(function (self $pivot): void {
             $isLeaf = Category::whereKey($pivot->category_id)
                 ->leaf()->exists();
 

@@ -518,6 +518,7 @@ class LeafCategoryPage extends Component
                 'slug',
                 'price_amount',
                 'discount_price',
+                'discount_percent',
                 'image',
                 'thumb',
                 'gallery',
