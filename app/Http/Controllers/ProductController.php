@@ -89,6 +89,7 @@ class ProductController extends Controller
         $discountPrice = $product->discount;
         $discountPrice = $discountPrice === null ? null : (int) $discountPrice;
         $hasDiscount = DiscountVisibility::isDiscounted($basePrice, $discountPrice);
+        $hasMemberDiscount = DiscountVisibility::isDiscounted($basePrice, $discountPrice, true);
         $finalPrice = DiscountVisibility::finalPriceFor($basePrice, $discountPrice);
 
         $details = collect([
@@ -109,8 +110,9 @@ class ProductController extends Controller
                 'discount' => $hasDiscount ? $discountPrice : null,
                 'has_discount' => $hasDiscount,
                 'discount_percent' => $hasDiscount ? $product->display_discount_percent : null,
+                'member_discount_percent' => $hasMemberDiscount ? $product->display_discount_percent : null,
                 // Скидка есть, но покупатель не авторизован — показываем подсказку вместо цены.
-                'discount_for_members' => ! $hasDiscount && DiscountVisibility::isDiscounted($basePrice, $discountPrice, true),
+                'discount_for_members' => ! $hasDiscount && $hasMemberDiscount,
             ],
             'details' => $details,
             'promo_info' => $product->promo_info,

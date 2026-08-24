@@ -1,32 +1,47 @@
 <section class="space-y-4 bg-white p-4 shadow-[0_0_18px_rgba(0,0,0,0.12)]">
     @php($finalPrice = (int) data_get($summary, 'price.final', 0))
     @php($hasDiscount = (bool) data_get($summary, 'price.has_discount'))
+    @php($discountForMembers = (bool) data_get($summary, 'price.discount_for_members'))
+    @php($memberDiscountPercent = (int) data_get($summary, 'price.member_discount_percent', 0))
     @php($summaryInstance = $summaryInstance ?? 'default')
 
     <div class="flex flex-col gap-3">
-        <div class="flex items-end gap-3">
-            @if ($finalPrice === 0)
-            <div class="text-3xl wght-700 wdth-70 text-brand-700">Цена по запросу</div>
-            @else
-            <div class="text-3xl wght-700 wdth-70">{{ price($finalPrice) }}</div>
-            @if ($hasDiscount)
-            <p class="text-xl text-zinc-500 wght-500 wdth-70 line-through decoration-2 decoration-brand-red">
-                {{ price(data_get($summary, 'price.base')) }}
-            </p>
+        <div class="flex items-start gap-3">
+            @if ($discountForMembers && $memberDiscountPercent > 0)
+                <div class="mt-0.5 flex min-h-14 shrink-0 items-center justify-center bg-brand-red/5 px-3 py-2 text-xl text-brand-red wght-500 wdth-70">
+                    −{{ $memberDiscountPercent }}%
+                </div>
             @endif
-            @endif
+
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-end gap-x-3 gap-y-1">
+                    @if ($finalPrice === 0)
+                        <div class="text-3xl text-brand-green wght-700 wdth-70">Цена по запросу</div>
+                    @else
+                        <div class="text-3xl wght-700 wdth-70">{{ price($finalPrice) }}</div>
+                        @if ($hasDiscount)
+                            <p class="text-xl text-zinc-500 line-through decoration-2 decoration-brand-red wght-500 wdth-70">
+                                {{ price(data_get($summary, 'price.base')) }}
+                            </p>
+                        @endif
+                    @endif
+                </div>
+
+                @if ($finalPrice !== 0)
+                    <div class="text-zinc-700 wght-500 wdth-70">
+                        (НДС {{ config('settings.product.stavka_nds') }}% в том числе)
+                    </div>
+                @endif
+
+                @if ($discountForMembers)
+                    <p class="mt-1 text-brand-green wght-500 wdth-70">
+                        <a href="{{ route('register') }}" class="font-semibold underline underline-offset-2">Зарегистрируйтесь и получите скидку</a>
+                        или <a href="{{ route('login') }}" class="font-semibold underline underline-offset-2">войдите</a>.
+                    </p>
+                @endif
+            </div>
         </div>
 
-        @if (data_get($summary, 'price.discount_for_members'))
-            <p class="wght-500 wdth-70 text-zinc-700">
-                Цена со скидкой — для зарегистрированных.
-                <a href="{{ route('login') }}" class="underline decoration-brand-red underline-offset-2">Войти</a>
-                или <a href="{{ route('register') }}" class="underline decoration-brand-red underline-offset-2">зарегистрироваться</a>.
-            </p>
-        @endif
-         @if ($finalPrice !== 0)
-        <div class="wght-500 wdth-70 text-zinc-700">В том числе НДС {{ config('settings.product.stavka_nds') }} %</div>
-        @endif
         <div class="my-4">
             <livewire:pages.cart.actions
                 :product-id="$product->id"
