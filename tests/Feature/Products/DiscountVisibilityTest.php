@@ -90,7 +90,7 @@ it('does not render a zero percent badge for a small member discount', function 
         ->assertDontSee(price(999), false);
 });
 
-it('shows the possible discount percent but not the discounted price on a guest product card', function (): void {
+it('shows the regular and after registration prices on a guest product card', function (): void {
     $product = discountedProduct();
 
     $html = view('components.product.card', [
@@ -99,8 +99,10 @@ it('shows the possible discount percent but not the discounted price on a guest 
 
     expect($html)
         ->toContain('−10%')
+        ->toContain('Обычная цена:')
+        ->toContain('После регистрации:')
         ->toContain(price(300_000))
-        ->not->toContain(price(270_000));
+        ->toContain(price(270_000));
 });
 
 it('shows the discounted price and percent on an authenticated product card', function (): void {
@@ -114,5 +116,30 @@ it('shows the discounted price and percent on an authenticated product card', fu
     expect($html)
         ->toContain('−10%')
         ->toContain(price(300_000))
-        ->toContain(price(270_000));
+        ->toContain(price(270_000))
+        ->not->toContain('После регистрации:');
 });
+
+it('does not show an after registration price on cards without a valid discount', function (array $attributes): void {
+    $product = Product::query()->create($attributes);
+
+    $html = view('components.product.card', [
+        'product' => $product,
+    ])->render();
+
+    expect($html)
+        ->not->toContain('Обычная цена:')
+        ->not->toContain('После регистрации:');
+})->with([
+    'without discount' => [[
+        'name' => 'Карточка без скидки',
+        'slug' => 'card-without-discount',
+        'price_amount' => 10_000,
+    ]],
+    'request price' => [[
+        'name' => 'Карточка с ценой по запросу',
+        'slug' => 'card-with-request-price',
+        'price_amount' => 0,
+        'discount_price' => 1,
+    ]],
+]);

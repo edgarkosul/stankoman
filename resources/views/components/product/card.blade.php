@@ -159,6 +159,17 @@
                         <div class="text-xl font-bold text-brand-700">
                             Цена по запросу
                         </div>
+                    @elseif ($hasMemberDiscount)
+                        <div class="flex flex-col gap-1">
+                            <div class="flex flex-wrap items-baseline gap-x-2">
+                                <span class="text-sm font-medium text-zinc-500">Обычная цена:</span>
+                                <span>{{ price($basePrice) }}</span>
+                            </div>
+                            <div class="flex flex-wrap items-baseline gap-x-2 text-brand-green">
+                                <span class="text-sm font-semibold">После регистрации:</span>
+                                <span class="text-xl">{{ price($discountPrice) }}</span>
+                            </div>
+                        </div>
                     @else
                         {{ price($basePrice) }}
                     @endif
