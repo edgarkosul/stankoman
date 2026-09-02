@@ -43,6 +43,13 @@ class ProductImportExport extends Page implements HasForms
 
     protected string $view = 'filament.pages.product-import-export';
 
+    /**
+     * Filament по умолчанию показывает только первые 50 вариантов в списке.
+     * Списки брендов и категорий длиннее, а кириллица сортируется после латиницы,
+     * поэтому такие бренды просто не попадали в выпадающий список.
+     */
+    private const OPTIONS_LIMIT = 1000;
+
     /** @var array{
      *     export_columns: array<int, string>,
      *     export_brand: array<int, string|int>|string|int|null,
@@ -130,6 +137,7 @@ class ProductImportExport extends Page implements HasForms
                             ->multiple()
                             ->searchable()
                             ->options(static fn (): array => Category::query()->orderBy('name')->pluck('name', 'id')->all())
+                            ->optionsLimit(self::OPTIONS_LIMIT)
                             ->placeholder('Все категории'),
                         Toggle::make('filter_only_active')
                             ->label('Только активные'),
@@ -141,6 +149,7 @@ class ProductImportExport extends Page implements HasForms
                     ->multiple()
                     ->searchable()
                     ->options(fn (): array => $this->brandExportOptions())
+                    ->optionsLimit(self::OPTIONS_LIMIT)
                     ->placeholder('Не выбраны — использовать обычные фильтры')
                     ->helperText('Если выбраны бренды, экспортируются все товары этих брендов по всему проекту, независимо от категорий.'),
                 Section::make('Экспорт в Excel')

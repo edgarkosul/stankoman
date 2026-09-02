@@ -66,3 +66,18 @@ it('normalizes export brands from page state', function () {
 
     expect($brands)->toBe(['Bosch', 'Makita', '123']);
 });
+
+it('does not cut brand and category options at the default limit of 50', function () {
+    $page = new ProductImportExport;
+    $schema = $page->form(Schema::make($page));
+
+    $categoryField = $schema->getComponent(
+        fn ($component) => $component instanceof Select && $component->getName() === 'filter_category_ids',
+    );
+    $brandField = $schema->getComponent(
+        fn ($component) => $component instanceof Select && $component->getName() === 'export_brand',
+    );
+
+    expect($categoryField->getOptionsLimit())->toBeGreaterThan(50);
+    expect($brandField->getOptionsLimit())->toBeGreaterThan(50);
+});
