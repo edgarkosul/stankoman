@@ -78,7 +78,11 @@ Route::get('/search', function (Request $request, ProductSearchService $search) 
     ]);
 })->name('search');
 
+// Каждый вызов синхронно строит PDF через Dompdf и занимает php-fpm воркер
+// на секунды, поэтому маршрут ограничен по частоте: 12 карточек в минуту с IP
+// человеку хватает с запасом, а краулеру не даёт выесть весь пул.
 Route::get('/product/{product:slug}/print', ProductPrintController::class)
+    ->middleware('throttle:12,1')
     ->name('product.print');
 
 Route::get('/compare', ComparePage::class)

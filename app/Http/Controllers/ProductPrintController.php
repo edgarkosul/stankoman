@@ -56,7 +56,11 @@ class ProductPrintController extends Controller
 
         $filename = 'InterTooler_'.preg_replace('/[^\p{L}\p{N}\-_]+/u', '_', $product->name).'.pdf';
 
-        return $request->boolean('dl') ? $pdf->download($filename) : $pdf->stream($filename);
+        $response = $request->boolean('dl') ? $pdf->download($filename) : $pdf->stream($filename);
+
+        // PDF нельзя разметить <meta name="robots">, поэтому закрываем заголовком:
+        // иначе оферта конкурирует в выдаче с карточкой товара, а ?dl=1 плодит дубли.
+        return $response->header('X-Robots-Tag', 'noindex, nofollow');
     }
 
     private function attributesForPdf(Product $product): array

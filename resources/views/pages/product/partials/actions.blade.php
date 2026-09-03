@@ -14,7 +14,7 @@
     </div>
     <div class="group z-30 cursor-pointer flex items-center gap-2">
         <a x-data x-tooltip.top.offset-10.skid-30="'Печать'" href="{{ route('product.print', $product) }}" target="_blank"
-            class="flex items-center gap-1">
+            rel="nofollow" class="flex items-center gap-1">
             <x-icon name="print"
                 class="size-6 text-zinc-700 group-hover:[&_.icon-base]:text-zinc-700 group-hover:[&_.icon-accent]:text-rose-600" />
             <span class="whitespace-nowrap text-zinc-800 hover:text-brand-red hidden md:block">Печать</span>
@@ -22,7 +22,8 @@
     </div>
     <div class="group z-30 cursor-pointer flex items-center gap-2">
         <a x-data x-tooltip.top.offset-10.skid-30="'Скачать PDF'"
-            href="{{ route('product.print', ['product' => $product, 'dl' => 1]) }}" class="flex items-center gap-1">
+            href="{{ route('product.print', ['product' => $product, 'dl' => 1]) }}" rel="nofollow"
+            class="flex items-center gap-1">
             <x-icon name="pdf"
                 class="size-6 text-zinc-700 group-hover:[&_.icon-base]:text-zinc-700 group-hover:[&_.icon-accent]:text-rose-600" />
             <span class="whitespace-nowrap text-zinc-800 hover:text-brand-red hidden md:block">Скачать PDF</span>

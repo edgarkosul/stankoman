@@ -95,6 +95,7 @@ it('generates sitemap, robots, and product sitemap files', function (): void {
 
     expect($robots)->toContain('User-agent: *')
         ->toContain('Disallow: /admin/')
+        ->toContain('Disallow: /*/print')
         ->toContain('Sitemap: https://settings.example.com/sitemap.xml');
 });
 

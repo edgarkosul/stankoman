@@ -121,3 +121,57 @@ it('renders configured company contacts and bank details in product pdf offer vi
         ->toContain('40802810999999999999')
         ->toContain('30101810999999999999');
 });
+
+it('keeps the pdf offer out of search results', function (): void {
+    $product = Product::query()->create([
+        'name' => 'Тестовый товар PDF noindex',
+        'slug' => 'test-product-pdf-noindex',
+        'is_active' => true,
+        'price_amount' => 90_000,
+    ]);
+
+    $this->get(route('product.print', ['product' => $product]))
+        ->assertOk()
+        ->assertHeader('X-Robots-Tag', 'noindex, nofollow');
+});
+
+it('marks both pdf links on the product page as nofollow', function (): void {
+    $product = Product::query()->create([
+        'name' => 'Тестовый товар PDF nofollow',
+        'slug' => 'test-product-pdf-nofollow',
+        'is_active' => true,
+        'price_amount' => 90_000,
+    ]);
+
+    $html = $this->get(route('product.show', ['product' => $product]))
+        ->assertSuccessful()
+        ->getContent();
+
+    $printUrl = route('product.print', ['product' => $product]);
+    $downloadUrl = route('product.print', ['product' => $product, 'dl' => 1]);
+
+    foreach ([$printUrl, $downloadUrl] as $url) {
+        $anchor = preg_match('~<a\b[^>]*href="'.preg_quote($url, '~').'"[^>]*>~', $html, $m) === 1
+            ? $m[0]
+            : '';
+
+        expect($anchor)->toContain('rel="nofollow"');
+    }
+});
+
+it('throttles the pdf offer route', function (): void {
+    $product = Product::query()->create([
+        'name' => 'Тестовый товар PDF throttle',
+        'slug' => 'test-product-pdf-throttle',
+        'is_active' => true,
+        'price_amount' => 90_000,
+    ]);
+
+    $url = route('product.print', ['product' => $product]);
+
+    for ($i = 0; $i < 12; $i++) {
+        $this->get($url)->assertOk();
+    }
+
+    $this->get($url)->assertStatus(429);
+});

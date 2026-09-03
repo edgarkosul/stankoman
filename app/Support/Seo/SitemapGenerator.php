@@ -349,6 +349,8 @@ class SitemapGenerator
                 'Disallow: /checkout',
                 'Disallow: /livewire/',
                 'Disallow: /api/',
+                // Генератор PDF-оферты: тяжёлый для сервера и дублирует карточку товара.
+                'Disallow: /*/print',
                 'Sitemap: '.$this->absoluteUrl(self::INDEX_FILENAME, $baseUrl),
                 '',
             ])
