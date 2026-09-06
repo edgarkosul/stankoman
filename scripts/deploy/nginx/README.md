@@ -1,51 +1,78 @@
-# nginx: защита генератора PDF-оферты
+# nginx: защита сайта от краулеров
 
-Тот же приём, что уже стоит на kratonshop (`/etc/nginx/conf.d/kratonshop-print-bots.conf`
-плюс `location` в вхосте).
+Два файла из этой папки лежат в `/etc/nginx/conf.d/` на бою, плюс несколько
+`location` в `/etc/nginx/sites-available/intertooler.ru`.
 
-## Что ставить
+| Файл | Что делает |
+| --- | --- |
+| `intertooler-print-bots.conf` | карта `$intertooler_bad_print_bot` — известные краулеры, которым нельзя в генератор PDF |
+| `intertooler-hardening.conf` | карта `$intertooler_clean_uri` для дублей под `/index.php/` и зоны `limit_req` |
 
-1. Скопировать карту ботов в `conf.d` (грузится до `sites-enabled`):
+## Установка карт
 
-   ```
-   scp scripts/deploy/nginx/intertooler-print-bots.conf \
-       intertooler-production:/tmp/intertooler-print-bots.conf
-   ssh intertooler-production \
-       'sudo install -m 644 /tmp/intertooler-print-bots.conf /etc/nginx/conf.d/'
-   ```
+```
+scp scripts/deploy/nginx/intertooler-*.conf edgar@intertooler-production:/tmp/
+ssh edgar@intertooler-production \
+    'sudo install -m 644 -o root -g root /tmp/intertooler-*.conf /etc/nginx/conf.d/'
+```
 
-2. Добавить в `/etc/nginx/sites-available/intertooler.ru`, в блок
-   `server { server_name intertooler.ru; ... }`, **выше** `location / {`:
+## Что должно быть во вхосте
 
-   ```nginx
-   # Тяжёлый генератор PDF — известным краулерам сюда нельзя.
-   location ~ ^/product/[^/]+/print$ {
-       if ($intertooler_bad_print_bot) {
-           return 403;
-       }
+В блоке `server { server_name intertooler.ru; ... }`, **выше** `location / {`:
 
-       try_files $uri $uri/ /index.php?$query_string;
-   }
-   ```
+```nginx
+# Тяжёлый генератор PDF — известным краулерам сюда нельзя.
+# Регулярка намеренно без префикса: боты ходили сюда через /index.php/...
+# и правило, описанное от корня, их не ловило.
+location ~ /print$ {
+    if ($intertooler_bad_print_bot) {
+        return 403;
+    }
 
-3. Проверить и применить:
+    limit_req zone=intertooler_print burst=5 nodelay;
 
-   ```
-   ssh intertooler-production 'sudo nginx -t && sudo systemctl reload nginx'
-   ```
+    try_files $uri $uri/ /index.php?$query_string;
+}
+
+# /index.php/... — вторая копия каталога для поисковиков и обход правил
+# выше. Уводим на чистый адрес.
+location ^~ /index.php/ {
+    return 301 $intertooler_clean_uri;
+}
+```
+
+И в самом `location / {`:
+
+```nginx
+limit_req zone=intertooler_site burst=20 nodelay;
+```
+
+Применить: `sudo nginx -t && sudo systemctl reload nginx`.
 
 ## Проверка
 
 ```
-curl -s -o /dev/null -w '%{http_code}\n' -A 'Bytespider' \
-     https://intertooler.ru/product/<slug>/print          # ждём 403
-curl -s -o /dev/null -w '%{http_code}\n' \
-     https://intertooler.ru/product/<slug>/print          # ждём 200
+S=/product/<slug>
+curl -s -o /dev/null -w '%{http_code}\n' "https://intertooler.ru$S"                 # 200
+curl -s -o /dev/null -D- "https://intertooler.ru/index.php$S" | grep -i ^location    # 301 на чистый
+curl -s -o /dev/null -w '%{http_code}\n' -A Bytespider "https://intertooler.ru$S/print"  # 403
+
+# лимит частоты: локалхост исключён, обычный адрес упирается в 429
+for i in $(seq 1 40); do curl -sk -o /dev/null -w '%{http_code} ' \
+    --resolve intertooler.ru:443:127.0.0.1 "https://intertooler.ru/rate-test-$i"; done
+for i in $(seq 1 40); do curl -s -o /dev/null -w '%{http_code} ' \
+    "https://intertooler.ru/rate-test-$i"; done
 ```
 
 ## Что закрыто на стороне приложения
 
-- `throttle:12,1` на маршруте `product.print` — против краулеров, которых нет в карте;
+- готовый PDF кладётся в `storage/app/private/pdf-offers` и дальше отдаётся с диска —
+  сборка стоила 16-18 секунд php-fpm воркера ([ProductPrintController](../../app/Http/Controllers/ProductPrintController.php));
+- `throttle:12,1` на маршруте `product.print`;
 - заголовок `X-Robots-Tag: noindex, nofollow` на самом PDF;
 - `Disallow: /*/print` в генераторе `robots.txt` (`php artisan sitemap:generate`);
 - `rel="nofollow"` на обеих ссылках в карточке товара.
+
+Кэш инвалидируется сам: ключ считается от товара, его значений и опций
+атрибутов, реквизитов из настроек и содержимого шаблона оферты. На товар
+хранится один файл, прежние версии удаляются при пересборке.
