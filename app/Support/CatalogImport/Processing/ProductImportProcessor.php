@@ -142,6 +142,187 @@ final class ProductImportProcessor implements ImportProcessorInterface
     }
 
     /**
+     * Считает, что импорт сделал бы с записью в режиме записи, ничего не сохраняя.
+     * Используется для предпросмотра dry-run.
+     *
+     * @param  array<string, mixed>  $options
+     */
+    public function preview(ProductPayload $payload, array $options = []): ImportProcessResult
+    {
+        $summary = $this->previewBatch([$payload], $options);
+
+        return $summary['results'][0] ?? new ImportProcessResult(
+            operation: 'skipped',
+            errors: [
+                new ImportError(
+                    code: 'empty_batch',
+                    message: 'Не переданы данные товаров для обработки.',
+                    level: ImportErrorLevel::Fatal,
+                ),
+            ],
+        );
+    }
+
+    /**
+     * @param  iterable<int, ProductPayload>  $payloads
+     * @param  array<string, mixed>  $options
+     * @return array{processed:int,created:int,updated:int,skipped:int,errors:int,results:array<int, ImportProcessResult>}
+     */
+    public function previewBatch(iterable $payloads, array $options = []): array
+    {
+        $items = [];
+
+        foreach ($payloads as $payload) {
+            if ($payload instanceof ProductPayload) {
+                $items[] = $payload;
+            }
+        }
+
+        if ($items === []) {
+            return $this->emptySummary();
+        }
+
+        $supplier = $this->normalizeSupplier($options['supplier'] ?? null);
+
+        if ($supplier === null) {
+            return $this->summaryFromFatalSupplierError(count($items));
+        }
+
+        $supplierId = $this->resolveReferenceSupplierId($options, $supplier);
+        $summary = $this->emptySummary();
+
+        foreach (array_chunk($items, $this->normalizeBatchSize($options['batch_size'] ?? null)) as $chunk) {
+            $chunkSummary = $this->previewChunk($chunk, $supplier, $options, $supplierId);
+
+            $summary['processed'] += $chunkSummary['processed'];
+            $summary['created'] += $chunkSummary['created'];
+            $summary['updated'] += $chunkSummary['updated'];
+            $summary['skipped'] += $chunkSummary['skipped'];
+            $summary['errors'] += $chunkSummary['errors'];
+            $summary['results'] = array_merge($summary['results'], $chunkSummary['results']);
+        }
+
+        return $summary;
+    }
+
+    /**
+     * @param  array<int, ProductPayload>  $payloads
+     * @param  array<string, mixed>  $options
+     * @return array{processed:int,created:int,updated:int,skipped:int,errors:int,results:array<int, ImportProcessResult>}
+     */
+    private function previewChunk(array $payloads, string $supplier, array $options, ?int $supplierId = null): array
+    {
+        $summary = $this->emptySummary();
+        $normalizedItems = [];
+
+        foreach ($payloads as $payload) {
+            $normalized = $this->normalizer->normalize($payload);
+            $errors = $this->validatePayload($normalized);
+
+            if ($errors !== []) {
+                $summary['processed']++;
+                $summary['skipped']++;
+                $summary['errors'] += $this->countErrors($errors);
+                $summary['results'][] = new ImportProcessResult(
+                    operation: 'skipped',
+                    errors: $errors,
+                    meta: ['external_id' => $normalized->externalId],
+                );
+
+                continue;
+            }
+
+            $normalizedItems[] = $normalized;
+        }
+
+        if ($normalizedItems === []) {
+            return $summary;
+        }
+
+        $externalIds = array_values(array_unique(array_map(
+            fn (ProductPayload $payload): string => $payload->externalId,
+            $normalizedItems,
+        )));
+
+        $referenceQuery = ProductSupplierReference::query()
+            ->with('product')
+            ->whereIn('external_id', $externalIds);
+
+        if ($this->supportsSupplierEntityReference() && $supplierId !== null) {
+            $referenceQuery->where('supplier_id', $supplierId);
+        } else {
+            $referenceQuery->where('supplier', $supplier);
+        }
+
+        $references = $referenceQuery->get()->keyBy('external_id');
+
+        $canCreate = ($options['create_missing'] ?? true) === true;
+        $canUpdate = ($options['update_existing'] ?? true) === true;
+        $queueMedia = ($options['download_media'] ?? false) === true;
+
+        foreach ($normalizedItems as $payload) {
+            $product = $references->get($payload->externalId)?->product;
+
+            if (! $product instanceof Product) {
+                $product = $this->resolveLegacyProduct($payload, $options);
+            }
+
+            $operation = 'skipped';
+            $skipCode = null;
+            $changedAttributes = [];
+            $otherChangedFields = [];
+
+            if ($product instanceof Product) {
+                if ($canUpdate) {
+                    $this->fillExistingProductForUpdate($product, $payload, $options, $queueMedia);
+
+                    if ($product->isDirty()) {
+                        $changeContext = $this->buildChangedAttributesContext($product, $product->getDirty());
+                        $changedAttributes = $changeContext['changes'];
+                        $otherChangedFields = $changeContext['other_changed_fields'];
+
+                        $operation = 'updated';
+                        $summary['updated']++;
+                    } else {
+                        $operation = 'unchanged';
+                        $skipCode = 'unchanged';
+                        $summary['skipped']++;
+                    }
+
+                    // Предпросмотр ничего не пишет: возвращаем модель к исходным значениям,
+                    // чтобы заполненные атрибуты не утекли в чужой save().
+                    $product->discardChanges();
+                } else {
+                    $skipCode = 'update_disabled';
+                    $summary['skipped']++;
+                }
+            } elseif ($canCreate) {
+                $operation = 'created';
+                $summary['created']++;
+            } else {
+                $skipCode = 'create_disabled';
+                $summary['skipped']++;
+            }
+
+            $summary['processed']++;
+            $summary['results'][] = new ImportProcessResult(
+                operation: $operation,
+                meta: [
+                    'external_id' => $payload->externalId,
+                    'product_id' => $product?->id,
+                    'preview' => true,
+                    'skip_code' => $skipCode,
+                    'skip_message' => $this->skippedMessage($skipCode),
+                    'changes' => $changedAttributes,
+                    'other_changed_fields' => $otherChangedFields,
+                ],
+            );
+        }
+
+        return $summary;
+    }
+
+    /**
      * @param  array<string, mixed>  $options
      * @return array{checked:int,deactivated:int,skipped:bool}
      */
@@ -421,18 +602,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
                 if ($product instanceof Product) {
                     if ($canUpdate) {
-                        $attributes = $this->buildProductAttributes($payload, $options, isNew: false);
-                        $attributes = $this->sanitizeExistingProductUpdateAttributes(
-                            attributes: $attributes,
-                            payload: $payload,
-                            product: $product,
-                            options: $options,
-                            queueMedia: $queueMedia,
-                            hasPayloadImages: $payload->images !== [],
-                            preserveMissingPrice: ($options['preserve_missing_price_on_update'] ?? false) === true,
-                        );
-
-                        $product->fill($attributes);
+                        $this->fillExistingProductForUpdate($product, $payload, $options, $queueMedia);
 
                         if ($product->isDirty()) {
                             $dirtyAttributes = $product->getDirty();
@@ -1278,6 +1448,31 @@ final class ProductImportProcessor implements ImportProcessorInterface
         }
 
         return $value;
+    }
+
+    /**
+     * Заполняет существующий товар данными поставщика по правилам запуска,
+     * но не сохраняет его. Общий шаг для режима записи и для предпросмотра.
+     *
+     * @param  array<string, mixed>  $options
+     */
+    private function fillExistingProductForUpdate(
+        Product $product,
+        ProductPayload $payload,
+        array $options,
+        bool $queueMedia,
+    ): void {
+        $attributes = $this->sanitizeExistingProductUpdateAttributes(
+            attributes: $this->buildProductAttributes($payload, $options, isNew: false),
+            payload: $payload,
+            product: $product,
+            options: $options,
+            queueMedia: $queueMedia,
+            hasPayloadImages: $payload->images !== [],
+            preserveMissingPrice: ($options['preserve_missing_price_on_update'] ?? false) === true,
+        );
+
+        $product->fill($attributes);
     }
 
     /**

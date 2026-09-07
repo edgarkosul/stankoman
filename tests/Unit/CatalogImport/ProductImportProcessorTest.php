@@ -1406,6 +1406,191 @@ it('finalizes missing only inside selected source category when scoped category 
     expect(Product::query()->whereKey((int) $missingOutsideScopedCategoryId)->value('is_active'))->toBeTrue();
 });
 
+it('previews planned operations without writing anything', function (): void {
+    $run = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Маска сварщика',
+        'slug' => 'maska-svarshchika',
+        'sku' => 'ST-1',
+        'price_amount' => 6100,
+        'discount_price' => 5490,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_a',
+        'external_id' => 'A-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $run->id,
+        'last_seen_run_id' => $run->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $summary = $processor->previewBatch([
+        new ProductPayload(
+            externalId: 'A-1',
+            name: 'Маска сварщика',
+            priceAmount: 6710,
+            currency: 'RUB',
+            inStock: true,
+            sku: 'ST-1',
+        ),
+        new ProductPayload(
+            externalId: 'A-2',
+            name: 'Новый товар',
+            priceAmount: 1000,
+            currency: 'RUB',
+            inStock: true,
+        ),
+    ], [
+        'supplier' => 'supplier_a',
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+        'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_PRICE],
+    ]);
+
+    expect($summary['processed'])->toBe(2)
+        ->and($summary['created'])->toBe(1)
+        ->and($summary['updated'])->toBe(1)
+        ->and($summary['skipped'])->toBe(0)
+        ->and($summary['results'][0]->operation)->toBe('updated')
+        ->and($summary['results'][0]->meta['product_id'])->toBe($product->id)
+        ->and($summary['results'][0]->meta['changes'])->toBe([
+            'price_amount' => ['before' => 6100, 'after' => 6710],
+        ])
+        ->and($summary['results'][1]->operation)->toBe('created')
+        ->and($summary['results'][1]->meta['product_id'])->toBeNull();
+
+    $product->refresh();
+
+    expect($product->price_amount)->toBe(6100)
+        ->and($product->discount_price)->toBe(5490)
+        ->and(Product::query()->count())->toBe(1)
+        ->and(ProductSupplierReference::query()->count())->toBe(1);
+});
+
+it('previews unchanged products and disabled operations', function (): void {
+    $run = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Маска сварщика',
+        'slug' => 'maska-svarshchika-2',
+        'price_amount' => 6100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_a',
+        'external_id' => 'A-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $run->id,
+        'last_seen_run_id' => $run->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $samePayload = new ProductPayload(
+        externalId: 'A-1',
+        name: 'Маска сварщика',
+        priceAmount: 6100,
+        currency: 'RUB',
+        inStock: true,
+    );
+
+    $unchanged = $processor->preview($samePayload, [
+        'supplier' => 'supplier_a',
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+        'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_PRICE],
+    ]);
+
+    expect($unchanged->operation)->toBe('unchanged')
+        ->and($unchanged->meta['skip_code'])->toBe('unchanged');
+
+    $updateDisabled = $processor->preview(
+        new ProductPayload(
+            externalId: 'A-1',
+            name: 'Маска сварщика',
+            priceAmount: 6710,
+            currency: 'RUB',
+            inStock: true,
+        ),
+        [
+            'supplier' => 'supplier_a',
+            'update_existing' => false,
+        ],
+    );
+
+    expect($updateDisabled->operation)->toBe('skipped')
+        ->and($updateDisabled->meta['skip_code'])->toBe('update_disabled');
+
+    $createDisabled = $processor->preview(
+        new ProductPayload(
+            externalId: 'A-404',
+            name: 'Нет такого товара',
+            priceAmount: 100,
+            currency: 'RUB',
+            inStock: true,
+        ),
+        [
+            'supplier' => 'supplier_a',
+            'create_missing' => false,
+        ],
+    );
+
+    expect($createDisabled->operation)->toBe('skipped')
+        ->and($createDisabled->meta['skip_code'])->toBe('create_disabled');
+});
+
+it('keeps manual pricing protection in preview', function (): void {
+    $run = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Товар с формулой',
+        'slug' => 'tovar-s-formuloy',
+        'price_amount' => 6100,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+        'wholesale_price' => 3000,
+        'markup_multiplier' => 2,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_a',
+        'external_id' => 'A-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $run->id,
+        'last_seen_run_id' => $run->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $result = $processor->preview(
+        new ProductPayload(
+            externalId: 'A-1',
+            name: 'Товар с формулой',
+            priceAmount: 6710,
+            currency: 'RUB',
+            inStock: true,
+        ),
+        [
+            'supplier' => 'supplier_a',
+            'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+            'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_PRICE],
+        ],
+    );
+
+    expect($result->operation)->toBe('unchanged');
+});
+
 function createImportRun(string $type): ImportRun
 {
     return ImportRun::query()->create([

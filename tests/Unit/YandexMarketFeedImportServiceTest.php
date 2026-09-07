@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\ImportRun;
+use App\Models\Product;
 use App\Models\ProductSupplierReference;
 use App\Models\Supplier;
 use App\Support\CatalogImport\Processing\ExistingProductUpdateSelection;
@@ -400,6 +401,133 @@ XML;
         @unlink($path);
     }
 });
+
+it('reports a dry-run plan of created and updated products', function () {
+    prepareYandexMarketFeedImportServicePlanTables();
+
+    $supplier = Supplier::factory()->create([
+        'name' => 'Yandex Plan Supplier',
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Маска сварщика',
+        'slug' => 'maska-svarshchika-plan',
+        'price_amount' => 6100,
+        'discount_price' => 5490,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'yandex_market_feed',
+        'supplier_id' => $supplier->id,
+        'external_id' => 'A1',
+        'product_id' => $product->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $xml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<yml_catalog date="2026-03-05 00:00">
+  <shop>
+    <offers>
+      <offer id="A1" available="true">
+        <name>Маска сварщика</name>
+        <price>6710</price>
+        <currencyId>RUB</currencyId>
+        <categoryId>1</categoryId>
+      </offer>
+      <offer id="A2" available="true">
+        <name>Новый товар</name>
+        <price>1000</price>
+        <currencyId>RUB</currencyId>
+        <categoryId>1</categoryId>
+      </offer>
+    </offers>
+  </shop>
+</yml_catalog>
+XML;
+
+    $path = tempnam(sys_get_temp_dir(), 'yandex_feed_plan_');
+    file_put_contents($path, $xml);
+
+    try {
+        $result = app(YandexMarketFeedImportService::class)->run([
+            'source' => $path,
+            'supplier_id' => $supplier->id,
+            'write' => false,
+            'delay_ms' => 0,
+            'show_samples' => 2,
+            'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+            'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_PRICE],
+        ]);
+
+        expect($result['write_mode'])->toBeFalse()
+            ->and($result['processed'])->toBe(2)
+            ->and($result['created'])->toBe(1)
+            ->and($result['updated'])->toBe(1)
+            ->and($result['skipped'])->toBe(0)
+            ->and($result['errors'])->toBe(0);
+
+        expect($result['samples'][0]['external_id'])->toBe('A1')
+            ->and($result['samples'][0]['plan'])->toBe('Будет обновлен')
+            ->and($result['samples'][0]['changes'])->toBe('Цена: 6100 → 6710')
+            ->and($result['samples'][1]['plan'])->toBe('Будет создан');
+
+        // dry-run остается предпросмотром: каталог не меняется.
+        $product->refresh();
+
+        expect($product->price_amount)->toBe(6100)
+            ->and($product->discount_price)->toBe(5490)
+            ->and(Product::query()->count())->toBe(1);
+    } finally {
+        @unlink($path);
+    }
+});
+
+function prepareYandexMarketFeedImportServicePlanTables(): void
+{
+    prepareYandexMarketFeedImportServiceReferenceTables();
+
+    if (Schema::hasTable('products')) {
+        return;
+    }
+
+    Schema::create('products', function (Blueprint $table): void {
+        $table->id();
+        $table->string('name');
+        $table->string('name_normalized')->nullable();
+        $table->string('title')->nullable();
+        $table->string('slug')->unique();
+        $table->string('sku')->nullable();
+        $table->string('brand')->nullable();
+        $table->string('country')->nullable();
+        $table->unsignedInteger('price_amount')->default(0);
+        $table->unsignedInteger('discount_price')->nullable();
+        $table->char('currency', 3)->default('RUB');
+        $table->decimal('wholesale_price', 14, 4)->nullable();
+        $table->decimal('markup_multiplier', 8, 4)->nullable();
+        $table->boolean('in_stock')->default(false);
+        $table->unsignedInteger('qty')->nullable();
+        $table->boolean('is_active')->default(true);
+        $table->boolean('is_in_yml_feed')->default(true);
+        $table->boolean('with_dns')->default(true);
+        $table->string('promo_info')->nullable();
+        $table->text('short')->nullable();
+        $table->longText('description')->nullable();
+        $table->longText('extra_description')->nullable();
+        $table->longText('instructions')->nullable();
+        $table->longText('video')->nullable();
+        $table->json('specs')->nullable();
+        $table->string('image')->nullable();
+        $table->string('thumb')->nullable();
+        $table->json('gallery')->nullable();
+        $table->string('meta_title')->nullable();
+        $table->text('meta_description')->nullable();
+        $table->timestamps();
+    });
+}
 
 function prepareYandexMarketFeedImportServiceReferenceTables(): void
 {

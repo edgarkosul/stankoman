@@ -111,6 +111,20 @@
                     </div>
                 </div>
 
+                @php
+                    $isDryRunSummary = ($lastSavedRun['mode'] ?? '') === 'dry-run';
+                    $hasDryRunPlan = $isDryRunSummary && (
+                        ($lastSavedRun['created'] ?? 0) + ($lastSavedRun['updated'] ?? 0) + ($lastSavedRun['skipped'] ?? 0)
+                    ) > 0;
+                @endphp
+
+                @if ($hasDryRunPlan)
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 sm:text-sm">
+                        Dry-run ничего не записал в базу. «Создано / Обновлено / Пропущено» — это план:
+                        столько товаров импорт создаст, обновит и оставит без изменений, если запустить его кнопкой «Импортировать в базу».
+                    </div>
+                @endif
+
                 @if (!empty($lastSavedIssues))
                     <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                         <h3 class="mb-1 text-xs font-semibold text-amber-900 sm:text-sm">Последние ошибки</h3>
