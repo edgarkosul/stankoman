@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Lang;
 
 final class ImportRunEventProductFieldLabels
 {
+    private const ADMIN_LOCALE = 'ru';
+
     public static function label(mixed $field): string
     {
         if (! is_string($field)) {
@@ -20,11 +22,17 @@ final class ImportRunEventProductFieldLabels
 
         $key = 'import-run-events.product_fields.'.$normalized;
 
-        if (! Lang::has($key)) {
-            return $normalized;
+        if (Lang::has($key)) {
+            return (string) __($key);
         }
 
-        return (string) __($key);
+        // Админка русскоязычная, а app.locale по умолчанию en: без явного
+        // обращения к ru в интерфейс попадают технические имена колонок.
+        if (Lang::has($key, self::ADMIN_LOCALE)) {
+            return (string) __($key, [], self::ADMIN_LOCALE);
+        }
+
+        return $normalized;
     }
 
     /**

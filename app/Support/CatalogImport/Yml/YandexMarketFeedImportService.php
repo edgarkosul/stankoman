@@ -6,12 +6,14 @@ use App\Models\ProductSupplierReference;
 use App\Support\CatalogImport\Contracts\ImportRunEventLoggerInterface;
 use App\Support\CatalogImport\Contracts\SourceResolverInterface;
 use App\Support\CatalogImport\DTO\ImportError;
+use App\Support\CatalogImport\DTO\ImportProcessResult;
 use App\Support\CatalogImport\DTO\ProductPayload;
 use App\Support\CatalogImport\DTO\ResolvedSource;
 use App\Support\CatalogImport\Processing\ExistingProductUpdateSelection;
 use App\Support\CatalogImport\Processing\ProductImportProcessor;
 use App\Support\CatalogImport\Runs\DatabaseImportRunEventLogger;
 use App\Support\CatalogImport\Runs\ImportRunEventData;
+use App\Support\CatalogImport\Runs\ImportRunEventProductFieldLabels;
 use App\Support\CatalogImport\Sources\SourceResolver;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -204,9 +206,11 @@ class YandexMarketFeedImportService
             $imageDownloadFailed = 0;
             $derivativesQueued = 0;
             $samples = [];
+            $samplePlans = [];
             $urlErrors = [];
             $processedOffers = 0;
             $touchedPrefilteredExternalIds = [];
+            $planPreview = ! $normalized['write'] && $this->supportsPlanPreview();
 
             $this->emitProgress($progress, $this->makeProgressPayload(
                 foundUrls: $foundUrls,
@@ -359,10 +363,35 @@ class YandexMarketFeedImportService
                             $imagesDownloaded += (int) ($processResult->meta['media_queued'] ?? 0);
                             $derivativesQueued += (int) ($processResult->meta['media_queued'] ?? 0);
                             $imageDownloadFailed += $this->countMediaErrors($processResult->errors);
-                        } elseif (count($samples) < $normalized['show_samples']) {
-                            $samples[] = $this->sampleRow($mapping->payload, $record->type);
-                            $processed++;
                         } else {
+                            $plan = $planPreview
+                                ? $this->processor->preview(
+                                    $mapping->payload,
+                                    $this->processorOptions($normalized),
+                                )
+                                : null;
+
+                            if ($plan !== null) {
+                                if ($plan->operation === 'created') {
+                                    $created++;
+                                } elseif ($plan->operation === 'updated') {
+                                    $updated++;
+                                } else {
+                                    $skipped++;
+                                }
+
+                                $errors += count($plan->errors);
+                            }
+
+                            $this->collectSample(
+                                samples: $samples,
+                                samplePlans: $samplePlans,
+                                limit: $normalized['show_samples'],
+                                payload: $mapping->payload,
+                                offerType: $record->type,
+                                plan: $plan,
+                            );
+
                             $processed++;
                         }
 
@@ -465,12 +494,21 @@ class YandexMarketFeedImportService
                         .'.'
                     );
                 }
+            } elseif ($planPreview) {
+                $this->emit(
+                    $output,
+                    'line',
+                    'План: создать='.$created
+                    .', обновить='.$updated
+                    .', без изменений='.$skipped
+                    .'.'
+                );
             }
 
             if (! $normalized['write'] && $samples !== []) {
                 $this->emit($output, 'new_line', '');
                 $this->emit($output, 'table', [
-                    'headers' => ['external_id', 'name', 'price', 'currency', 'offer_type'],
+                    'headers' => array_keys($samples[0]),
                     'rows' => $samples,
                 ]);
             }
@@ -929,15 +967,144 @@ class YandexMarketFeedImportService
     /**
      * @return array{external_id: string, name: string, price: string, currency: string, offer_type: string}
      */
-    private function sampleRow(ProductPayload $payload, ?string $offerType): array
+    private function sampleRow(ProductPayload $payload, ?string $offerType, ?ImportProcessResult $plan = null): array
     {
-        return [
+        $row = [
             'external_id' => $payload->externalId,
             'name' => $payload->name,
             'price' => (string) ($payload->priceAmount ?? 0),
             'currency' => (string) ($payload->currency ?? ''),
             'offer_type' => $offerType ?? 'simple',
         ];
+
+        if ($plan === null) {
+            return $row;
+        }
+
+        $row['plan'] = $this->planLabel($plan);
+        $row['changes'] = $this->describePlanChanges($plan);
+
+        return $row;
+    }
+
+    /**
+     * Копит строки превью: сначала первые offer-записи, дальше строки без изменений
+     * уступают место тем, где импорт что-то поменяет — план полезнее случайной выборки.
+     *
+     * @param  array<int, array<string, string>>  $samples
+     * @param  array<int, string>  $samplePlans
+     */
+    private function collectSample(
+        array &$samples,
+        array &$samplePlans,
+        int $limit,
+        ProductPayload $payload,
+        ?string $offerType,
+        ?ImportProcessResult $plan,
+    ): void {
+        if ($limit <= 0) {
+            return;
+        }
+
+        $operation = $plan?->operation ?? '';
+
+        if (count($samples) < $limit) {
+            $samples[] = $this->sampleRow($payload, $offerType, $plan);
+            $samplePlans[] = $operation;
+
+            return;
+        }
+
+        if (! in_array($operation, ['created', 'updated'], true)) {
+            return;
+        }
+
+        foreach ($samplePlans as $index => $existing) {
+            if (in_array($existing, ['created', 'updated'], true)) {
+                continue;
+            }
+
+            $samples[$index] = $this->sampleRow($payload, $offerType, $plan);
+            $samplePlans[$index] = $operation;
+
+            return;
+        }
+    }
+
+    private function planLabel(ImportProcessResult $plan): string
+    {
+        return match ($plan->operation) {
+            'created' => 'Будет создан',
+            'updated' => 'Будет обновлен',
+            'unchanged' => 'Без изменений',
+            default => match ((string) ($plan->meta['skip_code'] ?? '')) {
+                'update_disabled' => 'Пропуск: обновление выключено',
+                'create_disabled' => 'Пропуск: создание выключено',
+                default => 'Пропуск',
+            },
+        };
+    }
+
+    private function describePlanChanges(ImportProcessResult $plan): string
+    {
+        $changes = is_array($plan->meta['changes'] ?? null) ? $plan->meta['changes'] : [];
+        $parts = [];
+
+        foreach ($changes as $field => $change) {
+            if (count($parts) >= 4) {
+                break;
+            }
+
+            if (! is_array($change)) {
+                continue;
+            }
+
+            $parts[] = ImportRunEventProductFieldLabels::label($field)
+                .': '.$this->formatPlanValue($change['before'] ?? null)
+                .' → '.$this->formatPlanValue($change['after'] ?? null);
+        }
+
+        $otherFields = is_array($plan->meta['other_changed_fields'] ?? null)
+            ? $plan->meta['other_changed_fields']
+            : [];
+
+        if ($otherFields !== []) {
+            // Описание, характеристики и прочие длинные поля перечисляем без значений.
+            $parts[] = 'ещё: '.implode(', ', ImportRunEventProductFieldLabels::labels($otherFields));
+        }
+
+        return implode('; ', $parts);
+    }
+
+    private function formatPlanValue(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '—';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'да' : 'нет';
+        }
+
+        if (is_array($value)) {
+            return 'список ('.count($value).')';
+        }
+
+        if (! is_scalar($value)) {
+            return '—';
+        }
+
+        $text = trim((string) $value);
+
+        return mb_strlen($text) > 60 ? mb_substr($text, 0, 60).'…' : $text;
+    }
+
+    /**
+     * Предпросмотр dry-run сверяется с каталогом: без таблиц товаров плана не будет.
+     */
+    private function supportsPlanPreview(): bool
+    {
+        return Schema::hasTable('products') && Schema::hasTable('product_supplier_references');
     }
 
     /**

@@ -366,32 +366,42 @@ class Product extends Model
             ->withTimestamps();
     }
 
+    /**
+     * Процентная скидка — источник истины. Если задан discount_percent,
+     * discount_price всегда выводим из него (whole-ruble цена). discount_percent === null
+     * означает «процентной скидки нет»: discount_price (если есть) — «старая цена» поставщика
+     * и трогать её не нужно.
+     *
+     * Вызывается на сохранении, а также предпросмотром импорта — чтобы план dry-run
+     * совпадал с тем, что реально запишется в базу.
+     */
+    public function syncDiscountPriceFromPercent(): void
+    {
+        $attributes = $this->getAttributes();
+
+        if (! array_key_exists('discount_percent', $attributes)) {
+            return;
+        }
+
+        $percent = $attributes['discount_percent'];
+
+        if ($percent === null) {
+            return;
+        }
+
+        if (! array_key_exists('price_amount', $attributes)) {
+            return;
+        }
+
+        $this->discount_price = (float) $percent <= 0
+            ? null
+            : self::calculateDiscountPrice($this->price_amount, $percent);
+    }
+
     protected static function booted(): void
     {
-        // Процентная скидка — источник истины. Если задан discount_percent,
-        // discount_price всегда выводим из него (whole-ruble цена). discount_percent === null
-        // означает «процентной скидки нет»: discount_price (если есть) — «старая цена» поставщика
-        // и трогать её не нужно.
         static::saving(function (self $product): void {
-            $attributes = $product->getAttributes();
-
-            if (! array_key_exists('discount_percent', $attributes)) {
-                return;
-            }
-
-            $percent = $attributes['discount_percent'];
-
-            if ($percent === null) {
-                return;
-            }
-
-            if (! array_key_exists('price_amount', $attributes)) {
-                return;
-            }
-
-            $product->discount_price = (float) $percent <= 0
-                ? null
-                : self::calculateDiscountPrice($product->price_amount, $percent);
+            $product->syncDiscountPriceFromPercent();
         });
 
         static::saving(function (self $product): void {

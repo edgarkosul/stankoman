@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Product;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 
 it('shows product pdf download link on product page', function (): void {
     $product = Product::query()->create([
@@ -174,4 +176,79 @@ it('throttles the pdf offer route', function (): void {
     }
 
     $this->get($url)->assertStatus(429);
+});
+
+it('serves a second request for the same offer from disk', function (): void {
+    Storage::fake('local');
+
+    $product = Product::query()->create([
+        'name' => 'Тестовый товар PDF кэш',
+        'slug' => 'test-product-pdf-cache',
+        'is_active' => true,
+        'price_amount' => 90_000,
+    ]);
+
+    $url = route('product.print', ['product' => $product]);
+
+    $first = $this->get($url)->assertOk()->getContent();
+
+    $directory = Storage::disk('local')->path('pdf-offers');
+    $files = File::glob($directory.'/product-'.$product->id.'.*.pdf');
+
+    expect($files)->toHaveCount(1)
+        ->and(File::get($files[0]))->toBe($first);
+
+    // Подменяем сложенный файл: если второй ответ придёт с подменой,
+    // значит оферту не пересобирали, а взяли с диска.
+    File::put($files[0], '%PDF-1.4 из кэша');
+
+    expect($this->get($url)->assertOk()->getContent())->toBe('%PDF-1.4 из кэша');
+});
+
+it('rebuilds the offer when the product changes and keeps one file per product', function (): void {
+    Storage::fake('local');
+
+    $product = Product::query()->create([
+        'name' => 'Тестовый товар PDF инвалидация',
+        'slug' => 'test-product-pdf-invalidation',
+        'is_active' => true,
+        'price_amount' => 90_000,
+    ]);
+
+    $url = route('product.print', ['product' => $product]);
+    $directory = Storage::disk('local')->path('pdf-offers');
+
+    $this->get($url)->assertOk();
+
+    $before = File::glob($directory.'/product-'.$product->id.'.*.pdf');
+    expect($before)->toHaveCount(1);
+
+    // updated_at хранится с точностью до секунды: без сдвига во времени
+    // правка попадает в ту же секунду, что и создание, и ключ не меняется.
+    $this->travel(1)->minutes();
+
+    $product->forceFill(['price_amount' => 111_000])->save();
+
+    $this->get($url)->assertOk();
+
+    $after = File::glob($directory.'/product-'.$product->id.'.*.pdf');
+
+    expect($after)->toHaveCount(1)
+        ->and($after[0])->not->toBe($before[0])
+        ->and(File::exists($before[0]))->toBeFalse();
+});
+
+it('does not leave temporary files behind', function (): void {
+    Storage::fake('local');
+
+    $product = Product::query()->create([
+        'name' => 'Тестовый товар PDF временные файлы',
+        'slug' => 'test-product-pdf-tmp',
+        'is_active' => true,
+        'price_amount' => 90_000,
+    ]);
+
+    $this->get(route('product.print', ['product' => $product]))->assertOk();
+
+    expect(File::glob(Storage::disk('local')->path('pdf-offers').'/*.tmp'))->toBeEmpty();
 });
