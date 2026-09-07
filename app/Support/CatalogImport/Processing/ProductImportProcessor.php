@@ -1503,11 +1503,54 @@ final class ProductImportProcessor implements ImportProcessorInterface
             $attributes = array_diff_key($attributes, array_flip(['price_amount', 'discount_price', 'currency']));
         }
 
+        $attributes = $this->scaleAbsoluteDiscountToNewPrice($attributes, $payload, $product);
+
         if (! $this->shouldDeferExistingProductMediaAttributes($queueMedia, $hasPayloadImages, $options)) {
             return $attributes;
         }
 
         return array_diff_key($attributes, array_flip(self::DEFERRED_MEDIA_EVENT_FIELDS));
+    }
+
+    /**
+     * Скидка, заданная абсолютным числом (без «Скидка, %»), не переживает смену цены:
+     * в режиме «все поля» прайс поставщика ее обнуляет, а если обновлять только цену —
+     * она остается от старой цены и наценка съезжает (товар за 13 450 со скидкой 12 105
+     * после подорожания до 14 550 продается уже не за −10%, а за −17%). Поэтому тянем
+     * скидку за ценой, сохраняя прежний процент.
+     *
+     * Товары с заполненной процентной скидкой сюда не попадают: их discount_price
+     * выводит из процента сама модель на сохранении.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function scaleAbsoluteDiscountToNewPrice(array $attributes, ProductPayload $payload, Product $product): array
+    {
+        if (! array_key_exists('price_amount', $attributes)) {
+            return $attributes;
+        }
+
+        // Свою скидку поставщик присылает редко, но если прислал — она главнее.
+        if ($payload->discountPrice !== null) {
+            return $attributes;
+        }
+
+        if ($product->getAttribute('discount_percent') !== null) {
+            return $attributes;
+        }
+
+        $currentPrice = (int) $product->getAttribute('price_amount');
+        $currentDiscount = (int) ($product->getAttribute('discount_price') ?? 0);
+        $newPrice = (int) $attributes['price_amount'];
+
+        if ($newPrice <= 0 || $currentPrice <= 0 || $currentDiscount <= 0 || $currentDiscount >= $currentPrice) {
+            return $attributes;
+        }
+
+        $attributes['discount_price'] = max(1, (int) round($newPrice * $currentDiscount / $currentPrice));
+
+        return $attributes;
     }
 
     /**

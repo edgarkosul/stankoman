@@ -1461,6 +1461,7 @@ it('previews planned operations without writing anything', function (): void {
         ->and($summary['results'][0]->meta['product_id'])->toBe($product->id)
         ->and($summary['results'][0]->meta['changes'])->toBe([
             'price_amount' => ['before' => 6100, 'after' => 6710],
+            'discount_price' => ['before' => 5490, 'after' => 6039],
         ])
         ->and($summary['results'][1]->operation)->toBe('created')
         ->and($summary['results'][1]->meta['product_id'])->toBeNull();
@@ -1527,6 +1528,154 @@ it('previews the discount price recalculated from the stored percent', function 
     expect($product->price_amount)->toBe(6710)
         ->and($product->discount_price)->toBe(6039)
         ->and((float) $product->discount_percent)->toBe(10.0);
+});
+
+it('scales an absolute discount together with the supplier price', function (): void {
+    $run = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Полуавтомат',
+        'slug' => 'poluavtomat-absolute',
+        'price_amount' => 13450,
+        'discount_price' => 12105,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+    ]);
+
+    expect($product->discount_percent)->toBeNull();
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_a',
+        'external_id' => 'A-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $run->id,
+        'last_seen_run_id' => $run->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $payload = new ProductPayload(
+        externalId: 'A-1',
+        name: 'Полуавтомат',
+        priceAmount: 14550,
+        currency: 'RUB',
+        inStock: true,
+    );
+
+    // Обновляем только цену: скидка все равно должна поехать следом.
+    $options = [
+        'supplier' => 'supplier_a',
+        'run_id' => $run->id,
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+        'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_PRICE],
+    ];
+
+    $planned = $processor->preview($payload, $options);
+
+    expect($planned->meta['changes']['discount_price'])->toBe(['before' => 12105, 'after' => 13095]);
+
+    $processor->process($payload, $options);
+
+    $product->refresh();
+
+    // 13095 / 14550 — те же −10%, что были у 12105 / 13450.
+    expect($product->price_amount)->toBe(14550)
+        ->and($product->discount_price)->toBe(13095)
+        ->and($product->discount_percent)->toBeNull();
+});
+
+it('leaves the discount alone when the price is not part of the update', function (): void {
+    $run = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Полуавтомат',
+        'slug' => 'poluavtomat-no-price-field',
+        'price_amount' => 13450,
+        'discount_price' => 12105,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_a',
+        'external_id' => 'A-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $run->id,
+        'last_seen_run_id' => $run->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $processor->process(
+        new ProductPayload(
+            externalId: 'A-1',
+            name: 'Полуавтомат',
+            priceAmount: 14550,
+            currency: 'RUB',
+            inStock: false,
+        ),
+        [
+            'supplier' => 'supplier_a',
+            'run_id' => $run->id,
+            'update_existing_mode' => ExistingProductUpdateSelection::MODE_SELECTED,
+            'update_existing_fields' => [ExistingProductUpdateSelection::FIELD_AVAILABILITY],
+        ],
+    );
+
+    $product->refresh();
+
+    expect($product->price_amount)->toBe(13450)
+        ->and($product->discount_price)->toBe(12105)
+        ->and($product->in_stock)->toBeFalse();
+});
+
+it('prefers the supplier discount over the scaled one', function (): void {
+    $run = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Полуавтомат',
+        'slug' => 'poluavtomat-supplier-discount',
+        'price_amount' => 13450,
+        'discount_price' => 12105,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+    ]);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_a',
+        'external_id' => 'A-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $run->id,
+        'last_seen_run_id' => $run->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $processor->process(
+        new ProductPayload(
+            externalId: 'A-1',
+            name: 'Полуавтомат',
+            priceAmount: 14550,
+            discountPrice: 11000,
+            currency: 'RUB',
+            inStock: true,
+        ),
+        [
+            'supplier' => 'supplier_a',
+            'run_id' => $run->id,
+        ],
+    );
+
+    $product->refresh();
+
+    expect($product->price_amount)->toBe(14550)
+        ->and($product->discount_price)->toBe(11000);
 });
 
 it('previews unchanged products and disabled operations', function (): void {

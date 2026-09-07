@@ -472,7 +472,7 @@ XML;
 
         expect($result['samples'][0]['external_id'])->toBe('A1')
             ->and($result['samples'][0]['plan'])->toBe('Будет обновлен')
-            ->and($result['samples'][0]['changes'])->toBe('Цена: 6100 → 6710')
+            ->and($result['samples'][0]['changes'])->toBe('Цена: 6100 → 6710; Цена со скидкой: 5490 → 6039')
             ->and($result['samples'][1]['plan'])->toBe('Будет создан');
 
         // dry-run остается предпросмотром: каталог не меняется.
