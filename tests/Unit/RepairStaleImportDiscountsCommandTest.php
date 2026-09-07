@@ -19,7 +19,7 @@ it('reports stale discounts of a run without touching data', function (): void {
         app()->instance(ProductSearchSync::class, $searchSync);
 
         $this->artisan('catalog:repair-stale-import-discounts', ['run' => 7])
-            ->expectsOutputToContain('Режим: dry-run')
+            ->expectsOutputToContain('Режим команды: dry-run')
             ->expectsOutputToContain('к исправлению: 1')
             ->assertSuccessful();
 
@@ -53,6 +53,45 @@ it('restores the discount percentage the product had before the run', function (
             // Цену этого товара после прогона правили руками — исходный процент неизвестен.
             ->and(DB::table('products')->where('id', $ids['moved'])->value('discount_price'))->toBe(12105)
             ->and(DB::table('products')->where('id', $ids['no_discount'])->value('discount_price'))->toBeNull();
+    } finally {
+        dropRepairStaleImportDiscountSchemas();
+    }
+});
+
+it('lists runs that actually changed prices when no run is given', function (): void {
+    rebuildRepairStaleImportDiscountSchemas();
+
+    try {
+        seedRepairStaleImportDiscountFixtures();
+
+        $this->artisan('catalog:repair-stale-import-discounts')
+            ->expectsOutputToContain('Прогоны, в которых импорт менял цены')
+            ->expectsOutputToContain('yandex_market_feed_products')
+            ->assertSuccessful();
+    } finally {
+        dropRepairStaleImportDiscountSchemas();
+    }
+});
+
+it('explains that a dry-run has nothing to repair', function (): void {
+    rebuildRepairStaleImportDiscountSchemas();
+
+    try {
+        DB::table('import_runs')->insert([
+            'id' => 9,
+            'type' => 'yandex_market_feed_products',
+            'status' => 'completed',
+            'totals' => json_encode(['_meta' => ['mode' => 'dry-run']]),
+            'started_at' => now(),
+            'finished_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->artisan('catalog:repair-stale-import-discounts', ['run' => 9])
+            ->expectsOutputToContain('холостым (в базу не писал)')
+            ->expectsOutputToContain('нет событий обновления товаров')
+            ->assertSuccessful();
     } finally {
         dropRepairStaleImportDiscountSchemas();
     }
