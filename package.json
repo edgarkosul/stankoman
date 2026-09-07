@@ -5,8 +5,7 @@
     "scripts": {
         "build": "vite build",
         "build:rich-content-plugins": "node bin/build-rich-content-plugins.js",
-        "dev": "vite",
-        "dev:vite": "vite"
+        "dev": "vite"
     },
     "dependencies": {
         "autoprefixer": "^10.4.20",
