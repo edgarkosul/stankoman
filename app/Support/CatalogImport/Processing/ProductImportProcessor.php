@@ -276,6 +276,11 @@ final class ProductImportProcessor implements ImportProcessorInterface
                 if ($canUpdate) {
                     $this->fillExistingProductForUpdate($product, $payload, $options, $queueMedia);
 
+                    // Модель на сохранении пересчитывает скидочную цену из процента скидки.
+                    // Повторяем это здесь, иначе план соврет: покажет обнуление скидки там,
+                    // где запись на самом деле пересчитает ее от новой цены.
+                    $product->syncDiscountPriceFromPercent();
+
                     if ($product->isDirty()) {
                         $changeContext = $this->buildChangedAttributesContext($product, $product->getDirty());
                         $changedAttributes = $changeContext['changes'];

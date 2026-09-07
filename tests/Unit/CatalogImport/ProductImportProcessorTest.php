@@ -1473,6 +1473,62 @@ it('previews planned operations without writing anything', function (): void {
         ->and(ProductSupplierReference::query()->count())->toBe(1);
 });
 
+it('previews the discount price recalculated from the stored percent', function (): void {
+    $run = createImportRun('catalog_import_yml');
+
+    $product = Product::query()->create([
+        'name' => 'Полуавтомат',
+        'slug' => 'poluavtomat-percent',
+        'price_amount' => 6100,
+        'discount_percent' => 10,
+        'currency' => 'RUB',
+        'in_stock' => true,
+        'is_active' => true,
+    ]);
+
+    expect($product->discount_price)->toBe(5490);
+
+    ProductSupplierReference::query()->create([
+        'supplier' => 'supplier_a',
+        'external_id' => 'A-1',
+        'product_id' => $product->id,
+        'first_seen_run_id' => $run->id,
+        'last_seen_run_id' => $run->id,
+        'last_seen_at' => now(),
+    ]);
+
+    $processor = new ProductImportProcessor(new ProductPayloadNormalizer);
+
+    $payload = new ProductPayload(
+        externalId: 'A-1',
+        name: 'Полуавтомат',
+        priceAmount: 6710,
+        currency: 'RUB',
+        inStock: true,
+    );
+
+    $options = [
+        'supplier' => 'supplier_a',
+        'run_id' => $run->id,
+        'update_existing_mode' => ExistingProductUpdateSelection::MODE_ALL,
+    ];
+
+    $planned = $processor->preview($payload, $options);
+
+    expect($planned->operation)->toBe('updated')
+        ->and($planned->meta['changes']['price_amount'])->toBe(['before' => 6100, 'after' => 6710])
+        ->and($planned->meta['changes']['discount_price'])->toBe(['before' => 5490, 'after' => 6039]);
+
+    // Предпросмотр обещает ровно то, что делает запись.
+    $processor->process($payload, $options);
+
+    $product->refresh();
+
+    expect($product->price_amount)->toBe(6710)
+        ->and($product->discount_price)->toBe(6039)
+        ->and((float) $product->discount_percent)->toBe(10.0);
+});
+
 it('previews unchanged products and disabled operations', function (): void {
     $run = createImportRun('catalog_import_yml');
 
