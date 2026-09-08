@@ -4,6 +4,7 @@ namespace App\Livewire\Auth;
 
 use App\Concerns\ResolvesAuthRedirectTarget;
 use App\Models\User;
+use App\Support\AdminPanelLoginRedirect;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Contracts\View\View;
@@ -68,6 +69,19 @@ class LoginInline extends Component
 
         $email = Str::lower(trim($this->email));
         $user = User::query()->where('email', $email)->first();
+
+        $panelLoginUrl = AdminPanelLoginRedirect::resolve($user, $this->password);
+
+        if ($panelLoginUrl !== null) {
+            RateLimiter::clear($this->throttleKey());
+            session()->flash('status', AdminPanelLoginRedirect::statusKey());
+
+            $this->close();
+            $this->skipRender();
+            $this->dispatch('auth:redirect', url: $panelLoginUrl);
+
+            return;
+        }
 
         if (
             ! $user instanceof User

@@ -76,6 +76,10 @@ class AdminPanelProvider extends PanelProvider
             ->favicon(asset('favicon.svg'))
             ->sidebarCollapsibleOnDesktop()
             ->renderHook(
+                PanelsRenderHook::AUTH_LOGIN_FORM_BEFORE,
+                fn (): View => view('filament.components.storefront-login-notice'),
+            )
+            ->renderHook(
                 PanelsRenderHook::PAGE_HEADER_ACTIONS_AFTER,
                 fn (): View => view('filament.components.help-center-link'),
             )

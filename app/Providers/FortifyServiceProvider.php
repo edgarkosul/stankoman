@@ -5,7 +5,9 @@ namespace App\Providers;
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Models\User;
+use App\Support\AdminPanelLoginRedirect;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
@@ -53,11 +55,23 @@ class FortifyServiceProvider extends ServiceProvider
 
             $user = User::query()->where('email', $email)->first();
 
+            $password = (string) $request->input('password');
+
+            // Единственный способ ответить редиректом из колбэка Fortify: он ждёт
+            // ?User и сам решает, что делать дальше.
+            $panelLoginUrl = AdminPanelLoginRedirect::resolve($user, $password);
+
+            if ($panelLoginUrl !== null) {
+                throw new HttpResponseException(
+                    redirect()->to($panelLoginUrl)->with('status', AdminPanelLoginRedirect::statusKey())
+                );
+            }
+
             if (! $user instanceof User || ! $user->canUseStorefront()) {
                 return null;
             }
 
-            return Hash::check((string) $request->input('password'), $user->password)
+            return Hash::check($password, $user->password)
                 ? $user
                 : null;
         });

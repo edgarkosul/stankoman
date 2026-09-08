@@ -3,6 +3,7 @@
 use App\Livewire\Auth\LoginInline;
 use App\Livewire\Header\UserMenu;
 use App\Models\User;
+use Filament\Facades\Filament;
 use Livewire\Livewire;
 
 test('inline login modal can be opened', function () {
@@ -82,7 +83,31 @@ test('users can not authenticate via inline login modal with invalid password', 
     $this->assertGuest();
 });
 
-test('filament admins can not authenticate using inline login modal', function () {
+test('filament admins are sent from the inline modal to the panel login', function () {
+    config()->set('settings.general.filament_admin_emails', ['admin@example.com']);
+
+    $user = User::factory()->create([
+        'email' => 'admin@example.com',
+    ]);
+
+    Livewire::test(LoginInline::class)
+        ->call('open')
+        ->set('email', $user->email)
+        ->set('password', 'password')
+        ->call('login')
+        ->assertHasNoErrors()
+        ->assertSet('open', false)
+        ->assertDispatched('auth:redirect', url: Filament::getPanel('admin')->getLoginUrl());
+
+    // Тестовый харнесс Livewire теряет значения flash (обычный put переживает,
+    // flash — нет), поэтому проверяем, что ключ помечен для следующего запроса.
+    // Сам текст на странице входа в панель покрыт в AuthenticationTest.
+    expect((array) session('_flash.new'))->toContain('status');
+
+    $this->assertGuest();
+});
+
+test('filament admins with a wrong password still fail in the inline modal', function () {
     config()->set('settings.general.filament_admin_emails', ['admin@example.com']);
 
     $user = User::factory()->create([
@@ -91,10 +116,12 @@ test('filament admins can not authenticate using inline login modal', function (
 
     Livewire::test(LoginInline::class)
         ->set('email', $user->email)
-        ->set('password', 'password')
+        ->set('password', 'wrong-password')
         ->call('login')
         ->assertHasErrors('email')
         ->assertNotDispatched('auth:redirect');
+
+    expect((array) session('_flash.new'))->not->toContain('status');
 
     $this->assertGuest();
 });
