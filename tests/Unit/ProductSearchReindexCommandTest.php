@@ -27,11 +27,25 @@ it('runs product search reindex command with explicit chunk size', function (): 
         ->assertSuccessful();
 });
 
-it('registers nightly product search reindex schedule', function (): void {
-    $event = collect(app(Schedule::class)->events())
-        ->first(fn ($scheduledEvent): bool => Str::contains($scheduledEvent->command, 'products:search-reindex'));
+it('runs the nightly reconciliation instead of a full rebuild', function (): void {
+    $events = collect(app(Schedule::class)->events());
 
-    expect($event)->not->toBeNull()
-        ->and($event->expression)->toBe('30 6 * * *')
-        ->and($event->withoutOverlapping)->toBeTrue();
+    /*
+     * Полная пересборка начинается с removeAllFromSearch(): пока она идёт,
+     * поиск на сайте отдаёт пустоту. По расписанию её быть не должно —
+     * ночью работает сверка, а пересборка осталась ручной командой.
+     */
+    expect($events->first(fn ($event): bool => Str::contains($event->command, 'products:search-reindex')))
+        ->toBeNull();
+
+    $audit = $events->first(fn ($event): bool => Str::contains($event->command, 'search:audit'));
+
+    expect($audit)->not->toBeNull()
+        ->and($audit->expression)->toBe('45 4 * * *')
+        ->and($audit->withoutOverlapping)->toBeTrue();
+
+    $settings = $events->first(fn ($event): bool => Str::contains($event->command, 'scout:sync-index-settings'));
+
+    expect($settings)->not->toBeNull()
+        ->and($settings->expression)->toBe('40 4 * * *');
 });
