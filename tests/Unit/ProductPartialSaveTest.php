@@ -11,6 +11,8 @@ uses(TestCase::class);
 beforeEach(function () {
     Schema::dropIfExists('products');
 
+    ensureProductCategoryTablesExist();
+
     Schema::create('products', function (Blueprint $table): void {
         $table->id();
         $table->string('name');

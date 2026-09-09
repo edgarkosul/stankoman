@@ -159,6 +159,10 @@ return [
                     'brand',
                     'price',
                     'in_stock',
+                    // Раздел каталога: по нему фильтрует витрина и будет
+                    // фильтровать поиск товаров у ассистента.
+                    'category_ids',
+                    'category_names',
                 ],
                 'sortableAttributes' => [
                     'price',

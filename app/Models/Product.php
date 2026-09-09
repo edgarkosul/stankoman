@@ -8,7 +8,9 @@ use App\Models\Attribute as AttributeDef;
 use App\Models\Pivots\ProductCategory;
 use App\Support\ImageDerivativesResolver;
 use App\Support\NameNormalizer;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Casts\Attribute as EloquentAttribute;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -145,6 +147,27 @@ class Product extends Model
         return $this->hasMany(LegacyProduct::class, 'matched_product_id');
     }
 
+    /**
+     * Массовая переиндексация сразу тянет категории.
+     *
+     * Без этого `scout:import` и `search:audit --fix` читали бы категории
+     * по товару за раз — на каталоге в три с половиной тысячи позиций
+     * это столько же лишних запросов.
+     *
+     * Правим ЗАПРОС, а не модели: хук makeSearchableUsing() подгружает связь
+     * прямо в те объекты, которые ему дали, и товар, только что созданный
+     * кем-то другим, уносил бы с собой загруженную пустую связь `categories`.
+     * Дальше по коду `$product->primaryCategory()` вернул бы null при живой
+     * привязке в базе — тихо и в самом неприятном месте.
+     *
+     * @param  EloquentBuilder<self>  $query
+     * @return EloquentBuilder<self>
+     */
+    protected function makeAllSearchableUsing(EloquentBuilder $query): EloquentBuilder
+    {
+        return $query->with('categories:id,name');
+    }
+
     public function toSearchableArray(): array
     {
         // Оригиналы
@@ -156,7 +179,26 @@ class Product extends Model
         $brandLatin = $this->toLatin($brand);
         $searchTerms = $this->buildSearchTerms($name, $sku);
 
-        // Можно добавить что-то ещё, что полезно для поиска
+        /*
+         * Категории читаем через relationLoaded: при массовой индексации их
+         * подложил makeSearchableUsing(), при одиночном сохранении товара
+         * связь подгрузится здесь же.
+         *
+         * ВАЖНО про импорт: товар создаётся одним запросом, а к категории
+         * цепляется следующим, через пивот, — событие модели к этому моменту
+         * уже отработало. Поэтому `scout.after_commit` обязан быть true
+         * (документ собирается после коммита, когда пивот на месте), а импорт
+         * дополнительно пересобирает документы созданных товаров сам.
+         * Иначе новинка уезжает в индекс с пустым category_ids и не находится
+         * фильтром категории до ближайшей ночной сверки.
+         */
+        $categories = match (true) {
+            $this->relationLoaded('categories') => $this->categories,
+            // Несохранённый товар: пивота ещё нет, спрашивать базу не о чем.
+            $this->exists => $this->categories()->get(['categories.id', 'categories.name']),
+            default => new EloquentCollection,
+        };
+
         return [
             'id' => (int) $this->id,
             'name' => $name,
@@ -164,10 +206,26 @@ class Product extends Model
             'brand' => $brand,
             'brand_latin' => $brandLatin,
             'sku' => $sku,
+            'slug' => (string) ($this->slug ?? ''),
             'search_terms' => $searchTerms,
             'price' => (float) $this->price,
             'discount_price' => (float) ($this->discount_price ?? 0),
-            // при желании: category_id, in_stock, и т. п.
+            /*
+             * in_stock и popularity объявлены в config/scout.php фильтруемым
+             * и сортируемым, но в документ не отдавались вовсе: фильтр молча
+             * не работал, сортировка — тоже. Отдаём.
+             */
+            'in_stock' => (bool) $this->in_stock,
+            'popularity' => (int) ($this->popularity ?? 0),
+            'category_ids' => $categories
+                ->map(static fn ($category): int => (int) $category->getKey())
+                ->values()
+                ->all(),
+            'category_names' => $categories
+                ->map(static fn ($category): string => (string) $category->name)
+                ->filter(static fn (string $name): bool => $name !== '')
+                ->values()
+                ->all(),
         ];
     }
 
