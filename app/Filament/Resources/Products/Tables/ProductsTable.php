@@ -1063,7 +1063,15 @@ class ProductsTable
                             return;
                         }
 
-                        $shouldSyncSearch = $data['mode'] === 'fields';
+                        /*
+                         * Массовый редактор пишет запросами и через пивот —
+                         * событий модели тут нет. Правка полей меняет название,
+                         * цену и наличие в документе, правка категорий —
+                         * category_ids, по которому фильтруют витрина и поиск.
+                         * Режим «filters» трогает только значения атрибутов,
+                         * которых в документе нет.
+                         */
+                        $shouldSyncSearch = in_array($data['mode'], ['fields', 'categories'], true);
                         $stagingCategoryIdToDetach = self::resolveStagingCategoryIdToDetachAfterPrimaryCategorySwitch(
                             $livewire,
                             $data,
@@ -1263,7 +1271,9 @@ class ProductsTable
                         });
 
                         if ($shouldSyncSearch) {
-                            app(ProductSearchSync::class)->syncIds($ids);
+                            // Через очередь: «выделить все» — это весь каталог,
+                            // и админ не должен ждать его переиндексации.
+                            app(ProductSearchSync::class)->queueIds($ids);
                         }
                     })
                     ->requiresConfirmation(),

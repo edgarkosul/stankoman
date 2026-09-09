@@ -493,6 +493,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
         $queueMedia = ($options['download_media'] ?? false) === true;
         $forceMediaRecheck = ($options['force_media_recheck'] ?? false) === true;
         $pendingMediaIds = [];
+        $createdProductIds = [];
         $useSupplierEntityReference = $this->supportsSupplierEntityReference() && $supplierId !== null;
 
         foreach ($payloads as $payload) {
@@ -577,6 +578,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
             $eventLogger,
             $defaultSourceRef,
             &$pendingMediaIds,
+            &$createdProductIds,
             &$summary,
         ): void {
             $referenceUpserts = [];
@@ -649,6 +651,7 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
                     $this->attachToStagingCategory($product);
                     $createdSnapshot = $this->buildProductContextSnapshot($product);
+                    $createdProductIds[] = (int) $product->getKey();
 
                     $operation = 'created';
                     $summary['created']++;
@@ -769,6 +772,21 @@ final class ProductImportProcessor implements ImportProcessorInterface
 
         if ($queueMedia && $pendingMediaIds !== []) {
             $this->mediaService->dispatchPendingMedia($pendingMediaIds);
+        }
+
+        /*
+         * Документы созданных товаров пересобираем сами и уже после коммита.
+         *
+         * Товар создаётся активным одним запросом, а к служебной категории
+         * цепляется следующим — через пивот, без события модели. Документ
+         * уходил в индекс с пустым category_ids, и новинка не находилась
+         * фильтром категории (им пользуются и витрина, и поиск ассистента)
+         * до ближайшей ночной сверки. `scout.after_commit` от этого страхует,
+         * но полагаться на порядок чужих событий здесь незачем: пачка id
+         * под рукой, а переиндексация идемпотентна.
+         */
+        if ($createdProductIds !== []) {
+            $this->searchSync->syncIds($createdProductIds);
         }
 
         return $summary;

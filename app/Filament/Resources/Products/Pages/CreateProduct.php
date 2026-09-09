@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Products\Pages;
 
 use App\Filament\Resources\Products\ProductResource;
 use App\Models\Product;
+use App\Support\Products\ProductSearchSync;
 use Filament\Forms\Components\Repeater;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -89,6 +90,16 @@ class CreateProduct extends CreateRecord
      */
     protected function afterCreate(): void
     {
+        /*
+         * Категории приезжают из формы, то есть уже ПОСЛЕ события создания
+         * модели: Scout успевал собрать документ с пустым category_ids,
+         * и новый товар не находился фильтром категории. Панель транзакциями
+         * не пользуется, так что `scout.after_commit` здесь не спасает.
+         */
+        if ($this->record instanceof Product) {
+            app(ProductSearchSync::class)->syncIds([$this->record->getKey()]);
+        }
+
         if (! $this->sourceProductId) {
             return;
         }
