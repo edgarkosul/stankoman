@@ -20,6 +20,8 @@ beforeEach(function () {
     Schema::dropIfExists('import_runs');
     Schema::dropIfExists('products');
 
+    ensureProductCategoryTablesExist();
+
     Schema::create('products', function (Blueprint $table): void {
         $table->id();
         $table->string('name');

@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Products\Pages;
 use App\Filament\Concerns\QueuesContentImageDerivatives;
 use App\Filament\Resources\Products\ProductResource;
 use App\Filament\Resources\Products\Schemas\ProductForm;
+use App\Support\Products\ProductSearchSync;
 use App\Support\Products\ProductSpecsAttributesSyncService;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
@@ -113,6 +114,17 @@ class EditProduct extends EditRecord
             $state['instructions'] ?? $this->record->instructions,
             $state['video'] ?? $this->record->video,
         ];
+    }
+
+    protected function afterSave(): void
+    {
+        /*
+         * Категории сохраняются связью формы, а не полем модели: событие
+         * сохранения товара к этому моменту уже отработало, и документ
+         * остался бы с прежним составом category_ids. Один товар —
+         * одна переиндексация, синхронно.
+         */
+        app(ProductSearchSync::class)->syncIds([$this->record->getKey()]);
     }
 
     protected function beforeSave(): void

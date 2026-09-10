@@ -29,6 +29,13 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="RESTIC_BACKUPS_ENABLED" value="false"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <!--
+            Поиск в тестах — collection-драйвер, как было до появления
+            SCOUT_DRIVER в .env. Иначе тесты пишут документы в живой
+            Meilisearch дева: id у sqlite свои, и фикстура затирает
+            документ настоящего товара с тем же номером.
+        -->
+        <env name="SCOUT_DRIVER" value="collection"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

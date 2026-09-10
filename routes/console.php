@@ -15,9 +15,34 @@ Schedule::command('images:webp-backfill', ['--limit' => 500])
     ->dailyAt('03:30')
     ->withoutOverlapping();
 
-Schedule::command('products:search-reindex')
-    ->dailyAt('06:30')
-    ->withoutOverlapping(180);
+/*
+ * Сверка каталога с поисковым индексом (Meilisearch, индекс stankoman_products).
+ *
+ * Раньше здесь в 06:30 стоял products:search-reindex — полная пересборка,
+ * которая начинается с removeAllFromSearch(): всё время сборки поиск на сайте
+ * отдавал пустоту, и это уже утренний трафик. Плюс она чинила молча, а значит
+ * не давала узнать, что появилось новое место, пишущее мимо индекса.
+ *
+ * search:audit сначала докладывает расхождение в лог и только потом чинит —
+ * полным проходом (он же переписывает документы, разошедшиеся по содержимому:
+ * по множествам id такое не видно) плюс удалением лишних документов.
+ * Живые места зовут ProductSearchSync сразу, это сеть под ними.
+ *
+ * Настройки индекса синхронизируем перед сверкой: новые фильтруемые поля
+ * иначе доедут до Meilisearch только руками. Команда идемпотентна.
+ *
+ * products:search-reindex осталась ручной командой — на случай, когда индекс
+ * надо собрать с нуля.
+ */
+Schedule::command('scout:sync-index-settings')
+    ->dailyAt('04:40')
+    ->withoutOverlapping(180)
+    ->appendOutputTo(storage_path('logs/search-audit.log'));
+
+Schedule::command('search:audit', ['--fix'])
+    ->dailyAt('04:45')
+    ->withoutOverlapping(180)
+    ->appendOutputTo(storage_path('logs/search-audit.log'));
 
 Schedule::command('legacy:kraton-match')
     ->dailyAt('05:20')

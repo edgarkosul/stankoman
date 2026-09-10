@@ -4,6 +4,8 @@ namespace App\Filament\Resources\Products\RelationManagers;
 
 use App\Filament\Resources\Categories\CategoryResource;
 use App\Models\Category;
+use App\Models\Product;
+use App\Support\Products\ProductSearchSync;
 use Filament\Actions\Action;
 use Filament\Actions\AttachAction;
 use Filament\Actions\BulkActionGroup;
@@ -59,7 +61,12 @@ class CategoriesRelationManager extends RelationManager
                             ->label('Категория')
                     )
                     ->after(function (): void {
-                        $this->getOwnerRecord()->unsetRelation('categories');
+                        $product = $this->getOwnerRecord();
+                        $product->unsetRelation('categories');
+
+                        // Состав категорий лежит в поисковом документе,
+                        // а пивот событий модели не поднимает — зовём сами.
+                        app(ProductSearchSync::class)->syncIds([$product->getKey()]);
                     })
                     ->successNotificationTitle('Категория привязана'),
             ])
@@ -70,7 +77,7 @@ class CategoriesRelationManager extends RelationManager
                     ->visible(fn ($record) => ! $record->isBrandCategory()) // запрет для брендовых
                     ->requiresConfirmation()
                     ->action(function ($record, $livewire) {
-                        /** @var \App\Models\Product $product */
+                        /** @var Product $product */
                         $product = $livewire->getOwnerRecord();
 
                         if ($record->isBrandCategory()) {
@@ -99,6 +106,8 @@ class CategoriesRelationManager extends RelationManager
                         $product = $this->getOwnerRecord();
                         $product->categories()->detach($record->getKey());
                         $product->unsetRelation('categories');
+
+                        app(ProductSearchSync::class)->syncIds([$product->getKey()]);
                     })
                     ->successNotificationTitle('Категория отвязана'),
                 Action::make('openUi')
@@ -110,7 +119,11 @@ class CategoriesRelationManager extends RelationManager
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DetachBulkAction::make(),
+                    // Массовая отвязка чистит пивот одним запросом —
+                    // документ товара надо пересобрать отдельно.
+                    DetachBulkAction::make()
+                        ->after(fn ($livewire) => app(ProductSearchSync::class)
+                            ->syncIds([$livewire->getOwnerRecord()->getKey()])),
 
                 ]),
             ]);

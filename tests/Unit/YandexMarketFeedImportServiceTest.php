@@ -494,6 +494,8 @@ function prepareYandexMarketFeedImportServicePlanTables(): void
         return;
     }
 
+    ensureProductCategoryTablesExist();
+
     Schema::create('products', function (Blueprint $table): void {
         $table->id();
         $table->string('name');

@@ -1,9 +1,11 @@
 <?php
 
+use App\Jobs\SyncProductsToSearch;
 use App\Models\Product;
 use App\Support\Products\ProductSearchSync;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\LazyCollection;
 use Laravel\Scout\Builder;
@@ -15,6 +17,8 @@ uses(TestCase::class);
 
 beforeEach(function (): void {
     Schema::dropIfExists('products');
+
+    ensureProductCategoryTablesExist();
 
     Schema::create('products', function (Blueprint $table): void {
         $table->id();
@@ -63,6 +67,63 @@ it('syncs searchable and unsearchable products by ids', function (): void {
     ]);
     expect($engine->updatedIds)->toBe([$activeProduct->id]);
     expect($engine->deletedIds)->toBe([$inactiveProduct->id]);
+});
+
+it('removes documents of products that are gone from the database', function (): void {
+    $engine = fakeScoutEngine();
+    bindScoutEngine($engine);
+
+    $product = Product::query()->create([
+        'name' => 'Deleted Product',
+        'price_amount' => 1000,
+        'is_active' => true,
+    ]);
+    $goneId = (int) $product->id;
+
+    Product::query()->whereKey($goneId)->delete();
+
+    $engine->updatedIds = [];
+    $engine->deletedIds = [];
+
+    /*
+     * Главный случай: строки в базе уже нет, а документ есть. Если поднимать
+     * модели из базы, удалять оказывается нечего — и документ висит в выдаче
+     * навсегда.
+     */
+    expect(app(ProductSearchSync::class)->removeIds([$goneId]))->toBe(1);
+    expect($engine->deletedIds)->toBe([$goneId]);
+});
+
+it('drops documents of ids missing from the database while syncing', function (): void {
+    $engine = fakeScoutEngine();
+    bindScoutEngine($engine);
+
+    $product = Product::query()->create([
+        'name' => 'Kept Product',
+        'price_amount' => 1000,
+        'is_active' => true,
+    ]);
+
+    $engine->updatedIds = [];
+    $engine->deletedIds = [];
+
+    $result = app(ProductSearchSync::class)->syncIds([$product->id, 999999]);
+
+    expect($result)->toBe([
+        'synced' => 1,
+        'removed' => 1,
+    ]);
+    expect($engine->updatedIds)->toBe([$product->id])
+        ->and($engine->deletedIds)->toBe([999999]);
+});
+
+it('queues indexing instead of doing it in the request', function (): void {
+    Queue::fake();
+
+    app(ProductSearchSync::class)->queueIds([5, 5, 7, 0, 'nope']);
+
+    Queue::assertPushed(SyncProductsToSearch::class, 1);
+    Queue::assertPushed(fn (SyncProductsToSearch $job): bool => $job->ids === [5, 7]);
 });
 
 it('rebuilds the product index synchronously', function (): void {

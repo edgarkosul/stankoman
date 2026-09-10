@@ -204,6 +204,8 @@ function rebuildRepairStaleImportDiscountSchemas(): void
         $table->timestamps();
     });
 
+    ensureProductCategoryTablesExist();
+
     Schema::create('products', function (Blueprint $table): void {
         $table->id();
         $table->string('name');

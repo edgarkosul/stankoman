@@ -81,6 +81,36 @@ function ensureSafeTestingDatabase(): void
     }
 }
 
+/**
+ * Таблицы категорий для поискового документа товара.
+ *
+ * toSearchableArray() кладёт в документ category_ids и category_names —
+ * по ним фильтруют витрина и поиск, — поэтому обе таблицы нужны каждому
+ * тесту, который вообще сохраняет товар, даже если сам он про категории
+ * ничего не знает. Пересоздаём начисто: unit-тесты делят одну sqlite
+ * в памяти, и пивот от прошлого файла прицепился бы к чужому товару
+ * с тем же id.
+ */
+function ensureProductCategoryTablesExist(): void
+{
+    Schema::dropIfExists('product_categories');
+    Schema::dropIfExists('categories');
+
+    Schema::create('categories', function (Blueprint $table): void {
+        $table->id();
+        $table->string('name')->nullable();
+        $table->string('slug')->nullable();
+        $table->timestamps();
+    });
+
+    Schema::create('product_categories', function (Blueprint $table): void {
+        $table->unsignedBigInteger('product_id');
+        $table->unsignedBigInteger('category_id');
+        $table->boolean('is_primary')->default(false);
+        $table->primary(['product_id', 'category_id']);
+    });
+}
+
 function ensureBackupTablesExist(): void
 {
     if (! Schema::hasTable('backup_settings')) {

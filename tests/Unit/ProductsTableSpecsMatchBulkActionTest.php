@@ -903,13 +903,11 @@ it('syncs search index after bulk field updates', function () {
     $product->categories()->attach($stagingCategory->id, ['is_primary' => true]);
 
     $searchSync = Mockery::mock(ProductSearchSync::class);
-    $searchSync->shouldReceive('syncIds')
+    // Массовый редактор уводит переиндексацию в очередь: «выделить все» —
+    // это весь каталог, и админ не должен ждать его в веб-запросе.
+    $searchSync->shouldReceive('queueIds')
         ->once()
-        ->with([$product->id])
-        ->andReturn([
-            'synced' => 1,
-            'removed' => 0,
-        ]);
+        ->with([$product->id]);
 
     app()->instance(ProductSearchSync::class, $searchSync);
 

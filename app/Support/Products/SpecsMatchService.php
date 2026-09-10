@@ -2381,6 +2381,10 @@ class SpecsMatchService
             $targetCategoryId => ['is_primary' => false],
         ]);
 
+        // Пивот событий модели не поднимает, а состав категорий лежит
+        // в поисковом документе — переиндексируем товар сами.
+        $this->syncSearchDocument($product);
+
         $product->setPrimaryCategory($targetCategoryId);
     }
 
@@ -2438,5 +2442,21 @@ class SpecsMatchService
         if ($isStagingPrimary) {
             $product->setPrimaryCategory($targetCategoryId);
         }
+
+        $this->syncSearchDocument($product);
+    }
+
+    /**
+     * Переиндексировать один товар после правки его категорий.
+     *
+     * Сопоставление характеристик переносит товары из служебной категории
+     * в целевую, а это ровно то, по чему фильтруют витрина и поиск.
+     * Синхронно: сервис и так работает в джобе.
+     */
+    private function syncSearchDocument(Product $product): void
+    {
+        $product->unsetRelation('categories');
+
+        app(ProductSearchSync::class)->syncIds([$product->getKey()]);
     }
 }

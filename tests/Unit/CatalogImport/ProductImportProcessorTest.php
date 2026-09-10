@@ -1277,6 +1277,41 @@ it('finalizes missing only in full sync authoritative mode', function (): void {
     expect(Product::query()->whereKey((int) $seenProductId)->value('is_active'))->toBeTrue();
 });
 
+it('reindexes created products after their category is attached', function (): void {
+    $searchSync = Mockery::mock(ProductSearchSync::class);
+
+    /*
+     * Товар создаётся одним запросом, а к служебной категории цепляется
+     * следующим — через пивот, без события модели. Значит переиндексация
+     * обязана идти ПОСЛЕ привязки, иначе документ уедет в Meilisearch
+     * с пустым category_ids и новинка не найдётся фильтром категории.
+     */
+    $searchSync->shouldReceive('syncIds')
+        ->once()
+        ->withArgs(function (array $ids): bool {
+            expect($ids)->toHaveCount(1);
+
+            expect(DB::table('product_categories')->where('product_id', $ids[0])->exists())
+                ->toBeTrue();
+
+            return true;
+        })
+        ->andReturn(['synced' => 1, 'removed' => 0]);
+
+    $processor = new ProductImportProcessor(
+        normalizer: new ProductPayloadNormalizer,
+        searchSync: $searchSync,
+    );
+
+    $processor->processBatch([
+        new ProductPayload(externalId: 'NEW-IN-INDEX', name: 'Новинка поставщика', inStock: true, qty: 3),
+    ], ['supplier' => 'test']);
+
+    $product = Product::query()->where('name', 'Новинка поставщика')->firstOrFail();
+
+    expect($product->categories()->count())->toBe(1);
+});
+
 it('removes deactivated products from search index during finalize missing', function (): void {
     $firstRun = createImportRun('catalog_import_yml');
     $secondRun = createImportRun('catalog_import_yml');
@@ -1289,6 +1324,11 @@ it('removes deactivated products from search index during finalize missing', fun
             return true;
         })
         ->andReturn(1);
+
+    // Созданные товары импорт переиндексирует сам: категорию им цепляют
+    // после события модели, и в документе она бы не появилась.
+    $searchSync->shouldReceive('syncIds')
+        ->andReturn(['synced' => 0, 'removed' => 0]);
 
     $processor = new ProductImportProcessor(
         normalizer: new ProductPayloadNormalizer,
