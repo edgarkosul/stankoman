@@ -126,23 +126,48 @@ Pest, sqlite `:memory:` (нужен пакет `php8.4-sqlite3`). В `phpunit.xm
 
 ### Composer
 
-В `composer.json` есть приватный VCS-репозиторий `siteko/filament-restic-backups`.
-Обычный `composer install/update` здесь падает по двум причинам, обе обходятся
-без правки глобальных настроек насовсем:
+В `composer.json` есть приватный VCS-репозиторий `siteko/filament-restic-backups`
+(`git@github.com:siteko-net/filament-restic-backups.git`). Доступ к нему даёт
+SSH-ключ из проброшенного ssh-agent; **токена GitHub в `auth.json` нет**
+(`github-oauth` пустой, проверено 2026-09-10).
 
-1. валидного GitHub-токена в auth.json нет → composer идёт через API и получает
-   «Could not authenticate against github.com». Лечится
-   `composer config --global use-github-api false` (потом `--unset`);
-2. глобально стоит `safe.bareRepository=explicit`, что блокирует `--mirror`-клоны.
-   Обход на один вызов:
+Отсюда ловушка: увидев VCS-репозиторий на github.com, composer по умолчанию идёт
+не клонировать, а в **REST API** (`use-github-api`, по умолчанию `true`) — быстрее,
+но для приватного репозитория требует токен. Получается «Could not authenticate
+against github.com», хотя ключ, которым можно склонировать, на месте. Лечится
+переключением на git/SSH:
+
+```bash
+composer config --global use-github-api false
+composer install
+composer config --global --unset use-github-api
+```
+
+`--unset` в конце — настройка глобальная, а API заметно быстрее клонирования
+для всех остальных проектов.
+
+Вторая ловушка **сейчас не воспроизводится, но легко возвращается.** Если
+`safe.bareRepository` выставлен в `explicit`, git отказывается работать с
+bare-репозиториями, найденными автоматически. Composer кладёт VCS-зависимости
+в кэш через `git clone --mirror`, то есть именно в bare, и падает с «cannot use
+bare repository … safe.bareRepository is 'explicit'» → «No valid composer.json in
+any branch or tag». На 2026-09-10 настройка не задана ни на одном уровне
+(system/global/local/worktree), но если вернётся — обход на один вызов, без правки
+глобального конфига:
 
 ```bash
 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all \
 GIT_SSH_COMMAND='ssh -o BatchMode=yes' composer install
 ```
 
-Ключ для доступа — в проброшенном ssh-agent (KeePassXC на Windows). Если ключа нет,
-база заблокирована — попросить разблокировать, а не генерировать ключ здесь.
+Переменные окружения — потому что git здесь запускаешь не ты, а composer, своими
+внутренними вызовами, куда флаг `-c` не подсунуть. `BatchMode=yes` не даёт ssh задать вопрос,
+на который в неинтерактивном прогоне некому ответить (иначе — вечное ожидание
+вместо ошибки).
+
+Если ключей в агенте нет — заблокирована база KeePassXC на Windows. Попросить
+разблокировать, а не генерировать ключ здесь: новый ключ в приватный репозиторий
+всё равно не пустят.
 
 ## Деплой
 
