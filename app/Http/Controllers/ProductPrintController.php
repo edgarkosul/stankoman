@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Attribute as AttributeDef;
 use App\Models\Product;
 use App\Models\ProductAttributeValue;
+use App\Support\Products\ProductSpecs;
 use App\Support\ViewModels\ProductPageViewModel;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -99,7 +100,7 @@ class ProductPrintController extends Controller
             'sku' => $product->sku ?? $product->id,
             'price' => number_format((float) ($product->price_amount ?? 0), 0, ',', ' ').' ₽',
             'attributes' => $this->attributesForPdf($product),
-            'specs' => $this->specsForPdf($product),
+            'specs' => app(ProductSpecs::class)->rows($product),
             'descriptionHtml' => $descriptionHtml,
         ];
 
@@ -222,83 +223,6 @@ class ProductPrintController extends Controller
         }
 
         return $rows;
-    }
-
-    /**
-     * Берём те же данные, что и вкладка specs на витрине.
-     *
-     * @return array<int, array{name: string, value: string, source: string|null}>
-     */
-    private function specsForPdf(Product $product): array
-    {
-        $rawSpecs = $product->specs;
-
-        if (is_string($rawSpecs)) {
-            $decoded = json_decode($rawSpecs, true);
-
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                $rawSpecs = $decoded;
-            }
-        }
-
-        if (! is_array($rawSpecs)) {
-            return [];
-        }
-
-        return collect($rawSpecs)
-            ->map(function (mixed $row, mixed $key): ?array {
-                if (is_array($row)) {
-                    return $this->normalizeSpecRowForPdf(
-                        $row['name'] ?? $key,
-                        $row['value'] ?? null,
-                        $row['source'] ?? null,
-                    );
-                }
-
-                return $this->normalizeSpecRowForPdf($key, $row);
-            })
-            ->filter()
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return array{name: string, value: string, source: string|null}|null
-     */
-    private function normalizeSpecRowForPdf(mixed $nameRaw, mixed $valueRaw, mixed $sourceRaw = null): ?array
-    {
-        $name = $this->normalizeSpecStringForPdf($nameRaw);
-        $value = $this->normalizeSpecValueForPdf($valueRaw);
-
-        if ($name === null || $value === null) {
-            return null;
-        }
-
-        return [
-            'name' => $name,
-            'value' => $value,
-            'source' => $this->normalizeSpecStringForPdf($sourceRaw),
-        ];
-    }
-
-    private function normalizeSpecStringForPdf(mixed $value): ?string
-    {
-        if ($value === null || is_array($value) || is_object($value)) {
-            return null;
-        }
-
-        $string = trim((string) $value);
-
-        return $string !== '' ? $string : null;
-    }
-
-    private function normalizeSpecValueForPdf(mixed $value): ?string
-    {
-        if (is_bool($value)) {
-            return $value ? 'Да' : 'Нет';
-        }
-
-        return $this->normalizeSpecStringForPdf($value);
     }
 
     private function normalizeHtmlForPdf(string $html): string
