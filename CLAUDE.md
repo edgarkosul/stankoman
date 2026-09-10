@@ -1,6 +1,8 @@
 # CLAUDE.md — intertooler
 
-Интернет-магазин промышленного оборудования (станки, инструмент) — intertooler.ru.
+Интернет-магазин промышленного оборудования (станки, инструмент, оснастка) —
+[intertooler.ru](https://intertooler.ru). Витрина и админка живут в одном
+Laravel-приложении, каталог наполняется импортом от поставщиков.
 
 > **Общие правила кода** (Laravel/Filament/Livewire/Pest/Tailwind, PHP-стиль,
 > запуск Pint и тестов) лежат в [`.github/copilot-instructions.md`](.github/copilot-instructions.md) —
@@ -9,8 +11,11 @@
 
 ## Стек
 
-Laravel 12 + Livewire 4 + Filament 5, PHP 8.4, MariaDB, Redis (кэш/сессии/очередь),
-Meilisearch через Scout, Tailwind v4 (CSS-first, без `tailwind.config.js`), Vite 7.
+Laravel 12 + Livewire 4 (Flux free) + Filament 5, PHP 8.4, MariaDB, Redis
+(кэш и очередь), Meilisearch 1.16 через Scout, Tailwind v4 (CSS-first, без
+`tailwind.config.js`), Vite 7, Pest 4. Аутентификация витрины — Fortify,
+печать карточки товара — Dompdf, импорт/экспорт таблиц — PhpSpreadsheet,
+подсказки по реквизитам — DaData.
 
 ## Наследие в именах
 
@@ -21,6 +26,12 @@ Meilisearch через Scout, Tailwind v4 (CSS-first, без `tailwind.config.js
 - боевая БД называется `stankoman`, индекс Meilisearch — `stankoman_products`;
 - домен stankoman.ru живым DNS больше не отвечает, это просто редирект на intertooler;
 - в каталоге есть слой legacy-товаров kraton (см. ниже).
+
+Отдельная ловушка: `config/filament-help.php` — сорок с лишним ссылок «Помощь»
+из админки — ведёт на **help.stankoman.ru**, а этот домен не резолвится
+(проверено 10.09.2026), сертификат удалён, nginx-блок отключён. То есть кнопки
+помощи в админке сейчас никуда не ведут. Прежде чем «чинить ссылку» — решить
+с заказчиком, где вообще живёт база знаний.
 
 ## Архитектура
 
@@ -36,22 +47,65 @@ Meilisearch через Scout, Tailwind v4 (CSS-first, без `tailwind.config.js
 Каталог живёт на одном маршруте `/catalog/{path?}` с `where('path', '.*')` — путь
 разбирается в дерево категорий приложением, а не роутером.
 
-### Админка
+Заказ оформляется одним входом: `OrderPlacementService::submit()` пишет всё в
+транзакции и бросает `OrderSubmitted`, письма шлёт листенер. Номер заказа —
+дата плюс порядковый (`01-02-26/03`), он же разложен на два сегмента в адресах
+`/checkout/success/{date}/{seq}` и `/user/orders/{date}/{seq}`.
 
-Filament 5, ресурсы в `app/Filament/Resources/`. Доступ в панель даёт `canAccessPanel`
-по списку e-mail из настроек, не по ролям.
+**Два кэша меню**, и оба легко забыть:
+
+- дерево категорий для шапки — вью-композер в `AppServiceProvider`,
+  ключ `Category::CATALOG_MENU_CACHE_KEY`, 30 минут;
+- редактируемое меню — `MenuService::tree()`, `rememberForever`.
+
+Правка категории или пункта меню, не сбросившая кэш, на сайте просто не видна.
+Новый маршрут в селекте пунктов меню не появится сам — его надо добавить в
+`config/menu.php` (`allowed_routes`).
+
+### Кто куда пускается
+
+Ролей нет: доступ в Filament даёт `User::canAccessPanel()` по списку e-mail
+(`settings.general.filament_admin_emails`). Обратная сторона — `canUseStorefront()`:
+для админа и менеджера витрина закрыта, `EnsureStorefrontCustomer` уводит их
+с `/checkout`, `/user/*` и `/settings/*` на главную. Это **так задумано** —
+у гостей и обычных покупателей оформление работает.
 
 **Осторожно с окружением:** на бою `FILAMENT_ADMIN_EMAILS` и `SHOP_MANAGER_EMAILS`
 заданы на уровне ОС/php-fpm и **перебивают `.env`** (phpdotenv не переопределяет уже
-установленную переменную). Если доступы ведут себя «не как в .env» — смотреть
-`grep -r FILAMENT_ADMIN_EMAILS /etc/php /etc/systemd`, а не только `.env`.
+установленную переменную). Проверено 2026-06-26: `.env` обещает `admin@siteko.net`,
+а живой конфиг отдаёт `sales@intertooler.ru` + `r_kodachenko@mail.ru`. Если доступы
+ведут себя «не как в .env» — смотреть `grep -r FILAMENT_ADMIN_EMAILS /etc/php /etc/systemd`,
+а не только `.env`. В деве это не воспроизводится: там переменные пустые.
 
-Отсюда же регулярная путаница: middleware `EnsureStorefrontCustomer` уводит
-залогиненного админа/менеджера с `/checkout` на главную. Это **так задумано** —
-у гостей и обычных покупателей оформление работает. В деве не воспроизводится,
-потому что там эти переменные пустые.
+### Настройки из БД перебивают конфиг
 
-### Каталог и поиск
+`SettingsServiceProvider::boot()` читает автозагружаемые строки таблицы `settings`
+(кэш `rememberForever`, ключ `Setting::CACHE_KEY`) и раскладывает их по конфигу:
+`company.*` и `mail.*` — по своему пути, всё остальное — под `settings.<key>`.
+Пустые значения для `general.manager_emails`, `general.filament_admin_emails`,
+`company.public_email` и `mail.from.address` намеренно игнорируются, чтобы пустая
+настройка не затёрла конфиг.
+
+Отсюда два следствия: рантайм может отличаться от `config/*.php` — смотреть надо
+админку и БД; правка настройки мимо админки требует сброса кэша.
+
+### Каталог, цены, скидки
+
+- `price_amount` и `discount_price` — целые **рубли**, не копейки (в отличие от
+  siteko). Формат для вывода — хелпер `price()` из `app/Support/helpers.php`.
+- Оптовая цена ведётся в валюте: `wholesale_price` + `wholesale_currency` +
+  `exchange_rate` → `wholesale_price_rub`, `markup_multiplier`, `margin_amount_rub`.
+  Курсы тянет `products:sync-currency-rates` с ЦБ (`cbr.ru/scripts/XML_daily.asp`)
+  в 00:00, кладёт в `settings` и пересчитывает товары с `auto_update_exchange_rate`.
+- **Скидка видна только авторизованным** (`DiscountVisibility`, решение заказчика
+  от 20.08.2026): гостю в корзине и в фиде — базовая цена, на карточке скидочная
+  показывается как цена «после регистрации», в чекауте она включается, если человек
+  ставит галку «завести личный кабинет».
+- Картинки: оригиналы в `public/pics` (вне git), webp-производные по лестнице ширин
+  делает `ImageDerivativesGenerator`, отдаёт `ImageDerivativesResolver` (srcset).
+  Ночью `images:webp-backfill --limit=500` добивает то, что не сгенерилось на лету.
+
+### Поиск по каталогу
 
 Поиск — Scout + Meilisearch. Драйвер `collection` фильтры игнорирует, поэтому
 Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, локально
@@ -67,7 +121,13 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 отдаёт пустоту. В расписании её быть не должно.
 
 Перед сверкой в 04:40 идёт `scout:sync-index-settings` — иначе новые фильтруемые
-поля доедут до Meilisearch только руками.
+поля доедут до Meilisearch только руками. И само поле мало объявить в
+`config/scout.php`: если его нет в `Product::toSearchableArray()`, фильтр и
+сортировка молча не работают (так уже было с `in_stock` и `popularity`).
+
+`scout.after_commit` обязан оставаться `true`: при импорте товар создаётся одним
+запросом, а к категории цепляется следующим — документ, собранный до коммита,
+уезжает с пустым `category_ids`.
 
 ### Импорт товаров
 
@@ -75,7 +135,10 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 
 - команда-вход `catalog:import-products {supplier} [--queue --write --mode=...]`,
   где supplier — `vactool`, `metalmaster` или `yandex_market_feed`;
-- `app/Support/CatalogImport/`, `app/Support/{Vactool,Metalmaster,Metaltec}/` — парсеры;
+- `app/Support/CatalogImport/` — общий каркас: `Drivers/` (HTML для vactool и
+  metalmaster, XML для metaltec, YML для stalex и Яндекс-фида), `Suppliers/`
+  (адаптеры и профили), `Processing/`, `Media/`, `Runs/` (оркестратор и журнал);
+  парсеры конкретных сайтов — в `app/Support/{Vactool,Metalmaster,Metaltec}/`;
 - `app/Jobs/Run*ImportJob.php` — прогоны в очереди. Metaltec и Stalex своей ветки
   в команде не имеют, у них только джобы;
 - `config/catalog-import.php` — ключи `schedule` (в расписании стоят только vactool
@@ -85,11 +148,39 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 
 Без `--write` это dry-run: команда показывает план изменений и ничего не пишет.
 
+Обратная сторона импорта — он пишет запросами, мимо событий модели. Любое такое
+место обязано само позвать `ProductSearchSync` (см. выше) и, если правит цены,
+пересчитать производные поля.
+
+### Фиды, SEO и печать
+
+- `/market.xml` отдаёт **готовый файл** `storage/app/public/feeds/yandex-market.xml`,
+  который ночью в 04:40 пишет `feeds:generate-market`. Маршрут ничего не считает.
+- `seo:generate-sitemap` в 04:30 кладёт `public/sitemap*.xml` и `robots.txt` — они
+  в `.gitignore` и генерируются на месте, в репозитории их нет.
+- SEO-теги страниц собирает `SiteSeoDataBuilder` через вью-композер лэйаута:
+  контроллер передаёт массив `seo` во вью, остальное достраивается само.
+- `/product/{slug}/print` строит PDF **синхронно** и занимает php-fpm воркер на
+  секунды, поэтому у маршрута `throttle:12,1`, а на бою ещё и правила nginx против
+  ботов (см. «Когда сайт „лёг“»).
+
+### Админка
+
+Filament 5, ресурсы в `app/Filament/Resources/` (Products, Categories, Orders,
+Attributes, Menus, Pages, Settings, Sliders, Units, Users, ImportRuns,
+LegacyProducts) плюс отдельные страницы под импорт/экспорт в `app/Filament/Pages/`.
+Панель — `app/Providers/Filament/AdminPanelProvider.php`: тема через
+`viteTheme()`, тёмный режим выключен, группы навигации свёрнуты, часовой пояс
+`Europe/Moscow`, плагин бэкапов `siteko/filament-restic-backups` подключается
+только если класс есть (чтобы не падать во время `composer update`).
+
 ### Legacy kraton
 
 Со старого сайта kratonkuban.ru идут редиректы. Резолвер —
 `/_legacy/kraton/resolve` (`LegacyKratonRedirectController`), сопоставление товаров
-ночью — `legacy:kraton-match`. План миграции: [`docs/legacy-kraton-redirect-plan.md`](docs/legacy-kraton-redirect-plan.md).
+ночью — `legacy:kraton-match`, настройки (домен-источник, код ответа, разрешённые
+стратегии сопоставления) — `config/legacy.php`. План миграции:
+[`docs/legacy-kraton-redirect-plan.md`](docs/legacy-kraton-redirect-plan.md).
 
 **Важно для nginx:** резолвер ходит с `127.0.0.1` и даёт до 212 запросов в минуту.
 Любой `limit_req` по IP обязан исключать локалхост, иначе редиректы со старого сайта
@@ -99,7 +190,8 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 
 Всё в `routes/console.php` — там же комментарии, почему что стоит именно так.
 На бою его крутит systemd-таймер `intertooler-scheduler.timer`, **не cron**
-(кронтабы пустые).
+(кронтабы пустые). Очередь на бою обрабатывает один воркер —
+`intertooler-queue-default.service`.
 
 ## Работа на деве
 
@@ -113,12 +205,22 @@ composer lint    # pint --parallel
 composer test    # config:clear + pint --test + artisan test
 ```
 
+Локальное окружение: MariaDB `intertooler_dev`, Redis под кэш и очередь (как на
+бою; сессии в деве — в БД), Meilisearch на 7703, почта в mailpit на 1025.
+В `local`/`testing` доступны превью писем: `/_preview/mail`.
+
 ### Тесты
 
 Pest, sqlite `:memory:` (нужен пакет `php8.4-sqlite3`). В `phpunit.xml` намеренно
 стоит `SCOUT_DRIVER=collection`: иначе тесты пишут документы в **живой Meilisearch
 дева** — id у sqlite свои, и фикстура затирает документ настоящего товара с тем же
 номером. Не менять.
+
+`tests/Pest.php` перед каждым тестом делает три вещи: проверяет, что база
+безопасная (sqlite либо имя с `_test` — иначе бросает и не даёт снести дев-базу),
+пересоздаёт таблицы категорий (unit-тесты делят одну память, пивот от прошлого
+файла прицепился бы к чужому товару) и создаёт таблицы плагина бэкапов, которых
+нет в миграциях приложения.
 
 Часть тестов падает на чистом `main` (зависят от данных/локали/внешних утилит).
 Перед тем как считать падение регрессией — прогнать тесты на `main` и сравнить.
@@ -169,6 +271,39 @@ GIT_SSH_COMMAND='ssh -o BatchMode=yes' composer install
 разблокировать, а не генерировать ключ здесь: новый ключ в приватный репозиторий
 всё равно не пустят.
 
+### Прод-база на дев
+
+Дамп `stankoman` → локальный `intertooler_dev`. Пароль боевого пользователя — в
+`/srv/www/intertooler/shared/.env`. Три ловушки, все встречались 07.09.2026:
+
+1. пользователь существует только как `stankoman`@`127.0.0.1` — всегда `-h127.0.0.1 -P3306`,
+   подключение по умолчанию идёт через сокет и даёт `Access denied`;
+2. пароль содержит `@` и `:` — не передавать вложенными кавычками в `ssh host '...'`,
+   слать скрипт через `ssh host 'bash -s' < script` и `export MYSQL_PWD=`;
+3. `information_schema.table_rows` для InnoDB — оценка, а не счёт (показывала 2444
+   товара при реальных 3948). По ней нельзя делать выводы о расхождении схем.
+
+Рабочая схема — два прохода `mysqldump` (`--no-data --routines --events`, затем
+`--no-create-info` с `--ignore-table` для cache/cache_locks/sessions/jobs/job_batches/
+failed_jobs/password_reset_tokens), gzip по ssh, локально дроп объектов при
+`FOREIGN_KEY_CHECKS=0` и импорт с вырезанным DEFINER — иначе VIEW
+`attribute_product_links` не создастся без прав SUPER:
+
+```bash
+zcat dump.sql.gz | sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g' | mariadb intertooler_dev
+```
+
+Дамп ~18 МБ gz / 183 МБ, схема прода совпадает с `main`, миграции после импорта
+гонять не нужно.
+
+Локально это безопасно: почта смотрит в mailpit, очередь `sync`, в `settings`
+только реквизиты и курсы валют, без секретов. В админку после импорта пускает
+только e-mail из `general.filament_admin_emails` — реально `r_kodachenko@mail.ru`.
+
+Локальная оболочка — **zsh**: `MY="mariadb -u..."` и потом `$MY` в позиции команды
+не разворачивается (нет word splitting). Писать bash-скрипт с функцией, а не
+переменную-команду.
+
 ## Деплой
 
 **Собранные ассеты едут через git.** На бою нет ни node, ни npm, ни vite —
@@ -185,10 +320,12 @@ GIT_SSH_COMMAND='ssh -o BatchMode=yes' composer install
 в `resources/js/dist` зовёт `php artisan filament:assets`, проверяет манифест,
 коммитит `public/build resources/js/dist public/js` и пушит.
 
-Дальше серверный хук сам делает `git archive` в `releases/<timestamp>`, симлинки на
-общие `.env` и `storage`, `composer install --no-dev`, миграции (с `artisan down`
-только если миграции есть), `optimize`, переключает `current` и перезапускает
-очередь/планировщик/php-fpm. Хранит 5 релизов.
+Дальше серверный хук (`/srv/www/intertooler/repo.git/hooks/post-receive`) сам делает
+`git archive` в `releases/<timestamp>`, симлинки на общие `.env` и `storage`,
+`composer install --no-dev --optimize-autoloader --no-scripts`, `storage:link`,
+`optimize:clear`, миграции (с `artisan down --secret` только если миграции есть),
+`optimize --except=views`, права, переключает `current` и делает `schedule:interrupt`
++ `queue:restart` + reload php8.4-fpm. Хранит 5 релизов.
 
 Пуш в `origin` (GitHub) деплой **не** запускает.
 
@@ -196,27 +333,71 @@ GIT_SSH_COMMAND='ssh -o BatchMode=yes' composer install
 и сборка начала падать с `Could not resolve entry module "index.html"` — восстановить
 из репозитория было нечем.
 
+**Пушит и деплоит пользователь, не агент.** Закончив работу, коммить и отдавать
+короткую инструкцию: что запустить после деплоя, если нужны шаги сверх хука.
+
 ## Боевой сервер
 
-Ubuntu 24.04, 2 vCPU / ~3.7 ГБ RAM. Коробка общая — на ней же kratonkuban.ru.
-Приложение в `/srv/www/intertooler` (`current` → `releases/<ts>`, `shared/`, `repo.git`).
+Ubuntu 24.04, 2 vCPU / ~3.7 ГБ RAM / 59 ГБ. Коробка общая — на ней же kratonkuban.ru
+(+ поддомены files/manual) и мёртвый stankoman.ru. Приложение в
+`/srv/www/intertooler` (`current` → `releases/<ts>`, `shared/`, `repo.git`),
+сайты ispmanager — в `/var/www`.
 
-- nginx 1.24 + php8.4-fpm, сертификаты через certbot;
-- MariaDB 11.4, root по unix_socket (`sudo mariadb`);
-- Redis на 6379, Meilisearch в докере на `127.0.0.1:7700`
-  (`/opt/meilisearch/docker-compose.yml`);
-- очередь — systemd-юнит `intertooler-queue-default.service` (после обновления PHP
-  его надо перезапустить, иначе держит старый бинарник);
-- бэкапы — Filament-плагин restic, команды `restic-backups:*`;
-- ispmanager на 1500/1501, ufw, fail2ban.
+### Доступ
+
+- `ssh intertooler-production` → хост `188.120.237.93`, пользователь **deploy**,
+  попадаешь в `/srv/www/intertooler/current`;
+- `ssh edgar@intertooler-production` → тот же хост под **edgar**;
+- **беспарольный sudo есть у `edgar`, не у `deploy`.** Для root по
+  неинтерактивному ssh: `ssh edgar@intertooler-production 'sudo bash -s'`.
+  Логи nginx читаются только под sudo — то есть под `edgar`;
+- имя машины в приглашении — `seteko-production`, это не опечатка и не другой хост;
+  `intertooler-production` — просто алиас из `~/.ssh/config`;
+- ключ отдаёт **KeePassXC на Windows** через проброшенный ssh-agent. Нет ключей
+  в `ssh-add -l` или «Permission denied (publickey)» — почти всегда заблокирована
+  база KeePassXC, а не упал сервер. Свой ключ здесь не генерировать.
+
+### Что где
+
+- **Web**: nginx 1.24 (вхосты в `/etc/nginx/sites-available` + симлинки в
+  `sites-enabled`, сертификаты certbot) → php8.4-fpm.
+- **БД**: MariaDB 11.4 (репозиторий mariadb.org), localhost:3306, root по
+  unix_socket (`sudo mariadb`). База приложения называется `stankoman`.
+- **Кэш/очередь/сессии**: Redis на 6379.
+- **Поиск**: Meilisearch в докере, compose — `/opt/meilisearch/docker-compose.yml`,
+  контейнер `meilisearch-meilisearch-1` (`restart=unless-stopped`), слушает
+  `127.0.0.1:7700`, здоровье — `curl 127.0.0.1:7700/health`.
+- **Очередь**: systemd-юнит `intertooler-queue-default.service` (один `queue:work redis`).
+  После обновления PHP его надо перезапустить, иначе держит старый бинарник.
+- **Планировщик**: `intertooler-scheduler.timer` → `schedule:run` каждую минуту.
+- **Бэкапы**: Filament-плагин restic, команды `restic-backups:{run,cleanup-rollbacks,cleanup-exports,unlock}`.
+- **Прочее**: ispmanager на 1500/1501, vsftpd на 21 (пассивные 40000–40100),
+  privoxy 8118 (локально), ufw, fail2ban (sshd, vsftpd), unattended-upgrades.
 
 Сторонние apt-репозитории (docker, sury, mariadb.org) не показываются как
 ubuntu-security — `apt list --upgradable` смотреть руками.
 
-`ssh.service` в состоянии «inactive (dead)» — это норма, там сокет-активация,
-проверять надо `ssh.socket`.
+### Грабли этой машины
 
-**Логи nginx читаются только под sudo, а беспарольный sudo есть у `edgar`, не у `deploy`.**
+- **`ssh.service` в состоянии «inactive (dead)» — это норма**: там сокет-активация,
+  проверять надо `ssh.socket` и `ss -ltn | grep :22`.
+- **UFW не открывает 22 всем** — только конкретным админским адресам. Адрес
+  дев-машины — **139.100.225.13** (её реальный IP на eth0). `185.239.142.147` —
+  это транзитный HTTP-прокси хостера, и web-сервисы «какой у меня IP» показывают
+  именно его, то есть врут для целей allowlist. Источник смотреть по `$SSH_CLIENT`
+  или `ip -4 addr show eth0`, а на самой цели — `tcpdump dst port 22` без фильтра
+  по адресу. В июле 2026 неверно угаданный адрес стоил дня разбирательств и
+  напрасной претензии хостеру.
+- **Приложение переехало с `/var/www/intertooler` на `/srv/www/intertooler`**, и
+  часть конфигов осталась со старым путём. Мёртвый путь не ломается на глаз — он
+  падает только когда до него доходит дело (ночной бэкап, продление сертификата).
+  Двое уже найдены и починены 2026-06-23 (`project_root` плагина restic в БД и
+  `webroot_path` в `/etc/letsencrypt/renewal/intertooler.ru.conf`), остальные —
+  `grep -r /var/www/intertooler` при любой «внезапно перестало работать».
+- **certbot.service падал из-за stankoman.ru**: зона мертва в публичном DNS
+  (`SERVFAIL`, делегирования нет), сервер резолвит её только строкой в `/etc/hosts`.
+  Сертификаты stankoman.ru и help.stankoman.ru удалены 2026-06-23, блок help
+  отключён. Если certbot снова красный — сначала посмотреть, не чужой ли это домен.
 
 ### Когда сайт «лёг»
 
@@ -224,29 +405,23 @@ ubuntu-security — `apt list --upgradable` смотреть руками.
 Начинать с `/var/log/nginx/access.log` (разбивка по минутам и по User-Agent) и
 `/var/log/php8.4-fpm.log` (`reached pm.max_children`, `executing too slow`).
 
-Что уже стоит на бою и как это ставилось — [`scripts/deploy/nginx/README.md`](scripts/deploy/nginx/README.md).
-Две грабли оттуда:
+Что уже стоит на бою и как это ставилось — [`scripts/deploy/nginx/README.md`](scripts/deploy/nginx/README.md):
+карта плохих ботов для `/print`, карта и зоны `limit_req` в `/etc/nginx/conf.d/`,
+плюс несколько `location` во вхосте `intertooler.ru`.
+
+Три грабли оттуда:
 
 1. `/index.php/что-угодно` отдавалось обычной страницей — это и вторая копия каталога
-   для поисковиков, и обход правил nginx, описанных от корня. Правила во вхосте
+   для поисковиков, и обход правил nginx, описанных от корня (через него боты
+   сгенерировали 1145 PDF за сутки против 65 заблокированных). Правила во вхосте
    писать так, чтобы префикс их не обходил.
 2. В `geo` значения — литералы, переменные не раскрываются. `default $binary_remote_addr`
-   давал всем клиентам один общий бакет на весь сайт. Лимит проверять обязательно
-   с двух источников: тест с одного проходит и на сломанном конфиге.
-
-### Прод-база на дев
-
-Дамп `stankoman` → локальный `intertooler_dev`. Три ловушки, все встречались:
-
-1. пользователь существует только как `stankoman`@`127.0.0.1` — всегда `-h127.0.0.1 -P3306`,
-   подключение по умолчанию идёт через сокет и даёт `Access denied`;
-2. пароль содержит `@` и `:` — не передавать вложенными кавычками в `ssh host '...'`,
-   слать скрипт через `ssh host 'bash -s' < script` и `export MYSQL_PWD=`;
-3. `information_schema.table_rows` для InnoDB — оценка, а не счёт. По ней нельзя
-   делать выводы о расхождении схем.
-
-При импорте нужен `sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g'`, иначе VIEW
-`attribute_product_links` не создастся без SUPER.
+   давал всем клиентам один общий бакет на весь сайт: 08.09.2026 скан WP-путей
+   выбрал его, и 429 получили посетители из Директа, YandexBot и чекер мониторинга.
+   Починено в `fdfc55b` (`geo` отдаёт флаг, ключ собирает `map`). Лимит проверять
+   обязательно с двух источников: тест с одного проходит и на сломанном конфиге.
+3. `127.0.0.1` — не служебный шум, оттуда ходит резолвер legacy-редиректов
+   kratonkuban.ru. Живые посетители дают не больше ~40 запросов в минуту.
 
 ## Соглашения
 
