@@ -31,7 +31,31 @@ it('keeps the timeout invariant that prevents a double paid call', function (): 
      * Джоба обязана сдаться сама раньше, чем её снимет воркер, а воркер —
      * раньше, чем очередь сочтёт её потерянной и выдаст второй экземпляр:
      * иначе на один вопрос покупателя уедет два платных вызова шлюза.
-     * Первые два числа появятся в джобе и в `composer dev`, третье — здесь.
+     *
+     * Числа лежат в трёх разных файлах, и в этом вся опасность: поправит
+     * человек одно, а инвариант держится всеми тремя. Поэтому сверяем их
+     * здесь, а не полагаемся на комментарии. Таймаут джобы приедет сюда
+     * вместе с самой джобой.
      */
-    expect(Config::get('queue.connections.redis-assistant.retry_after'))->toBe(300);
+    $retryAfter = Config::get('queue.connections.redis-assistant.retry_after');
+    $worker = assistantWorkerTimeout();
+
+    expect($retryAfter)->toBe(300)
+        ->and($worker)->toBe(240)
+        ->and($worker)->toBeLessThan($retryAfter);
 });
+
+/**
+ * Таймаут воркера ассистента — из `composer dev`, где он и живёт.
+ */
+function assistantWorkerTimeout(): int
+{
+    $composer = json_decode((string) file_get_contents(base_path('composer.json')), true);
+    $dev = implode(' ', (array) ($composer['scripts']['dev'] ?? []));
+
+    expect($dev)->toContain('queue:work redis-assistant --queue=assistant');
+
+    preg_match('/queue:work redis-assistant[^"]*--timeout=(\d+)/', $dev, $m);
+
+    return (int) ($m[1] ?? 0);
+}
