@@ -50,6 +50,13 @@
                 :variant="'product'"
                 :key="'cart-product-' . $product->id . '-' . $summaryInstance"
             />
+
+            <div class="mt-3">
+                <livewire:common.request-callback
+                    :product-id="$product->id"
+                    :key="'callback-product-' . $product->id . '-' . $summaryInstance"
+                />
+            </div>
         </div>
         <dl class="grid gap-2 text-zinc-700">
             @foreach (data_get($summary, 'details', []) as $detail)

@@ -29,6 +29,10 @@ test('help center routes match real admin routes and only omit explicitly unsupp
         // Страницы без статьи в справочном центре.
         'filament.admin.pages.pricing-survey',
         'filament.admin.pages.site-exports',
+        // Заявки на звонок появились, когда help.stankoman.ru уже не резолвился:
+        // писать статью некуда, пока с заказчиком не решено, где живёт справка.
+        'filament.admin.resources.callback-requests.index',
+        'filament.admin.resources.callback-requests.view',
     ])->sort()->values();
 
     expect($filamentRouteNames->diff($mappedRouteNames)->values())->toEqual($unsupportedRouteNames);

@@ -4,12 +4,15 @@ namespace App\Support\Mail;
 
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
+use App\Mail\CallbackRequestManagerMail;
 use App\Mail\OrderSubmittedCustomerMail;
 use App\Mail\OrderSubmittedManagerMail;
 use App\Mail\WelcomeNoPassword;
 use App\Mail\WelcomeSetPassword;
+use App\Models\CallbackRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Product;
 use App\Models\User;
 use App\Notifications\Auth\ResetPasswordNotification;
 use App\Notifications\Auth\VerifyEmailNotification;
@@ -38,6 +41,12 @@ class MailPreviewFactory
                 'group' => 'Заказы',
                 'label' => 'Заказ менеджеру',
                 'expectedText' => 'Новый заказ',
+            ],
+            [
+                'key' => 'callback-request-manager',
+                'group' => 'Заявки',
+                'label' => 'Заявка на звонок менеджеру',
+                'expectedText' => 'Заявка на обратный звонок',
             ],
             [
                 'key' => 'welcome-set-password',
@@ -91,6 +100,7 @@ class MailPreviewFactory
         return match ($key) {
             'order-submitted-customer' => new OrderSubmittedCustomerMail($this->sampleOrder()),
             'order-submitted-manager' => new OrderSubmittedManagerMail($this->sampleOrder()),
+            'callback-request-manager' => new CallbackRequestManagerMail($this->sampleCallbackRequest()),
             'welcome-set-password' => $this->welcomeSetPasswordPreview(),
             'welcome-no-password' => new WelcomeNoPassword($this->customerUser()),
             'auth-verify-email' => (new VerifyEmailNotification)->toMail($this->unverifiedUser()),
@@ -176,6 +186,31 @@ class MailPreviewFactory
         ]));
 
         return $order;
+    }
+
+    private function sampleCallbackRequest(): CallbackRequest
+    {
+        $callbackRequest = $this->existing(new CallbackRequest, [
+            'id' => 301,
+            'product_id' => 9001,
+            'name' => 'Иван Петров',
+            'phone' => '+79990000000',
+            'email' => 'ivan.petrov@example.test',
+            'city' => 'Краснодар',
+            'call_time' => 'после 14:00',
+            'comments' => 'Подойдёт ли пила для нержавейки 40 мм?',
+            'source' => CallbackRequest::SOURCE_SITE,
+            'status' => CallbackRequest::STATUS_PENDING,
+            'created_at' => Carbon::parse('2026-03-27 12:45:00'),
+        ]);
+
+        $callbackRequest->setRelation('product', $this->existing(new Product, [
+            'id' => 9001,
+            'name' => 'Станок ленточнопильный IT-4500',
+            'slug' => 'stanok-lentochnopilnyy-it-4500',
+        ]));
+
+        return $callbackRequest;
     }
 
     private function welcomeSetPasswordPreview(): WelcomeSetPassword
