@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Settings\Tables;
 
+use App\Enums\SettingType;
 use App\Models\Setting;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\TextColumn;
@@ -21,6 +22,7 @@ class SettingsTable
         'company.site_host',
         'company.brand_line',
         'product.stavka_nds',
+        'product.show_callback_button',
         'company.legal_name',
         'company.inn',
         'company.ogrn',
@@ -45,6 +47,9 @@ class SettingsTable
 
                 TextColumn::make('value')
                     ->label('Значение')
+                    ->formatStateUsing(fn (?string $state, Setting $record): string => $record->type === SettingType::Bool
+                        ? ($record->getValueForConfig() ? 'Включено' : 'Выключено')
+                        : (string) $state)
                     ->limit(60)
                     ->tooltip(fn (Setting $record): string => (string) $record->value),
             ])

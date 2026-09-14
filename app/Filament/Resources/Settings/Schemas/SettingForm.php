@@ -7,6 +7,7 @@ use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 
@@ -48,6 +49,10 @@ class SettingForm
         'company.correspondence_addr',
     ];
 
+    private const BOOL_VALUE_KEYS = [
+        'product.show_callback_button',
+    ];
+
     public static function configure(Schema $schema): Schema
     {
         return $schema
@@ -74,6 +79,7 @@ class SettingForm
                         ...self::URL_VALUE_KEYS,
                         ...self::TEXT_VALUE_KEYS,
                         ...self::TEXTAREA_VALUE_KEYS,
+                        ...self::BOOL_VALUE_KEYS,
                     ], true))
                     ->dehydrated(fn (Get $get): bool => ! in_array($get('key'), [
                         ...self::EMAIL_LIST_KEYS,
@@ -82,7 +88,15 @@ class SettingForm
                         ...self::URL_VALUE_KEYS,
                         ...self::TEXT_VALUE_KEYS,
                         ...self::TEXTAREA_VALUE_KEYS,
+                        ...self::BOOL_VALUE_KEYS,
                     ], true))
+                    ->columnSpanFull(),
+
+                Toggle::make('bool_value')
+                    ->label('Показывать кнопку')
+                    ->helperText('Выключенная кнопка пропадает с карточки каждого товара. Форма «Оставить контакты менеджеру» в чате ассистента от этой настройки не зависит.')
+                    ->visible(fn (Get $get): bool => in_array($get('key'), self::BOOL_VALUE_KEYS, true))
+                    ->dehydrated(fn (Get $get): bool => in_array($get('key'), self::BOOL_VALUE_KEYS, true))
                     ->columnSpanFull(),
 
                 TextInput::make('email_value')

@@ -35,6 +35,10 @@ class EditSetting extends EditRecord
         'company.bank.ks' => 'bank_ks_value',
     ];
 
+    private const BOOL_VALUE_KEYS = [
+        'product.show_callback_button' => 'bool_value',
+    ];
+
     /**
      * @param  array<string, string>  $map
      */
@@ -59,6 +63,14 @@ class EditSetting extends EditRecord
             $data[$field] = collect($decoded)
                 ->map(fn (string $email): array => ['email' => $email])
                 ->all();
+
+            return $data;
+        }
+
+        $boolValueField = $this->resolveCustomField(self::BOOL_VALUE_KEYS, $data['key'] ?? null);
+
+        if ($boolValueField !== null) {
+            $data[$boolValueField] = filter_var($data['value'] ?? null, FILTER_VALIDATE_BOOL);
 
             return $data;
         }
@@ -88,6 +100,17 @@ class EditSetting extends EditRecord
             $data['value'] = json_encode($emails, JSON_UNESCAPED_UNICODE);
 
             unset($data[$field]);
+
+            return $data;
+        }
+
+        $boolValueField = $this->resolveCustomField(self::BOOL_VALUE_KEYS);
+
+        if ($boolValueField !== null) {
+            $data['type'] = SettingType::Bool->value;
+            $data['value'] = ($data[$boolValueField] ?? false) ? '1' : '0';
+
+            unset($data[$boolValueField]);
 
             return $data;
         }
