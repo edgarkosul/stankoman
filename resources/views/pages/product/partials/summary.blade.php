@@ -51,12 +51,19 @@
                 :key="'cart-product-' . $product->id . '-' . $summaryInstance"
             />
 
-            <div class="mt-3">
-                <livewire:common.request-callback
-                    :product-id="$product->id"
-                    :key="'callback-product-' . $product->id . '-' . $summaryInstance"
-                />
-            </div>
+            {{--
+                Выключается в настройках. Сравнение с false, а не проверка на истину:
+                битое значение в настройке оставляет кнопку, а не прячет её молча.
+                Форма в чате ассистента встроена отдельно и от этого не зависит.
+            --}}
+            @if (config('settings.product.show_callback_button') !== false)
+                <div class="mt-3">
+                    <livewire:common.request-callback
+                        :product-id="$product->id"
+                        :key="'callback-product-' . $product->id . '-' . $summaryInstance"
+                    />
+                </div>
+            @endif
         </div>
         <dl class="grid gap-2 text-zinc-700">
             @foreach (data_get($summary, 'details', []) as $detail)

@@ -1,9 +1,11 @@
 <?php
 
+use App\Enums\SettingType;
 use App\Events\CallbackRequests\CallbackRequestSubmitted;
 use App\Livewire\Common\RequestCallback;
 use App\Models\CallbackRequest;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Support\Facades\Event;
 use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
@@ -167,4 +169,29 @@ it('shows the callback button on the product page', function (): void {
     $this->get(route('product.show', $product))
         ->assertOk()
         ->assertSee(RequestCallback::CALL_BUTTON);
+});
+
+it('hides the product page callback button when the setting is off', function (): void {
+    config()->set('settings.product.show_callback_button', false);
+
+    $product = Product::query()->create([
+        'name' => 'Товар без звонка',
+        'slug' => 'tovar-bez-zvonka',
+        'is_active' => true,
+        'in_stock' => true,
+        'price_amount' => 100000,
+    ]);
+
+    $this->get(route('product.show', $product))
+        ->assertOk()
+        ->assertSee('Купить в 1 клик')
+        ->assertDontSee(RequestCallback::CALL_BUTTON);
+});
+
+it('ships the callback button setting switched on', function (): void {
+    $setting = Setting::query()->where('key', 'product.show_callback_button')->sole();
+
+    expect($setting->type)->toBe(SettingType::Bool)
+        ->and($setting->autoload)->toBeTrue()
+        ->and($setting->getValueForConfig())->toBeTrue();
 });
