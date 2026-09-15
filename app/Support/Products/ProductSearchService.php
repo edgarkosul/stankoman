@@ -3,27 +3,21 @@
 namespace App\Support\Products;
 
 use App\Models\Product;
+use App\Support\Search\LatinQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 use Throwable;
 
 class ProductSearchService
 {
+    /**
+     * Запрос для поиска по словам. Правило общее с ассистентом — см. LatinQuery:
+     * разойтись им нельзя, иначе бот и шапка сайта отвечают на один запрос по-разному.
+     */
     public function normalizeQuery(string $query): string
     {
-        $query = trim((string) preg_replace('/\s+/u', ' ', $query));
-
-        if ($query === '') {
-            return '';
-        }
-
-        if (preg_match('/\p{Cyrillic}/u', $query) === 1) {
-            return $this->toLatin($query);
-        }
-
-        return $query;
+        return LatinQuery::normalize($query);
     }
 
     public function searchPage(string $query, int $perPage = 24): LengthAwarePaginator
@@ -121,23 +115,6 @@ class ProductSearchService
             })
             ->orderByDesc('popularity')
             ->orderBy('name');
-    }
-
-    private function toLatin(string $text): string
-    {
-        $text = trim($text);
-
-        if ($text === '') {
-            return '';
-        }
-
-        if (function_exists('transliterator_transliterate')) {
-            $latin = transliterator_transliterate('Any-Latin; Latin-ASCII; Lower()', $text);
-        } else {
-            $latin = Str::lower(Str::ascii($text));
-        }
-
-        return trim((string) preg_replace('/\s+/u', ' ', (string) $latin));
     }
 
     private function escapeLike(string $value): string
