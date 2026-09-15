@@ -13,6 +13,13 @@
                 По вашему запросу ничего не найдено.
             </div>
         @else
+            @if (! empty($unmatched))
+                <p class="text-sm text-zinc-600">
+                    Не нашлось: {{ collect($unmatched)->map(fn (string $word): string => '«'.$word.'»')->join(', ') }}.
+                    Показаны товары по остальным словам.
+                </p>
+            @endif
+
             <p class="text-sm text-zinc-500">
                 Найдено: {{ $items->total() }}
             </p>

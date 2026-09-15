@@ -63,12 +63,14 @@ Route::get('/search', function (Request $request, ProductSearchService $search) 
         ]);
     }
 
-    $items = $search->searchPage($qOriginal, 24)
-        ->withQueryString();
+    $outcome = $search->searchPageOutcome($qOriginal, 24);
 
     return view('pages.search', [
         'q' => $qOriginal,
-        'items' => $items,
+        'items' => $outcome->result->withQueryString(),
+        // Слова, без которых пришлось искать: выдача «не совсем про то»
+        // с объяснением — подсказка, без объяснения — похоже на поломку.
+        'unmatched' => $outcome->relaxed ? $outcome->unmatched : [],
         'seo' => [
             'description' => $qOriginal !== ''
                 ? 'Результаты поиска по запросу «'.$qOriginal.'» на сайте '.config('app.name').'.'
