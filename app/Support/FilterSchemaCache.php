@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Attribute;
 use App\Models\Category;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -18,6 +19,7 @@ final class FilterSchemaCache
     public static function forgetCategory(int $categoryId): void
     {
         Cache::forget(self::key($categoryId));
+        Attribute::forgetCategoryNumberFormats($categoryId);
     }
 
     public static function forgetByAttribute(int $attributeId): void

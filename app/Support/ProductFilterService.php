@@ -116,7 +116,9 @@ class ProductFilterService
 
                     // числовые / диапазонные
                     if ($a->isNumber() || $a->isRange()) {
-                        [$minUi, $maxUi] = self::numberRangeFor($a, $category->getKey(), $displayUnit);
+                        $step = $a->filterNumberStepForCategory($category);
+
+                        [$minUi, $maxUi] = self::numberRangeFor($a, $category->getKey(), $displayUnit, $step);
 
                         // если вернуть нечего — скрываем фильтр
                         if ($minUi === null || $maxUi === null) {
@@ -130,7 +132,7 @@ class ProductFilterService
                             meta: [
                                 'min' => $minUi,
                                 'max' => $maxUi,
-                                'step' => (float) $a->filterNumberStepForCategory($category),
+                                'step' => (float) $step,
                                 'decimals' => $a->filterNumberDecimalsForCategory($category),
                                 'suffix' => (string) optional($displayUnit)->symbol,
                             ],
@@ -571,10 +573,11 @@ class ProductFilterService
 
     /**
      * Мин/макс диапазон для числового атрибута в юните конкретной категории.
+     * С шагом категории границы выровнены наружу до кратного ему.
      *
      * @return array{0: float|null, 1: float|null}
      */
-    protected static function numberRangeFor(Attribute $attribute, int $categoryId, ?Unit $displayUnit = null): array
+    protected static function numberRangeFor(Attribute $attribute, int $categoryId, ?Unit $displayUnit = null, ?string $step = null): array
     {
         // базовая (историческая) единица атрибута —
         // в ней хранились value_min/value_number, из которых мы при бэкофилле считали *_si
@@ -665,19 +668,42 @@ class ProductFilterService
             ? $attribute->fromSiWithUnit((float) $row->mx_si, $unitForUi)
             : null;
 
-        if ($minUi !== null) {
-            $minUi = $attribute->quantize($minUi);
-        }
-        if ($maxUi !== null) {
-            $maxUi = $attribute->quantize($maxUi);
-        }
-
-        // защита от бесполезного фильтра
-        if ($minUi === null || $maxUi === null || $minUi === $maxUi) {
+        if ($minUi === null || $maxUi === null) {
             return [null, null];
         }
 
-        return [$minUi, $maxUi];
+        // защита от бесполезного фильтра
+        if ($attribute->quantize($minUi) === $attribute->quantize($maxUi)) {
+            return [null, null];
+        }
+
+        if ($step === null || (float) $step <= 0) {
+            return [$attribute->quantize($minUi), $attribute->quantize($maxUi)];
+        }
+
+        // Границы — наружу до кратного шагу. Ползунок ходит шагами, а app.js
+        // округляет ручки до знаков шага: при шаге 1 и максимуме 23,4 л.с.
+        // нетронутая ручка уходила в запрос как 23, и самый мощный товар
+        // пропадал из выдачи, стоило покупателю сдвинуть вторую ручку.
+        return [
+            self::alignToStep($minUi, $step, roundUp: false),
+            self::alignToStep($maxUi, $step, roundUp: true),
+        ];
+    }
+
+    protected static function alignToStep(float $value, string $step, bool $roundUp): float
+    {
+        $stepValue = (float) $step;
+
+        // round(…, 9) гасит шум плавающей точки: 24 л.с., пересчитанные из кВт,
+        // приходят как 23,999999999999996 — без него граница уехала бы на шаг.
+        $steps = round($value / $stepValue, 9);
+        $steps = $roundUp ? ceil($steps) : floor($steps);
+
+        $dot = strpos($step, '.');
+        $decimals = $dot === false ? 0 : strlen($step) - $dot - 1;
+
+        return round($steps * $stepValue, $decimals);
     }
 
     /** Фасет для текстовых значений (топ-100 значений) */
