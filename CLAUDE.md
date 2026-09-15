@@ -133,7 +133,7 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 
 ### ИИ-ассистент: шов к магазину
 
-Сервисы бота (`app/Services/{Ai,Kb,Catalog}`) **не знают моделей магазина**.
+Сервисы бота (`app/Services/{Ai,Kb,Chat,Catalog}`) **не знают моделей магазина**.
 Товар, каталог и цены приходят к ним контрактом
 `App\Services\Ai\Contracts\ProductLookup`, а про `Product` и `Category` знает
 только `App\Shop`. Правило держит тест `tests/Unit/AiServicesSeamTest.php`:
@@ -159,6 +159,29 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 запрос отвечал «не нашлось». Справочник брендов бота (`CatalogBrands`) сверяет
 звучание той же `BrandSpelling::fold()` — иначе бренд, найденный поиском, получил бы
 фильтр по типу техники и потерял выдачу.
+
+### Чат на витрине
+
+Лаунчер `x-support.chat-launcher` стоит в лэйауте витрины; до клика это Blade и Alpine
+без единого запроса, панель `support.chat-panel` грузится `lazy` из скрытого контейнера.
+Посетителя опознаёт только httpOnly-кука `intertooler_chat` с токеном разговора — id
+от клиента не принимаются нигде. Ответ готовит `GenerateChatReplyJob` на `redis-assistant`:
+без запущенного воркера (`composer dev`, процесс `assistant`) панель «печатает» 210 секунд
+и сдаётся заглушкой — это первое, что проверять, когда чат «завис».
+
+- **Чат тоже за швом.** `app/Services/Chat` моделей магазина не знает (сторож тот же,
+  `AiServicesSeamTest`): страницу и цену на ней отдаёт `App\Shop\ShopPageContext` через
+  `ProductLookup`, форму контактов — `App\Shop\CallbackLeadIntake` (заявка «перезвоните»
+  с `source=chat`). Своей формулы цены для контекста страницы не заводить.
+- **Предпросмотр** — `AI_CHAT_PREVIEW=true` + `AI_CHAT_PREVIEW_KEY`: виджет видят
+  сотрудники (`isFilamentAdmin()`) и те, кто открыл сайт с `?bot=<ключ>`. Пустой ключ
+  при включённом предпросмотре — «никому», а не «всем».
+- **«Менеджер на связи»** — `OperatorPresence` по режиму работы `company.work_schedule`,
+  тому же, что в шапке.
+- `/session/keepalive` и `resources/js/modules/livewire-session-guard.js` действуют на весь
+  сайт: вместо английского «This page has expired» Livewire молча получает свежий токен.
+- Переписка обезличивается через 30 дней и удаляется через 180 (`chat:purge`, 04:15);
+  расходная книга `ai_usage_entries` при этом остаётся.
 
 ### Импорт товаров
 
