@@ -5,8 +5,10 @@ namespace App\Livewire\Support;
 use App\Jobs\GenerateChatReplyJob;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
+use App\Models\User;
 use App\Services\Ai\AssistantConfig;
 use App\Services\Chat\AssistantQueueHealth;
+use App\Services\Chat\ChatAbuseGuard;
 use App\Services\Chat\ChatContactCard;
 use App\Services\Chat\ChatConversationService;
 use App\Services\Chat\ChatEscalationService;
@@ -17,6 +19,7 @@ use App\Services\Chat\Contracts\PageContextSource;
 use App\Services\Chat\OperatorPresence;
 use App\Support\Products\DiscountVisibility;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Livewire\Attributes\Locked;
@@ -37,8 +40,10 @@ use Throwable;
  * в Redis: пометка «готовится» на месте — skipRender(), и до базы дело
  * не доходит.
  *
- * Потолков частоты и капчи здесь пока нет: они встают в send() одним
- * слоем (ChatAbuseGuard и SmartCaptcha) до выката на прод.
+ * Потолки частоты компонент не считает сам: их держит ChatAbuseGuard —
+ * один класс на все исходы, проверяемый без базы и без браузера. Здесь
+ * только то, что делать с его вердиктом, и это не одно и то же для робота,
+ * для человека и для исчерпанного бюджета магазина.
  */
 class ChatPanel extends Component
 {
@@ -243,15 +248,39 @@ class ChatPanel extends Component
         ChatEscalationService $escalation,
         AssistantConfig $assistant,
         PageContextSource $pages,
+        ChatAbuseGuard $guard,
     ): void {
+        // Длину здесь не проверяем намеренно: обе границы знает намордник,
+        // и второй источник того же правила разошёлся бы с ним на первой
+        // правке конфига.
         $this->validate([
-            'draft' => ['required', 'string', 'max:'.(int) config('ai_support.chat.max_message_length')],
+            'draft' => ['required', 'string'],
         ], [
             'draft.required' => 'Напишите вопрос.',
-            'draft.max' => 'Слишком длинное сообщение — сократите до :max знаков.',
         ]);
 
         $conversation = $this->conversation();
+
+        /*
+         * Намордник: робот, длина, кулдаун, потолки на разговор и на адрес,
+         * дневной бюджет магазина. Стоит до всего остального, потому что
+         * всё остальное уже стоит денег или запроса к базе.
+         */
+        $verdict = $guard->inspect($conversation, $this->draft, isStaff: $this->isStaff());
+
+        // Робот: ни ответа, ни объяснения. Сообщение об ошибке — это
+        // подсказка, как обойти проверку.
+        if ($verdict->isSilent()) {
+            $this->skipRender();
+
+            return;
+        }
+
+        if (! $verdict->allowed() && ! $verdict->isBudget()) {
+            $this->addError('draft', (string) $verdict->message);
+
+            return;
+        }
 
         // Бота выключили. Разговор, который ведёт живой оператор, это
         // не касается: ему посетитель пишет по-прежнему.
@@ -273,6 +302,7 @@ class ChatPanel extends Component
         // закрытие сделал оператор, и его решение уважаем.
         if ($conversation === null || $conversation->isClosed()) {
             $conversation = $chat->start();
+            $guard->rememberNewConversation();
             $this->conversation = $conversation;
             $this->conversationResolved = true;
         }
@@ -285,11 +315,58 @@ class ChatPanel extends Component
             $pages->describe($this->page, DiscountVisibility::allowed()),
         );
 
+        // Счётчики поднимаются здесь, а не в момент проверки: до этой строки
+        // вопрос мог не дойти до ленты вовсе, и квоту он бы тратил зря.
+        $guard->remember($conversation);
+
         $this->draft = '';
 
         // Оператор ведёт разговор — джобу не заводим, сообщение просто ждёт
         // человека: счётчик непрочитанного для магазина уже поднят.
         if (! $conversation->isBotLed()) {
+            $this->syncPolling();
+
+            return;
+        }
+
+        /*
+         * Дневной бюджет магазина исчерпан — бот молчит до полуночи.
+         *
+         * Отказом это быть не может: вопрос уже в ленте, и оставить его
+         * без единого слова — худшее, что можно сделать с покупателем,
+         * который ни в чём не виноват. Поэтому исход тот же, что у мёртвой
+         * очереди: вопрос уходит менеджеру штатной эскалацией, а чат
+         * вырождается в форму обратного звонка.
+         *
+         * Проверка стоит ЗДЕСЬ, а не рядом с вердиктом: там разговора могло
+         * ещё не быть, а эскалировать было бы не в чем.
+         */
+        if ($verdict->isBudget()) {
+            /*
+             * Второй и следующие вопросы после исчерпания — молча. Бюджет
+             * держится до полуночи, то есть часами, и повторять «передал
+             * менеджеру» на каждый вопрос значило бы засыпать ленту
+             * одинаковыми репликами, а менеджера — уведомлениями.
+             * Состояние посетитель и так видит: под лентой карточка
+             * с формой контактов.
+             */
+            if ($conversation->isEscalated()) {
+                $this->syncPolling();
+
+                return;
+            }
+
+            $chat->addAssistantMessage(
+                $conversation,
+                'Передал ваш вопрос менеджеру — он ответит здесь же. '
+                    .'Оставьте почту, чтобы он мог ответить и письмом.',
+                stopReason: 'daily_budget',
+            );
+            $escalation->escalate(
+                $conversation,
+                ChatEscalationService::TRIGGER_FAILURE,
+                'Дневной бюджет на ответы бота исчерпан, вопрос передан менеджеру.',
+            );
             $this->syncPolling();
 
             return;
@@ -402,6 +479,7 @@ class ChatPanel extends Component
         ChatConversationService $chat,
         ChatEscalationService $escalation,
         OperatorPresence $presence,
+        ChatAbuseGuard $guard,
     ): void {
         if (! $presence->isOnline()) {
             $this->syncPolling();
@@ -411,10 +489,28 @@ class ChatPanel extends Component
 
         $conversation = $this->conversation();
 
+        /*
+         * Потолки те же, что у вопроса, но без дневного бюджета: зов
+         * человека не стоит ни токена, и запрещать его в тот момент, когда
+         * бот замолчал, значило бы закрыть посетителю последний выход.
+         */
+        $verdict = $guard->inspectAction($conversation, isStaff: $this->isStaff());
+
+        if (! $verdict->allowed()) {
+            if ($verdict->message !== null) {
+                $this->addError('draft', $verdict->message);
+            } else {
+                $this->skipRender();
+            }
+
+            return;
+        }
+
         // Позвали человека, ещё ничего не написав: разговор всё равно нужен —
         // менеджеру есть куда ответить, а посетителю есть где увидеть ответ.
         if ($conversation === null || $conversation->isClosed()) {
             $conversation = $chat->start();
+            $guard->rememberNewConversation();
             $this->conversation = $conversation;
             $this->conversationResolved = true;
         }
@@ -454,7 +550,7 @@ class ChatPanel extends Component
      * Повторный клик по той же кнопке снимает оценку: промахнуться легко,
      * а «отменить» отдельной кнопкой в ленте чата ставить некуда.
      */
-    public function rate(int $messageId, int $rating): void
+    public function rate(int $messageId, int $rating, ChatAbuseGuard $guard): void
     {
         $conversation = $this->conversation();
 
@@ -463,6 +559,19 @@ class ChatPanel extends Component
 
             return;
         }
+
+        /*
+         * Оценка — открытый наружу вызов, который пишет в базу, и потолок
+         * ей нужен свой: щедрый, чтобы его не заметил ни один живой человек,
+         * и молчаливый, потому что объяснять упёршемуся нечего.
+         */
+        if (! $guard->allowsRating($conversation)) {
+            $this->skipRender();
+
+            return;
+        }
+
+        $guard->rememberRating($conversation);
 
         // Ищем внутри разговора: id приходит от клиента, и оценить чужую
         // переписку по нему быть не должно возможности.
@@ -709,6 +818,21 @@ class ChatPanel extends Component
      * Кука — единственный ключ анонима к переписке; ни id, ни токен
      * от клиента мы не принимаем, поэтому чужой диалог открыть нечем.
      */
+    /**
+     * Сотрудник магазина.
+     *
+     * Ему намордник не считает потолки (кроме дневного бюджета): приёмка
+     * чата — это десятки разговоров подряд с чисткой переписки между ними.
+     * Кто сотрудник — решает тот же список почт, что пускает в админку:
+     * ролей в проекте нет.
+     */
+    private function isStaff(): bool
+    {
+        $user = Auth::user();
+
+        return $user instanceof User && $user->isFilamentAdmin();
+    }
+
     private function conversation(): ?ChatConversation
     {
         if ($this->conversationResolved) {

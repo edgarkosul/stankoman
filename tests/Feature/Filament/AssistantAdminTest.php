@@ -18,6 +18,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Data\AssistantReply;
+use App\Services\Chat\ChatAbuseGuard;
 use App\Services\Chat\ChatConversationService;
 use App\Services\Chat\OperatorPresence;
 use App\Services\Kb\Data\KbGapQuestion;
@@ -327,6 +328,27 @@ it('требует хотя бы один контакт для заявки', f
         ->assertHasActionErrors(['phone', 'email']);
 
     expect(CallbackRequest::query()->exists())->toBeFalse();
+});
+
+it('виджет расхода показывает выбранный дневной потолок', function (): void {
+    /*
+     * Исчерпанный потолок — единственное состояние бота, которое снаружи
+     * выглядит как поломка: он молчит, а вопросы уходят менеджеру. Кроме
+     * этой плитки объяснения нет нигде.
+     */
+    config([
+        'ai_support.gateway.key' => '',
+        'ai_support.chat.abuse.daily_tokens' => 1000,
+    ]);
+    app()->forgetInstance(ChatAbuseGuard::class);
+    app(ChatAbuseGuard::class)->recordSpend(1000);
+
+    $this->actingAs($this->admin);
+
+    Livewire::withoutLazyLoading()
+        ->test(AssistantSpendOverview::class)
+        ->assertSee('Потолок на сегодня')
+        ->assertSee('Потолок выбран');
 });
 
 it('виджет расхода считает по расходной книге и честно говорит о бюджете без ключа', function (): void {

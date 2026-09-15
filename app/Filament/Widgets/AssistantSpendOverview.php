@@ -4,6 +4,7 @@ namespace App\Filament\Widgets;
 
 use App\Models\AiUsageEntry;
 use App\Services\Ai\GatewayBudget;
+use App\Services\Chat\ChatAbuseGuard;
 use Carbon\CarbonInterface;
 use Filament\Support\Icons\Heroicon;
 use Filament\Widgets\StatsOverviewWidget;
@@ -46,7 +47,7 @@ class AssistantSpendOverview extends StatsOverviewWidget
 
     protected function getColumns(): int
     {
-        return 3;
+        return 4;
     }
 
     protected function getStats(): array
@@ -69,6 +70,7 @@ class AssistantSpendOverview extends StatsOverviewWidget
                 ->color('gray'),
 
             $this->budgetStat(),
+            $this->capStat(),
         ];
     }
 
@@ -120,6 +122,51 @@ class AssistantSpendOverview extends StatsOverviewWidget
                 $percent >= 50 => 'warning',
                 default => 'success',
             });
+    }
+
+    /**
+     * Дневной потолок намордника — единственное место, где его видно.
+     *
+     * Без этой плитки исчерпанный потолок выглядит как поломка бота: он
+     * молчит, а все вопросы уходят менеджеру, и объяснения этому нет нигде.
+     * Цифры не из расходной книги, а из счётчиков ChatAbuseGuard — считает
+     * он их по московским суткам, как и сбрасывает.
+     */
+    private function capStat(): Stat
+    {
+        $spent = app(ChatAbuseGuard::class)->spentToday();
+
+        $messagesCap = $spent['daily_messages'];
+        $tokensCap = $spent['daily_tokens'];
+
+        $exhausted = ($messagesCap > 0 && $spent['messages'] >= $messagesCap)
+            || ($tokensCap > 0 && $spent['tokens'] >= $tokensCap);
+
+        $share = $messagesCap > 0 ? $spent['messages'] / $messagesCap : 0.0;
+
+        return Stat::make('Потолок на сегодня', $messagesCap > 0
+                ? $spent['messages'].' из '.$messagesCap.' вопросов'
+                : 'без потолка')
+            ->description($exhausted
+                ? 'Потолок выбран: бот молчит до полуночи, вопросы уходят менеджеру.'
+                : $this->tokens($spent['tokens']).' из '
+                    .($tokensCap > 0 ? $this->tokens($tokensCap) : 'неограниченного числа').' токенов')
+            ->descriptionIcon($exhausted ? Heroicon::OutlinedHandRaised : Heroicon::OutlinedChartPie)
+            ->color(match (true) {
+                $exhausted => 'danger',
+                $share >= 0.8 => 'warning',
+                default => 'gray',
+            });
+    }
+
+    /** Токены в единицах, которыми их читают, а не в цифре из девяти знаков. */
+    private function tokens(int $count): string
+    {
+        return match (true) {
+            $count >= 1_000_000 => number_format($count / 1_000_000, $count < 10_000_000 ? 1 : 0, ',', ' ').' млн',
+            $count >= 10_000 => number_format($count / 1_000, 0, ',', ' ').' тыс.',
+            default => (string) $count,
+        };
     }
 
     private function money(float $rubles): string

@@ -24,6 +24,7 @@ use App\Services\Ai\Tools\SearchKnowledgeBaseTool;
 use App\Services\Ai\Tools\SearchProductsTool;
 use App\Services\Catalog\CatalogBrands;
 use App\Services\Chat\AssistantQueueHealth;
+use App\Services\Chat\ChatAbuseGuard;
 use App\Services\Chat\ChatAnswerCache;
 use App\Services\Chat\ChatConversationService;
 use App\Services\Chat\ChatEscalationService;
@@ -290,6 +291,27 @@ class AiSupportServiceProvider extends ServiceProvider
             // Порог тот же, что у поиска: промах по базе знаний — сырьё
             // экрана «Пробелы», и кэшировать его нельзя.
             minScore: (float) config('ai_support.knowledge_base.min_score'),
+        ));
+
+        /*
+         * Намордник чата. Все потолки — из конфига, ни одного числа в коде:
+         * владелец магазина крутит их переменными окружения, не выкатывая
+         * правку. Сутки дневного бюджета считаются по московскому времени,
+         * а не по `app.timezone` (та здесь UTC) — см. класс.
+         */
+        $this->app->singleton(ChatAbuseGuard::class, fn (): ChatAbuseGuard => new ChatAbuseGuard(
+            minLength: (int) config('ai_support.chat.abuse.min_length'),
+            // Верхняя граница одна на намордник и на счётчик знаков под
+            // полем ввода: два разных числа посетитель прочёл бы как обман.
+            maxLength: (int) config('ai_support.chat.max_message_length'),
+            cooldownSeconds: (int) config('ai_support.chat.abuse.cooldown_seconds'),
+            perConversationHour: (int) config('ai_support.chat.abuse.per_conversation_hour'),
+            perConversationDay: (int) config('ai_support.chat.abuse.per_conversation_day'),
+            perIpDay: (int) config('ai_support.chat.abuse.per_ip_day'),
+            newConversationsPerIpDay: (int) config('ai_support.chat.abuse.new_conversations_per_ip_day'),
+            dailyMessages: (int) config('ai_support.chat.abuse.daily_messages'),
+            dailyTokens: (int) config('ai_support.chat.abuse.daily_tokens'),
+            dayTimezone: (string) config('ai_support.operators.timezone', 'Europe/Moscow'),
         ));
 
         $this->app->singleton(AssistantQueueHealth::class, fn (): AssistantQueueHealth => new AssistantQueueHealth(

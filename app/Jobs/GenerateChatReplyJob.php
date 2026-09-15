@@ -10,6 +10,7 @@ use App\Services\Ai\ShopAssistant;
 use App\Services\Ai\Support\PiiRedactor;
 use App\Services\Ai\SystemPromptBuilder;
 use App\Services\Chat\AssistantQueueHealth;
+use App\Services\Chat\ChatAbuseGuard;
 use App\Services\Chat\ChatAnswerCache;
 use App\Services\Chat\ChatConversationService;
 use App\Services\Chat\ChatEscalationService;
@@ -185,6 +186,14 @@ class GenerateChatReplyJob implements ShouldQueue
         }
 
         $this->log($conversation, $reply, $startedAt);
+
+        /*
+         * Дневной бюджет считает ПОТРАЧЕННОЕ, а не доставленное: ответ,
+         * выброшенный ниже из-за перехвата оператором, шлюзом уже оплачен,
+         * и не увидеть его в бюджете значило бы обманывать себя ровно в тех
+         * случаях, когда денег уходит больше всего.
+         */
+        app(ChatAbuseGuard::class)->recordSpend($reply->inputTokens + $reply->outputTokens);
 
         /*
          * Пока модель думала, разговор мог перейти к человеку.
