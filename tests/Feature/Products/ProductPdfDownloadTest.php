@@ -1,8 +1,79 @@
 <?php
 
+use App\Http\Controllers\ProductPrintController;
+use App\Models\Attribute;
+use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductAttributeValue;
+use App\Models\Unit;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
+
+it('prints attributes in the unit and format of the primary category', function (): void {
+    $kilowatt = Unit::query()->create([
+        'name' => 'Киловатт',
+        'symbol' => 'кВт',
+        'dimension' => 'power',
+        'base_symbol' => 'W',
+        'si_factor' => 1000,
+        'si_offset' => 0,
+    ]);
+
+    $horsepower = Unit::query()->create([
+        'name' => 'Лошадиная сила',
+        'symbol' => 'л.с.',
+        'dimension' => 'power',
+        'base_symbol' => 'W',
+        'si_factor' => 735.49875,
+        'si_offset' => 0,
+    ]);
+
+    $attribute = Attribute::query()->create([
+        'name' => 'Мощность',
+        'slug' => 'power-pdf-offer-units-test',
+        'data_type' => 'number',
+        'value_source' => 'free',
+        'input_type' => 'number',
+        'unit_id' => $kilowatt->id,
+        'dimension' => 'power',
+        'is_filterable' => true,
+    ]);
+
+    $category = Category::query()->create([
+        'name' => 'Садовые тракторы',
+        'slug' => 'garden-tractors-pdf-offer-units-test',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $category->attributeDefs()->attach($attribute->id, [
+        'display_unit_id' => $horsepower->id,
+        'number_decimals' => 1,
+        'visible_in_specs' => true,
+    ]);
+
+    $product = Product::query()->create([
+        'name' => 'Трактор для PDF в единицах категории',
+        'slug' => 'tractor-pdf-offer-units-test',
+        'is_active' => true,
+        'price_amount' => 90_000,
+    ]);
+
+    $product->categories()->attach($category->id, ['is_primary' => true]);
+
+    ProductAttributeValue::query()->create([
+        'product_id' => $product->id,
+        'attribute_id' => $attribute->id,
+        'value_number' => 10.6,
+    ]);
+
+    // 10,6 кВт на карточке показаны как 14,4 л.с. — PDF должен печатать так же.
+    $rows = (new ReflectionMethod(ProductPrintController::class, 'attributesForPdf'))
+        ->invoke(app(ProductPrintController::class), $product);
+
+    expect($rows)->toBe([['Мощность', '14.4 л.с.']]);
+});
 
 it('shows product pdf download link on product page', function (): void {
     $product = Product::query()->create([
