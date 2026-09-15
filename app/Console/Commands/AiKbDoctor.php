@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Providers\AiSupportServiceProvider;
+use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Contracts\LlmClient;
 use App\Services\Kb\Contracts\KbSource;
 use Illuminate\Console\Command;
@@ -63,6 +64,21 @@ class AiKbDoctor extends Command
 
     private function configuration(LlmClient $llm): void
     {
+        /*
+         * Выключателей два, и «почему бот молчит» зависит от того, какой
+         * из них сработал: выключатель в админке владелец снимет сам, а строку
+         * в .env он не найдёт никогда. Поэтому называем виновника.
+         */
+        $config = app(AssistantConfig::class);
+
+        $this->check(
+            $config->enabled(),
+            'Ассистент включён',
+            $config->disabledByAdmin()
+                ? 'Выключен в админке: «ИИ бот» → «Настройки бота»'
+                : 'Выключен аварийно: AI_AGENT_ENABLED=false в .env',
+        );
+
         $key = (string) config('ai_support.gateway.key');
         $fake = (bool) config('ai_support.embedding.fake');
 

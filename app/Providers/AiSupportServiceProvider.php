@@ -33,7 +33,10 @@ use App\Services\Chat\Contracts\PageContextSource;
 use App\Services\Chat\OperatorPresence;
 use App\Services\Kb\Contracts\KbSource;
 use App\Services\Kb\HtmlKbTextExtractor;
+use App\Services\Kb\KbArticleDrafter;
 use App\Services\Kb\KbChunker;
+use App\Services\Kb\KbGapAnalyzer;
+use App\Services\Kb\KbGapClusterer;
 use App\Services\Kb\KbVectorIndexer;
 use App\Services\Kb\KbVectorStore;
 use App\Services\Kb\Sources\KbArticleKbSource;
@@ -108,6 +111,28 @@ class AiSupportServiceProvider extends ServiceProvider
             llm: $app->make(LlmClient::class),
             chunker: $app->make(KbChunker::class),
             table: (string) config('ai_support.knowledge_base.table'),
+        ));
+
+        /*
+         * Разбор «Пробелов» отделён от группировки намеренно: сбор сигналов
+         * ходит в базу, а сама кластеризация — чистая функция над векторами,
+         * и проверяется тестом без единой таблицы.
+         */
+        $this->app->singleton(KbGapClusterer::class, fn (): KbGapClusterer => new KbGapClusterer(
+            threshold: (float) config('ai_support.knowledge_base.gaps.cluster_threshold'),
+        ));
+
+        $this->app->singleton(KbGapAnalyzer::class, fn (Application $app): KbGapAnalyzer => new KbGapAnalyzer(
+            clusterer: $app->make(KbGapClusterer::class),
+            maxSignals: (int) config('ai_support.knowledge_base.gaps.max_signals'),
+        ));
+
+        $this->app->singleton(KbArticleDrafter::class, fn (Application $app): KbArticleDrafter => new KbArticleDrafter(
+            llm: $app->make(LlmClient::class),
+            redactor: $app->make(PiiRedactor::class),
+            maxTokens: (int) config('ai_support.knowledge_base.draft.max_tokens'),
+            minScore: (float) config('ai_support.knowledge_base.min_score'),
+            shopName: self::shopName() ?: self::siteHost(),
         ));
 
         $this->app->singleton(PageKbSource::class, fn (Application $app): PageKbSource => new PageKbSource(

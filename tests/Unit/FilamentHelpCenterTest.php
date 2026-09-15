@@ -33,6 +33,17 @@ test('help center routes match real admin routes and only omit explicitly unsupp
         // писать статью некуда, пока с заказчиком не решено, где живёт справка.
         'filament.admin.resources.callback-requests.index',
         'filament.admin.resources.callback-requests.view',
+        // Разделы бота — по той же причине: справки нет и писать её некуда.
+        // Как вести бота, объясняют сами экраны — подписями и пустыми состояниями.
+        'filament.admin.pages.assistant-sandbox',
+        'filament.admin.pages.assistant-settings',
+        'filament.admin.pages.kb-gaps',
+        'filament.admin.resources.chat-conversations.index',
+        'filament.admin.resources.chat-conversations.view',
+        'filament.admin.resources.kb-articles.create',
+        'filament.admin.resources.kb-articles.edit',
+        'filament.admin.resources.kb-articles.index',
+        'filament.admin.resources.kb-categories.index',
     ])->sort()->values();
 
     expect($filamentRouteNames->diff($mappedRouteNames)->values())->toEqual($unsupportedRouteNames);
