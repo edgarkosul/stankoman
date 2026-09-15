@@ -261,7 +261,7 @@ class Attribute extends Model
 
     public function numberDecimals(): int
     {
-        return $this->number_decimals ?? 2;
+        return $this->number_decimals ?? self::DEFAULT_NUMBER_DECIMALS;
     }
 
     public function numberStep(): string
@@ -619,6 +619,24 @@ class Attribute extends Model
     }
 
     /**
+     * Форматы чисел по категориям: category_id => attribute_id => формат.
+     *
+     * Живёт весь процесс, чтобы схема фильтров не ходила в базу за каждым
+     * атрибутом, и сбрасывается вместе с кэшем схемы категории. Раньше это была
+     * статическая переменная метода, которую не сбросить: долгоживущий процесс
+     * (воркер очереди) не видел нового шага категории до перезапуска, а тесты
+     * получали настройки чужой категории с тем же id.
+     *
+     * @var array<int, array<int, array{decimals: int|null, step: mixed, rounding: string|null}>>
+     */
+    protected static array $categoryNumberFormats = [];
+
+    public static function forgetCategoryNumberFormats(int $categoryId): void
+    {
+        unset(self::$categoryNumberFormats[$categoryId]);
+    }
+
+    /**
      * Вернуть настройки формата числа (decimals/step/rounding) с учётом категории.
      *
      * @return array{decimals:int, step:string, rounding:string}
@@ -636,18 +654,16 @@ class Attribute extends Model
             return $base;
         }
 
-        static $cache = [];
-
         $catId = $category->getKey();
         $attrId = $this->getKey();
 
-        if (! isset($cache[$catId])) {
+        if (! isset(self::$categoryNumberFormats[$catId])) {
             $rows = DB::table('category_attribute')
                 ->where('category_id', $catId)
                 ->select('attribute_id', 'number_decimals', 'number_step', 'number_rounding')
                 ->get();
 
-            $cache[$catId] = $rows
+            self::$categoryNumberFormats[$catId] = $rows
                 ->keyBy('attribute_id')
                 ->map(function ($row) {
                     return [
@@ -659,7 +675,7 @@ class Attribute extends Model
                 ->all();
         }
 
-        $cfg = $cache[$catId][$attrId] ?? null;
+        $cfg = self::$categoryNumberFormats[$catId][$attrId] ?? null;
 
         if (! $cfg) {
             return $base;
@@ -699,6 +715,67 @@ class Attribute extends Model
             'step' => $step,
             'rounding' => $rounding,
         ];
+    }
+
+    /**
+     * Знаков после запятой, когда их не задали ни атрибуту, ни категории.
+     */
+    public const DEFAULT_NUMBER_DECIMALS = 2;
+
+    /**
+     * Число в единице отображения так, как его печатает витрина категории:
+     * её знаки после запятой и округление, без хвостовых нулей. Один формат
+     * на карточку, страницу товара, PDF и сравнение — раньше одно значение
+     * выглядело в них по-разному.
+     */
+    public function formatNumberForCategory(float $ui, ?Category $category = null): string
+    {
+        $dec = $this->filterNumberDecimalsForCategory($category);
+        $str = number_format($this->quantizeForCategory($ui, $category), $dec, '.', '');
+
+        if ($dec > 0 && str_contains($str, '.')) {
+            $str = rtrim(rtrim($str, '0'), '.');
+        }
+
+        return $str === '' ? '0' : $str;
+    }
+
+    /**
+     * Сколько знаков после запятой у шага: 5 → 0, 0.5 → 1, 0.25 → 2.
+     */
+    public static function stepDecimals(mixed $step): int
+    {
+        $normalized = self::normalizeStep($step);
+        $dot = $normalized === null ? false : strpos($normalized, '.');
+
+        return $dot === false ? 0 : strlen($normalized) - $dot - 1;
+    }
+
+    /**
+     * Шагу ползунка мало знаков после запятой — его поля «от» и «до» врут:
+     * при шаге 0.25 и одном знаке поле покажет 9,3, а в запрос уйдёт 9,25.
+     */
+    public static function stepPrecisionError(mixed $step, int $decimals): ?string
+    {
+        $needed = self::stepDecimals($step);
+
+        if ($needed <= $decimals) {
+            return null;
+        }
+
+        $label = self::normalizeStep($step);
+
+        return "У шага {$label} знаков после запятой: {$needed}, а показывать задано {$decimals}. "
+            .'Поля «от» и «до» у ползунка показали бы округлённое число — увеличьте знаки после запятой или возьмите шаг крупнее.';
+    }
+
+    private static function normalizeStep(mixed $step): ?string
+    {
+        if (! is_numeric($step) || (float) $step <= 0) {
+            return null;
+        }
+
+        return rtrim(rtrim(sprintf('%.12F', (float) $step), '0'), '.');
     }
 
     public function filterNumberDecimalsForCategory(?Category $category = null): int

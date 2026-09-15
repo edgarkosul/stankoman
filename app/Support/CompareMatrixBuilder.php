@@ -3,11 +3,13 @@
 namespace App\Support;
 
 use App\Models\Attribute;
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductAttributeOption;
 use App\Models\ProductAttributeValue;
 use App\Models\Unit;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class CompareMatrixBuilder
 {
@@ -27,6 +29,13 @@ class CompareMatrixBuilder
             ];
         }
 
+        $products->loadMissing('categories');
+
+        /** @var array<int, Category|null> $primaryCategories */
+        $primaryCategories = $products
+            ->mapWithKeys(fn (Product $product): array => [(int) $product->id => $product->primaryCategory()])
+            ->all();
+
         /** @var Collection<int, ProductAttributeValue> $attributeValues */
         $attributeValues = ProductAttributeValue::query()
             ->with(['attribute.unit'])
@@ -39,21 +48,25 @@ class CompareMatrixBuilder
             ->whereIn('product_id', $productIds)
             ->get();
 
+        $rowUnits = $this->resolveRowUnits($attributeValues, $primaryCategories);
+
         $attributeMeta = [];
         $cellsByAttribute = [];
 
-        $ensureMeta = function (Attribute $attribute) use (&$attributeMeta): void {
+        $ensureMeta = function (Attribute $attribute) use (&$attributeMeta, $rowUnits): void {
             if (isset($attributeMeta[$attribute->id])) {
                 return;
             }
+
+            $unit = $rowUnits[$attribute->id]['unit'] ?? $attribute->unit;
 
             $attributeMeta[$attribute->id] = [
                 'id' => $attribute->id,
                 'name' => $attribute->name,
                 'group' => $attribute->group,
                 'type' => $attribute->data_type,
-                'unit' => $attribute->unit?->symbol ?? $attribute->unit?->name,
-                '_unit' => $attribute->unit,
+                'unit' => $unit?->symbol ?? $unit?->name,
+                '_unit' => $unit,
                 '_attribute' => $attribute,
             ];
         };
@@ -70,37 +83,43 @@ class CompareMatrixBuilder
             /** @var Unit|null $metaUnit */
             $metaUnit = $attributeMeta[$attribute->id]['_unit'];
 
+            // Числа — по правилам категории товара, но только когда строка идёт
+            // в единице категорий; иначе по правилам самого атрибута.
+            $formatCategory = ($rowUnits[$attribute->id]['by_category'] ?? false)
+                ? ($primaryCategories[(int) $row->product_id] ?? null)
+                : null;
+
             $type = $metaAttribute->data_type;
 
             if ($type === 'number') {
-                $number = $row->value_number;
+                $si = $this->toSi($row->value_si, $row->value_number, $metaAttribute);
 
                 $cellsByAttribute[$attribute->id][$row->product_id] = [
-                    'label' => $number === null ? null : $this->formatNumberUi((float) $number, $metaUnit, $metaAttribute),
-                    'normalized' => $row->value_si ?? $number,
+                    'label' => $si === null ? null : $this->formatNumberUi($si, $metaUnit, $metaAttribute, $formatCategory),
+                    'normalized' => $row->value_si ?? $row->value_number,
                 ];
 
                 continue;
             }
 
             if ($type === 'range') {
-                $min = $row->value_min;
-                $max = $row->value_max;
+                $minSi = $this->toSi($row->value_min_si, $row->value_min, $metaAttribute);
+                $maxSi = $this->toSi($row->value_max_si, $row->value_max, $metaAttribute);
 
                 $label = null;
-                if ($min !== null && $max !== null) {
-                    $label = $this->formatNumberUi((float) $min, $metaUnit, $metaAttribute).' — '.$this->formatNumberUi((float) $max, $metaUnit, $metaAttribute);
-                } elseif ($min !== null) {
-                    $label = '≥ '.$this->formatNumberUi((float) $min, $metaUnit, $metaAttribute);
-                } elseif ($max !== null) {
-                    $label = '≤ '.$this->formatNumberUi((float) $max, $metaUnit, $metaAttribute);
+                if ($minSi !== null && $maxSi !== null) {
+                    $label = $this->formatNumberUi($minSi, $metaUnit, $metaAttribute, $formatCategory).' — '.$this->formatNumberUi($maxSi, $metaUnit, $metaAttribute, $formatCategory);
+                } elseif ($minSi !== null) {
+                    $label = '≥ '.$this->formatNumberUi($minSi, $metaUnit, $metaAttribute, $formatCategory);
+                } elseif ($maxSi !== null) {
+                    $label = '≤ '.$this->formatNumberUi($maxSi, $metaUnit, $metaAttribute, $formatCategory);
                 }
 
                 $cellsByAttribute[$attribute->id][$row->product_id] = [
                     'label' => $label,
                     'normalized' => [
-                        'min' => $row->value_min_si ?? $min,
-                        'max' => $row->value_max_si ?? $max,
+                        'min' => $row->value_min_si ?? $row->value_min,
+                        'max' => $row->value_max_si ?? $row->value_max,
                     ],
                 ];
 
@@ -220,8 +239,6 @@ class CompareMatrixBuilder
             ];
         });
 
-        $products->loadMissing('categories');
-
         $columns = [];
 
         foreach ($products as $product) {
@@ -245,7 +262,7 @@ class CompareMatrixBuilder
                 'price' => $product->price_amount,
                 'sku' => $product->sku,
                 'brand' => $product->brand,
-                'category' => $product->primaryCategory()?->name,
+                'category' => $primaryCategories[(int) $product->id]?->name,
                 'values' => $values,
             ];
         }
@@ -256,10 +273,89 @@ class CompareMatrixBuilder
         ];
     }
 
-    private function formatNumberUi(float $value, ?Unit $unit, Attribute $attribute): string
+    /**
+     * Единица строки сравнения для числовых атрибутов.
+     *
+     * Если категории всех сравниваемых товаров показывают атрибут в одной
+     * единице, строка идёт в ней — так же, как на карточках. Если единицы
+     * расходятся, строка остаётся в единице атрибута: л.с. и кВт в одной
+     * строке не сравнить.
+     *
+     * @param  Collection<int, ProductAttributeValue>  $attributeValues
+     * @param  array<int, Category|null>  $primaryCategories
+     * @return array<int, array{unit: Unit|null, by_category: bool}>
+     */
+    private function resolveRowUnits(Collection $attributeValues, array $primaryCategories): array
     {
-        $precision = max(0, (int) ($attribute->number_decimals ?? 0));
-        $formatted = number_format($value, $precision, ',', ' ');
+        $numericValues = $attributeValues->filter(
+            fn (ProductAttributeValue $row): bool => in_array($row->attribute?->data_type, ['number', 'range'], true)
+        );
+
+        if ($numericValues->isEmpty()) {
+            return [];
+        }
+
+        $categoryIds = collect($primaryCategories)
+            ->filter()
+            ->map(fn (Category $category): int => (int) $category->getKey())
+            ->unique()
+            ->values()
+            ->all();
+
+        $pivotRows = $categoryIds === []
+            ? collect()
+            : DB::table('category_attribute')
+                ->whereIn('category_id', $categoryIds)
+                ->whereIn('attribute_id', $numericValues->pluck('attribute_id')->unique()->values()->all())
+                ->whereNotNull('display_unit_id')
+                ->get(['category_id', 'attribute_id', 'display_unit_id']);
+
+        $units = Unit::query()
+            ->whereIn('id', $pivotRows->pluck('display_unit_id')->unique()->values()->all())
+            ->get()
+            ->keyBy('id');
+
+        $displayUnits = [];
+
+        foreach ($pivotRows as $pivot) {
+            $displayUnits[(int) $pivot->category_id][(int) $pivot->attribute_id] = $units->get((int) $pivot->display_unit_id);
+        }
+
+        $rowUnits = [];
+
+        foreach ($numericValues->groupBy('attribute_id') as $attributeId => $rows) {
+            /** @var Attribute $attribute */
+            $attribute = $rows->first()->attribute;
+
+            $candidates = $rows->map(function (ProductAttributeValue $row) use ($attribute, $primaryCategories, $displayUnits): ?Unit {
+                $category = $primaryCategories[(int) $row->product_id] ?? null;
+
+                return ($category ? ($displayUnits[(int) $category->getKey()][(int) $attribute->id] ?? null) : null)
+                    ?? $attribute->unit;
+            });
+
+            $sameUnit = $candidates->map(fn (?Unit $unit): ?int => $unit?->id)->unique()->count() === 1;
+
+            $rowUnits[(int) $attributeId] = $sameUnit
+                ? ['unit' => $candidates->first(), 'by_category' => true]
+                : ['unit' => $attribute->unit, 'by_category' => false];
+        }
+
+        return $rowUnits;
+    }
+
+    private function toSi(?float $si, ?float $value, Attribute $attribute): ?float
+    {
+        if ($si !== null) {
+            return $si;
+        }
+
+        return $value === null ? null : $attribute->toSi($value);
+    }
+
+    private function formatNumberUi(float $si, ?Unit $unit, Attribute $attribute, ?Category $category): string
+    {
+        $formatted = $attribute->formatNumberForCategory((float) $attribute->fromSiWithUnit($si, $unit), $category);
 
         if (filled($attribute->display_format)) {
             return str_replace(

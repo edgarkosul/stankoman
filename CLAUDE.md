@@ -211,6 +211,20 @@ composer test    # config:clear + pint --test + artisan test
 бою; сессии в деве — в БД), Meilisearch на 7703, почта в mailpit на 1025.
 В `local`/`testing` доступны превью писем: `/_preview/mail`.
 
+### Кеш в Redis общий на все дев-проекты
+
+Все проекты в `/home/edgar/dev` держат кеш в одной базе Redis (`REDIS_CACHE_DB=1`),
+различаясь только префиксом ключей. **`php artisan cache:clear` и `optimize:clear`
+на деве не звать:** у Redis-стора это `FLUSHDB`, и уходит кеш kratonshop, siteko
+и остальных. Свой кеш чистить по префиксу:
+
+```bash
+redis-cli -n 1 --scan --pattern 'intertooler-dev-database-intertooler_dev_cache_*' \
+    | xargs -r -d '\n' redis-cli -n 1 UNLINK
+```
+
+Префикс — `REDIS_PREFIX` (по умолчанию из `APP_NAME`) плюс `CACHE_PREFIX`.
+
 ### Тесты
 
 Pest, sqlite `:memory:` (нужен пакет `php8.4-sqlite3`). В `phpunit.xml` намеренно
@@ -275,36 +289,39 @@ GIT_SSH_COMMAND='ssh -o BatchMode=yes' composer install
 
 ### Прод-база на дев
 
-Дамп `stankoman` → локальный `intertooler_dev`. Пароль боевого пользователя — в
-`/srv/www/intertooler/shared/.env`. Три ловушки, все встречались 07.09.2026:
+Одна команда из корня репозитория:
+
+```bash
+./scripts/dev/pull-prod-db.sh                    # свежий дамп с прода → intertooler_dev
+./scripts/dev/pull-prod-db.sh --from <.sql.gz>   # залить готовый дамп или откатиться
+```
+
+По порядку: дамп `stankoman` по ssh (структура целиком, данные без `cache`, `sessions`,
+`jobs`, `failed_jobs`, `password_reset_tokens` и прочих эфемерных таблиц) → проверка,
+что оба прохода дампа дошли до конца → снимок текущей дев-базы → снос всего в ней
+и заливка → `migrate` текущей ветки → сброс кешей (только своих, см. выше) →
+`products:search-reindex` → `search:audit` как проверка.
+
+- Дампы — в `~/.local/share/intertooler/db-dumps/` (`prod-*` и `dev-*`, по 5 последних).
+  Там персональные данные покупателей, в репозиторий и в `storage/` им нельзя.
+- Откат — `--from` на `dev-<время>.sql.gz`; точная команда печатается в конце
+  и при падении посреди заливки.
+- Нужны ключи в ssh-agent (KeePassXC). Без `APP_ENV=local` в `.env` скрипт не запускается.
+- После заливки таблица `sessions` пуста — из дева разлогинивает. В админку пускает
+  прод-настройка `general.filament_admin_emails`, а не `.env`.
+
+Почему скрипт устроен именно так — ловушки, все встречались:
 
 1. пользователь существует только как `stankoman`@`127.0.0.1` — всегда `-h127.0.0.1 -P3306`,
    подключение по умолчанию идёт через сокет и даёт `Access denied`;
 2. пароль содержит `@` и `:` — не передавать вложенными кавычками в `ssh host '...'`,
    слать скрипт через `ssh host 'bash -s' < script` и `export MYSQL_PWD=`;
-3. `information_schema.table_rows` для InnoDB — оценка, а не счёт (показывала 2444
-   товара при реальных 3948). По ней нельзя делать выводы о расхождении схем.
-
-Рабочая схема — два прохода `mysqldump` (`--no-data --routines --events`, затем
-`--no-create-info` с `--ignore-table` для cache/cache_locks/sessions/jobs/job_batches/
-failed_jobs/password_reset_tokens), gzip по ssh, локально дроп объектов при
-`FOREIGN_KEY_CHECKS=0` и импорт с вырезанным DEFINER — иначе VIEW
-`attribute_product_links` не создастся без прав SUPER:
-
-```bash
-zcat dump.sql.gz | sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g' | mariadb intertooler_dev
-```
-
-Дамп ~18 МБ gz / 183 МБ, схема прода совпадает с `main`, миграции после импорта
-гонять не нужно.
-
-Локально это безопасно: почта смотрит в mailpit, очередь `sync`, в `settings`
-только реквизиты и курсы валют, без секретов. В админку после импорта пускает
-только e-mail из `general.filament_admin_emails` — реально `r_kodachenko@mail.ru`.
-
-Локальная оболочка — **zsh**: `MY="mariadb -u..."` и потом `$MY` в позиции команды
-не разворачивается (нет word splitting). Писать bash-скрипт с функцией, а не
-переменную-команду.
+3. `information_schema.table_rows` для InnoDB — оценка, а не счёт. По ней нельзя
+   делать выводы о расхождении схем;
+4. при импорте нужен `` sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g' ``, иначе VIEW
+   `attribute_product_links` не создастся без SUPER;
+5. локальный шелл — zsh: `MY="mariadb -u..."` и потом `$MY` в позиции команды
+   не разворачивается (нет word splitting). Отсюда bash-скрипт с функциями.
 
 ## Деплой
 

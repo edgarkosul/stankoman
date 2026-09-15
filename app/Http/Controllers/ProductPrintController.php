@@ -201,12 +201,17 @@ class ProductPrintController extends Controller
 
         $rows = [];
 
-        if ($category = $product->primaryCategory()) {
+        $category = $product->primaryCategory();
+
+        if ($category) {
             $attrs = $category->attributeDefs()
                 ->with('unit')
                 ->wherePivot('visible_in_specs', true)
                 ->orderByPivot('filter_order')
                 ->get();
+
+            // Единицу категории attrLabel() возьмёт из уже загруженных связок, без запроса на каждый атрибут.
+            $category->setRelation('attributeDefs', $attrs);
         } else {
             $filledIds = $product->filledAttributeIds();
             $attrs = AttributeDef::with('unit')
@@ -216,7 +221,9 @@ class ProductPrintController extends Controller
         }
 
         foreach ($attrs as $attribute) {
-            $label = $product->attrLabel($attribute, ' / ');
+            // В единице и формате главной категории — как на карточке товара.
+            // Без категории PDF печатал мощность в кВт, а сайт показывал её в л.с.
+            $label = $product->attrLabel($attribute, ' / ', $category);
             if ($label !== null && $label !== '') {
                 $rows[] = [$attribute->name, $label];
             }

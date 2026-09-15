@@ -6,6 +6,7 @@ use App\Filament\Resources\Attributes\AttributeResource;
 use App\Models\Attribute;
 use App\Models\Unit;
 use App\Support\FilterSchemaCache;
+use Closure;
 use Filament\Actions\AttachAction;
 use Filament\Actions\DetachAction;
 use Filament\Actions\EditAction;
@@ -13,6 +14,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -86,9 +88,19 @@ class AttributeDefsRelationManager extends RelationManager
 
             TextInput::make('number_step')
                 ->numeric()
-                ->label('Шаг значений (фильтр)')
-                ->helperText('Если пусто — шаг вычисляется из глобальных настороек фильтра.')
+                ->label('Шаг ползунка фильтра')
+                ->helperText('Только для ползунка на витрине — на значения товаров и их показ не влияет. Если пусто — шаг атрибута, а при своих знаках после запятой — их последний разряд.')
                 ->nullable()
+                ->rule(fn (Get $get, ?Attribute $record): Closure => function (string $attribute, mixed $value, Closure $fail) use ($get, $record): void {
+                    // Знаки категории, а если их нет — те, что возьмутся у атрибута.
+                    $decimals = filled($get('number_decimals'))
+                        ? (int) $get('number_decimals')
+                        : ($record?->numberDecimals() ?? Attribute::DEFAULT_NUMBER_DECIMALS);
+
+                    if ($error = Attribute::stepPrecisionError($value, $decimals)) {
+                        $fail($error);
+                    }
+                })
                 ->visible(fn (?Attribute $record) => in_array($record?->data_type, ['number', 'range'], true)),
             Select::make('number_rounding')
                 ->label('Округление (для категории)')
@@ -156,10 +168,10 @@ class AttributeDefsRelationManager extends RelationManager
                     ->numeric()
                     ->label('Знаков после запятой'),
 
-                // 🔹 Шаг значений для КАТЕГОРИИ
+                // 🔹 Шаг ползунка фильтра для КАТЕГОРИИ
                 TextColumn::make('pivot.number_step')
                     ->numeric()
-                    ->label('Шаг значений'),
+                    ->label('Шаг ползунка'),
                 TextColumn::make('filter_order')->numeric()->label('Порядок отображения'),
                 IconColumn::make('visible_in_specs')->boolean()->label('Видимость'),
 
