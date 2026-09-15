@@ -27,10 +27,12 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
+use Livewire\Livewire;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -62,10 +64,37 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->throttleLivewireUpdates();
         $this->registerAuthEventListeners();
         $this->registerFilamentAssets();
         $this->registerViewComposers();
         FilamentTimezone::set('Europe/Moscow');
+    }
+
+    /**
+     * Потолок частоты на единственный эндпоинт, через который идут ВСЕ
+     * действия Livewire.
+     *
+     * Он же самый дорогой на сайте: за одним запросом стоит гидрация
+     * компонента, а за некоторыми — платный вызов модели (вопрос боту).
+     * Оставлять его без потолка, когда на нём висят чужие деньги, нельзя.
+     *
+     * Задет при этом весь сайт: корзина, фильтры каталога, подсказки поиска,
+     * модалки авторизации. Поэтому 120 в минуту, а не «поменьше для
+     * надёжности»: фильтрация каталога умеет всплески (каждая галка — запрос),
+     * а живой посетитель в логах прода не даёт больше ~40 запросов в минуту
+     * на ВСЁ вместе. Первым слоем всё равно стоит nginx — см.
+     * `scripts/deploy/nginx/`.
+     *
+     * Путь берём тот, что передаёт Livewire: с четвёртой версии он
+     * не `/livewire/update`, а `/livewire-<хэш от APP_KEY>/update`, и на дев-
+     * и прод-контуре он разный. Свой литерал здесь означал бы второй маршрут
+     * рядом с настоящим — то есть потолок, которого нет.
+     */
+    protected function throttleLivewireUpdates(): void
+    {
+        Livewire::setUpdateRoute(fn ($handle, string $path) => Route::post($path, $handle)
+            ->middleware(['web', 'throttle:120,1']));
     }
 
     protected function registerAuthEventListeners(): void
