@@ -619,6 +619,24 @@ class Attribute extends Model
     }
 
     /**
+     * Форматы чисел по категориям: category_id => attribute_id => формат.
+     *
+     * Живёт весь процесс, чтобы схема фильтров не ходила в базу за каждым
+     * атрибутом, и сбрасывается вместе с кэшем схемы категории. Раньше это была
+     * статическая переменная метода, которую не сбросить: долгоживущий процесс
+     * (воркер очереди) не видел нового шага категории до перезапуска, а тесты
+     * получали настройки чужой категории с тем же id.
+     *
+     * @var array<int, array<int, array{decimals: int|null, step: mixed, rounding: string|null}>>
+     */
+    protected static array $categoryNumberFormats = [];
+
+    public static function forgetCategoryNumberFormats(int $categoryId): void
+    {
+        unset(self::$categoryNumberFormats[$categoryId]);
+    }
+
+    /**
      * Вернуть настройки формата числа (decimals/step/rounding) с учётом категории.
      *
      * @return array{decimals:int, step:string, rounding:string}
@@ -636,18 +654,16 @@ class Attribute extends Model
             return $base;
         }
 
-        static $cache = [];
-
         $catId = $category->getKey();
         $attrId = $this->getKey();
 
-        if (! isset($cache[$catId])) {
+        if (! isset(self::$categoryNumberFormats[$catId])) {
             $rows = DB::table('category_attribute')
                 ->where('category_id', $catId)
                 ->select('attribute_id', 'number_decimals', 'number_step', 'number_rounding')
                 ->get();
 
-            $cache[$catId] = $rows
+            self::$categoryNumberFormats[$catId] = $rows
                 ->keyBy('attribute_id')
                 ->map(function ($row) {
                     return [
@@ -659,7 +675,7 @@ class Attribute extends Model
                 ->all();
         }
 
-        $cfg = $cache[$catId][$attrId] ?? null;
+        $cfg = self::$categoryNumberFormats[$catId][$attrId] ?? null;
 
         if (! $cfg) {
             return $base;

@@ -10,7 +10,9 @@ use App\Models\ProductAttributeValue;
 use App\Models\Unit;
 use App\Models\User;
 use Filament\Actions\CreateAction;
+use Filament\Actions\EditAction;
 use Filament\Actions\Testing\TestAction;
+use Filament\Forms\Components\TextInput;
 use Filament\Tables\Columns\TextColumn;
 use Livewire\Livewire;
 
@@ -182,4 +184,123 @@ test('relation manager attribute name column links to attribute edit page', func
             fn (TextColumn $column): bool => $column->getUrl() === $expectedUrl,
             $attributeValue
         );
+});
+
+/**
+ * Категория показывает мощность в л.с. целыми: шаг 1, без знаков после запятой.
+ * Это настройка витрины — на ввод исходного значения она не распространяется.
+ *
+ * @return array{product: Product, attribute: Attribute, kilowatt: Unit}
+ */
+function productInHorsepowerCategory(): array
+{
+    $product = Product::query()->create([
+        'name' => 'Газонокосилка для точности ввода',
+        'slug' => 'product-input-precision-test',
+        'price_amount' => 18000,
+    ]);
+
+    $category = Category::query()->create([
+        'name' => 'Категория точности ввода',
+        'slug' => 'category-input-precision-test',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 13,
+        'is_active' => true,
+    ]);
+
+    $product->categories()->attach($category->id, ['is_primary' => true]);
+
+    $kilowatt = Unit::query()->create([
+        'name' => 'Киловатт',
+        'symbol' => 'кВт',
+        'dimension' => 'power',
+        'base_symbol' => 'W',
+        'si_factor' => 1000,
+        'si_offset' => 0,
+    ]);
+
+    $horsepower = Unit::query()->create([
+        'name' => 'Лошадиная сила',
+        'symbol' => 'л.с.',
+        'dimension' => 'power',
+        'base_symbol' => 'W',
+        'si_factor' => 735.49875,
+        'si_offset' => 0,
+    ]);
+
+    $attribute = Attribute::query()->create([
+        'name' => 'Мощность',
+        'slug' => 'power-input-precision-test',
+        'data_type' => 'number',
+        'value_source' => 'free',
+        'input_type' => 'number',
+        'unit_id' => $kilowatt->id,
+        'dimension' => 'power',
+        'is_filterable' => true,
+    ]);
+
+    $attribute->units()->attach($kilowatt->id, ['is_default' => true, 'sort_order' => 0]);
+    $attribute->units()->attach($horsepower->id, ['is_default' => false, 'sort_order' => 1]);
+
+    $category->attributeDefs()->attach($attribute->id, [
+        'display_unit_id' => $horsepower->id,
+        'number_step' => 1,
+        'number_decimals' => 0,
+        'visible_in_specs' => true,
+        'visible_in_compare' => true,
+    ]);
+
+    return compact('product', 'attribute', 'kilowatt');
+}
+
+test('relation manager accepts a value finer than the category filter step and precision', function (): void {
+    $this->actingAs(User::factory()->create());
+
+    ['product' => $product, 'attribute' => $attribute, 'kilowatt' => $kilowatt] = productInHorsepowerCategory();
+
+    $relationManager = fn () => Livewire::test(AttributeValuesRelationManager::class, [
+        'ownerRecord' => $product,
+        'pageClass' => EditProduct::class,
+    ]);
+
+    $relationManager()
+        ->mountAction(TestAction::make(CreateAction::class)->table())
+        ->assertFormFieldExists('value_number', fn (TextInput $field): bool => $field->getStep() === 'any');
+
+    $relationManager()
+        ->callAction(TestAction::make(CreateAction::class)->table(), [
+            'attribute_id' => $attribute->id,
+            'input_unit_id' => $kilowatt->id,
+            'value_number' => '17.6',
+        ])
+        ->assertNotified();
+
+    $savedValue = ProductAttributeValue::query()
+        ->where('product_id', $product->id)
+        ->where('attribute_id', $attribute->id)
+        ->first();
+
+    expect($savedValue)->not->toBeNull()
+        ->and((float) $savedValue->value_number)->toEqualWithDelta(17.6, 0.000001);
+});
+
+test('relation manager edit form keeps stored precision instead of rounding to category decimals', function (): void {
+    $this->actingAs(User::factory()->create());
+
+    ['product' => $product, 'attribute' => $attribute] = productInHorsepowerCategory();
+
+    $value = ProductAttributeValue::query()->create([
+        'product_id' => $product->id,
+        'attribute_id' => $attribute->id,
+        'value_number' => 17.6,
+    ]);
+
+    // 17,6 кВт ≈ 23,929 л.с.: с точностью категории форма показала бы «24»
+    // и записала бы 17,65 кВт при сохранении без правок.
+    Livewire::test(AttributeValuesRelationManager::class, [
+        'ownerRecord' => $product,
+        'pageClass' => EditProduct::class,
+    ])
+        ->mountAction(TestAction::make(EditAction::class)->table($value))
+        ->assertSchemaStateSet(['value_number' => '23.93']);
 });

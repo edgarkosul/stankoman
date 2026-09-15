@@ -4,7 +4,6 @@ namespace App\Filament\Resources\Products\RelationManagers;
 
 use App\Filament\Resources\Attributes\AttributeResource;
 use App\Models\Attribute;
-use App\Models\CategoryAttribute;
 use App\Models\ProductAttributeValue;
 use App\Models\Unit;
 use Filament\Actions\CreateAction;
@@ -186,7 +185,9 @@ class AttributeValuesRelationManager extends RelationManager
                     ->label(fn (Get $get) => $this->labelWithUnit($get, 'Значение'))
                     ->numeric()
                     ->inputMode('decimal')
-                    ->step(fn (Get $get) => $this->numberStep($get))
+                    // Шаг категории — это шаг ползунка на витрине в её единице
+                    // отображения. Здесь вводят исходное значение, и в любой единице.
+                    ->step('any')
                     ->rule(function (Get $get) {
                         return function (string $attribute, $value, $fail) use ($get) {
                             $dec = $this->numberDecimals($get);
@@ -255,7 +256,7 @@ class AttributeValuesRelationManager extends RelationManager
                         ->label(fn (Get $get) => $this->labelWithUnit($get, 'Мин.'))
                         ->numeric()
                         ->inputMode('decimal')
-                        ->step(fn (Get $get) => $this->numberStep($get))
+                        ->step('any')
                         ->rule(function (Get $get) {
                             return function (string $attribute, $value, $fail) use ($get) {
                                 $dec = $this->numberDecimals($get);
@@ -320,7 +321,7 @@ class AttributeValuesRelationManager extends RelationManager
                         ->label(fn (Get $get) => $this->labelWithUnit($get, 'Макс.'))
                         ->numeric()
                         ->inputMode('decimal')
-                        ->step(fn (Get $get) => $this->numberStep($get))
+                        ->step('any')
                         ->rule(function (Get $get) {
                             return function (string $attribute, $value, $fail) use ($get) {
                                 $dec = $this->numberDecimals($get);
@@ -466,6 +467,16 @@ class AttributeValuesRelationManager extends RelationManager
         return $cache[$attrId];
     }
 
+    /**
+     * Точность ввода — по настройке самого атрибута, а не категории.
+     *
+     * Знаки и шаг в категории описывают, как показать значение покупателю
+     * в её единице отображения (скажем, л.с. целыми). Здесь же вводят
+     * исходное значение из паспорта, и часто в другой единице. С точностью
+     * категории 17,6 кВт было не ввести, а форма редактирования округляла
+     * сохранённое значение до её знаков и молча перезаписывала его при
+     * сохранении без правок.
+     */
     protected function numberDecimals(Get $get): ?int
     {
         $attrId = (int) $get('attribute_id');
@@ -473,65 +484,9 @@ class AttributeValuesRelationManager extends RelationManager
             return null;
         }
 
-        static $cache = [];
+        [$attribute] = $this->resolveUnitsForAttribute($attrId);
 
-        $product = $this->getOwnerRecord();
-        $productId = $product?->getKey() ?? 0;
-        $cacheKey = "dec:{$productId}:{$attrId}";
-
-        if (! array_key_exists($cacheKey, $cache)) {
-            $dec = null;
-
-            // 1) пробуем взять из pivot category_attribute
-            if ($pivot = $this->getPrimaryCategoryPivotForAttr($attrId)) {
-                if ($pivot->number_decimals !== null) {
-                    $dec = (int) $pivot->number_decimals;
-                }
-            }
-
-            // 2) фоллбек на настройку самого атрибута
-            if ($dec === null) {
-                $dec = Attribute::with('unit')->find($attrId)?->numberDecimals();
-            }
-
-            $cache[$cacheKey] = $dec;
-        }
-
-        return $cache[$cacheKey];
-    }
-
-    protected function numberStep(Get $get): string
-    {
-        $attrId = (int) $get('attribute_id');
-        if (! $attrId) {
-            return 'any';
-        }
-
-        static $cache = [];
-
-        $product = $this->getOwnerRecord();
-        $productId = $product?->getKey() ?? 0;
-        $cacheKey = "step:{$productId}:{$attrId}";
-
-        if (! array_key_exists($cacheKey, $cache)) {
-            $step = null;
-
-            // 1) из pivot category_attribute
-            if ($pivot = $this->getPrimaryCategoryPivotForAttr($attrId)) {
-                if ($pivot->number_step !== null) {
-                    $step = (string) $pivot->number_step;
-                }
-            }
-
-            // 2) фоллбек на атрибут
-            if ($step === null) {
-                $step = Attribute::with('unit')->find($attrId)?->numberStep() ?? 'any';
-            }
-
-            $cache[$cacheKey] = $step;
-        }
-
-        return $cache[$cacheKey];
+        return $attribute?->numberDecimals();
     }
 
     protected function isNumericAttribute(int $attributeId): bool
@@ -790,23 +745,6 @@ class AttributeValuesRelationManager extends RelationManager
         }
 
         return $this->unitCache[$attrId];
-    }
-
-    /**
-     * Pivot category_attribute для primary-категории текущего товара и заданного атрибута.
-     */
-    protected function getPrimaryCategoryPivotForAttr(int $attrId): ?CategoryAttribute
-    {
-        $product = $this->getOwnerRecord();
-
-        if (! $product || ! method_exists($product, 'getPrimaryCategoryAttributes')) {
-            return null;
-        }
-
-        $attrs = $product->getPrimaryCategoryAttributes();
-        $attr = $attrs?->firstWhere('id', $attrId);
-
-        return $attr?->pivot;
     }
 
     protected function unitSymbol(Get $get): ?string
