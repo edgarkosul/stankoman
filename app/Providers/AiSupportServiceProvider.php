@@ -22,6 +22,7 @@ use App\Services\Ai\Tools\GetProductTool;
 use App\Services\Ai\Tools\RequestContactTool;
 use App\Services\Ai\Tools\SearchKnowledgeBaseTool;
 use App\Services\Ai\Tools\SearchProductsTool;
+use App\Services\Captcha\CaptchaManager;
 use App\Services\Catalog\CatalogBrands;
 use App\Services\Chat\AssistantQueueHealth;
 use App\Services\Chat\ChatAbuseGuard;
@@ -299,7 +300,7 @@ class AiSupportServiceProvider extends ServiceProvider
          * правку. Сутки дневного бюджета считаются по московскому времени,
          * а не по `app.timezone` (та здесь UTC) — см. класс.
          */
-        $this->app->singleton(ChatAbuseGuard::class, fn (): ChatAbuseGuard => new ChatAbuseGuard(
+        $this->app->singleton(ChatAbuseGuard::class, fn (Application $app): ChatAbuseGuard => new ChatAbuseGuard(
             minLength: (int) config('ai_support.chat.abuse.min_length'),
             // Верхняя граница одна на намордник и на счётчик знаков под
             // полем ввода: два разных числа посетитель прочёл бы как обман.
@@ -312,6 +313,15 @@ class AiSupportServiceProvider extends ServiceProvider
             dailyMessages: (int) config('ai_support.chat.abuse.daily_messages'),
             dailyTokens: (int) config('ai_support.chat.abuse.daily_tokens'),
             dayTimezone: (string) config('ai_support.operators.timezone', 'Europe/Moscow'),
+            /*
+             * Включена ли капча — спрашиваем у того единственного, кто это
+             * знает. Своей формулы из двух условий здесь быть не должно:
+             * у донора она была третьей копией одного решения, и у чата
+             * условие оказалось строже, чем у форм витрины, без всякой
+             * на то причины. Правило «только первое сообщение» — своё,
+             * оно про устройство чата, а не про капчу.
+             */
+            captchaEnabled: $app->make(CaptchaManager::class)->enabled(),
         ));
 
         $this->app->singleton(AssistantQueueHealth::class, fn (): AssistantQueueHealth => new AssistantQueueHealth(

@@ -10,6 +10,7 @@ use App\Listeners\SyncCartOnLogin;
 use App\Listeners\SyncFavoritesOnLogin;
 use App\Listeners\SyncFavoritesOnLogout;
 use App\Models\Category;
+use App\Services\Captcha\CaptchaManager;
 use App\Support\CartService;
 use App\Support\CompareService;
 use App\Support\FavoritesService;
@@ -38,6 +39,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        /*
+         * Капча одна на весь магазин: и чат, и формы витрины спрашивают
+         * у неё, нужна ли проверка и пускать ли токен. Синглтон, потому
+         * что верификатор внутри мемоизируется.
+         */
+        $this->app->singleton(CaptchaManager::class, fn (): CaptchaManager => new CaptchaManager(
+            switchedOn: (bool) config('captcha.enabled'),
+            driver: (string) config('captcha.driver', 'null'),
+            drivers: (array) config('captcha.drivers', []),
+        ));
+
         $this->app->singleton(CompareService::class, fn (): CompareService => new CompareService);
         $this->app->singleton(CartService::class, fn (): CartService => new CartService);
         $this->app->scoped(FavoritesService::class, fn (): FavoritesService => new FavoritesService);

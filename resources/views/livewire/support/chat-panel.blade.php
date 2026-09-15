@@ -278,15 +278,27 @@
                 </div>
             @endif
         @else
-            <form x-data="{
-                    busy: false,
-                    send() {
-                        if (this.busy) return;
-                        this.busy = true;
-                        this.$wire.send().finally(() => { this.busy = false });
-                    },
-                }"
-                @submit.prevent="send()" class="flex items-end gap-2">
+            {{--
+                Отправка всегда идёт через sendWithToken: нужен токен капчи
+                или нет, решает сервер, и разметке об этом знать незачем.
+
+                Скрипт капчи подключается лениво и только там, где он
+                понадобится, — на первом сообщении разговора: 124 КБ на
+                каждой странице витрины ради одной проверки за разговор
+                платить нельзя. Дальше конфиг приходит выключенным,
+                и captchaPreload молча ничего не делает.
+
+                Конфиг лежит в data-captcha, а не в аргументе x-data: капча
+                включается и при живой форме (очистили переписку, менеджер
+                закрыл диалог), а аргумент x-data Livewire при перерисовке
+                не обновляет (см. captcha-submit.js). Ключ wire:key, который
+                пересоздал бы форму, не годится: тогда она пересоздавалась
+                бы и после первого сообщения, и поле ввода теряло бы фокус.
+            --}}
+            <form @submit.prevent="send()" class="flex items-end gap-2"
+                data-captcha="{{ json_encode($captcha) }}"
+                x-data="captchaSubmit(null, 'sendWithToken')"
+                x-init="window.captchaPreload(@js($captcha))">
                 {{--
                     Поле растёт под ответ и упирается в потолок в четыре строки —
                     дальше скроллится само. Ручную тянучку (`resize-y`) снимаем:
@@ -327,6 +339,15 @@
                     </svg>
                 </button>
             </form>
+
+            {{--
+                Плашка о капче — только когда она в этом сообщении реально
+                спрашивается. В продолжении разговора проверки нет,
+                и уведомлять там не о чем.
+            --}}
+            @if ($captcha['enabled'] ?? false)
+                <x-captcha.notice />
+            @endif
 
             @error('draft')
                 <p class="mt-1 text-sm text-brand-red">{{ $message }}</p>

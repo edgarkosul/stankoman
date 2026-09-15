@@ -6,7 +6,10 @@ use App\Livewire\Support\ChatPanel;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\User;
+use App\Services\Captcha\CaptchaManager;
 use App\Services\Chat\ChatAbuseGuard;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
@@ -145,4 +148,99 @@ it('держит щедрый потолок на оценках', function (): 
 
     // Молча: объяснять заклинившей мыши нечего.
     expect($answer->fresh()->rating)->toBeNull();
+});
+
+/*
+ * Капча на первом сообщении. В тестах и на деве она выключена (`localhost`
+ * с включённой проверкой домена сервис всё равно не примет), поэтому тот
+ * единственный тест, которому она нужна как предмет проверки, включает
+ * её сам — и подменяет сеть: настоящая проверка возможна только на проде.
+ */
+
+/** Включить капчу и пересобрать всё, что запомнило её состояние. */
+function captchaOn(): void
+{
+    config([
+        'captcha.enabled' => true,
+        'captcha.driver' => 'smartcaptcha',
+        'captcha.drivers.smartcaptcha.site_key' => 'ysc1_client',
+        'captcha.drivers.smartcaptcha.secret_key' => 'ysc2_server',
+    ]);
+
+    app()->forgetInstance(CaptchaManager::class);
+    app()->forgetInstance(ChatAbuseGuard::class);
+}
+
+it('первый вопрос без пройденной капчи не принимает', function (): void {
+    captchaOn();
+    Http::fake();
+
+    Livewire::test(ChatPanel::class)
+        ->set('draft', 'Есть ли доставка в Мурманск?')
+        ->call('sendWithToken', '')
+        ->assertHasErrors('draft')
+        ->assertSee('Не удалось подтвердить, что вы не робот');
+
+    expect(ChatConversation::query()->count())->toBe(0);
+    Queue::assertNothingPushed();
+
+    // Пустой токен до сервиса не доводим: ответ известен заранее.
+    Http::assertNothingSent();
+});
+
+it('на первом вопросе проверяет токен у сервиса', function (): void {
+    captchaOn();
+    Http::fake(['*' => Http::response(['status' => 'ok'])]);
+
+    Livewire::test(ChatPanel::class)
+        // Плашка об обработке данных — обязательство перед сервисом, а не
+        // оформление: стоит ровно там, где капча спрашивается.
+        ->assertSee('SmartCaptcha')
+        ->set('draft', 'Есть ли доставка в Мурманск?')
+        ->call('sendWithToken', 'the-token')
+        ->assertHasNoErrors()
+        ->assertSet('awaiting', true)
+        // Проверка пройдена, дальше посетителя опознаёт кука разговора —
+        // плашке больше не место.
+        ->assertDontSee('SmartCaptcha');
+
+    Http::assertSentCount(1);
+    expect(ChatConversation::query()->count())->toBe(1);
+});
+
+it('в продолжении разговора капчу не спрашивает', function (): void {
+    /*
+     * Полсекунды на каждую реплику ради уже пройденной проверки не платим:
+     * посетителя удостоверяет кука, а её стерегут потолки намордника.
+     */
+    captchaOn();
+    Http::fake();
+
+    $conversation = ChatConversation::factory()->create();
+
+    Livewire::withCookie(abuseCookieName(), $conversation->token)
+        ->test(ChatPanel::class)
+        ->assertDontSee('SmartCaptcha')
+        ->set('draft', 'А в Тюмень везёте?')
+        ->call('sendWithToken', '')
+        ->assertHasNoErrors()
+        ->assertSet('awaiting', true);
+
+    Http::assertNothingSent();
+    expect($conversation->messages()->count())->toBe(1);
+});
+
+it('пропускает вопрос, когда капча недоступна', function (): void {
+    // Сеть до Yandex Cloud отвалилась. Отказать значило бы выключить чат
+    // целиком из-за чужой аварии — над капчей стоят ещё два слоя.
+    captchaOn();
+    Http::fake(fn () => throw new ConnectionException('timed out'));
+
+    Livewire::test(ChatPanel::class)
+        ->set('draft', 'Есть ли доставка в Мурманск?')
+        ->call('sendWithToken', 'the-token')
+        ->assertHasNoErrors()
+        ->assertSet('awaiting', true);
+
+    expect(ChatConversation::query()->count())->toBe(1);
 });

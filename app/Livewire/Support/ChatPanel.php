@@ -7,6 +7,7 @@ use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\User;
 use App\Services\Ai\AssistantConfig;
+use App\Services\Captcha\CaptchaManager;
 use App\Services\Chat\AssistantQueueHealth;
 use App\Services\Chat\ChatAbuseGuard;
 use App\Services\Chat\ChatContactCard;
@@ -63,6 +64,12 @@ class ChatPanel extends Component
     public ?array $page = null;
 
     public string $draft = '';
+
+    /**
+     * Токен капчи с первого сообщения. Публичный, потому что его кладёт
+     * клиент — но живёт он ровно один запрос: проверили и забыли.
+     */
+    public string $captchaToken = '';
 
     /** Ответ бота готовится прямо сейчас. */
     #[Locked]
@@ -177,6 +184,7 @@ class ChatPanel extends Component
         ChatConversationService $chat,
         AssistantConfig $assistant,
         LeadIntake $lead,
+        ChatAbuseGuard $guard,
     ): View {
         $conversation = $this->conversation();
         $messages = $this->messages($conversation);
@@ -239,7 +247,39 @@ class ChatPanel extends Component
                 && ! (bool) $conversation?->isClosed()
                 && ! (bool) $conversation?->isOperatorLed()
                 && ! (bool) $conversation?->isEscalated(),
+            /*
+             * Настройки капчи — готовым массивом из одного места на магазин.
+             * Разметка не знает ни провайдера, ни ключей: она отдаёт этот
+             * массив в Alpine как есть.
+             *
+             * Проверка нужна только на первом сообщении разговора, поэтому
+             * дальше массив приходит выключенным — а выключенный означает,
+             * что скрипт капчи в браузер не поедет вовсе. Это не экономия
+             * запроса: 124 КБ на каждой странице витрины ради проверки,
+             * которая случится один раз за разговор.
+             */
+            'captcha' => $guard->needsCaptcha($conversation)
+                ? app(CaptchaManager::class)->frontendConfig()
+                : ['enabled' => false],
         ]);
+    }
+
+    /**
+     * Отправка с токеном капчи. Клиент зовёт всегда эту, а не `send()`:
+     * нужен токен или нет, решает сервер, и знать об этом разметке незачем.
+     */
+    public function sendWithToken(?string $token = null): void
+    {
+        $this->captchaToken = (string) $token;
+
+        $this->send(
+            app(ChatConversationService::class),
+            app(AssistantQueueHealth::class),
+            app(ChatEscalationService::class),
+            app(AssistantConfig::class),
+            app(PageContextSource::class),
+            app(ChatAbuseGuard::class),
+        );
     }
 
     public function send(
@@ -278,6 +318,22 @@ class ChatPanel extends Component
 
         if (! $verdict->allowed() && ! $verdict->isBudget()) {
             $this->addError('draft', (string) $verdict->message);
+
+            return;
+        }
+
+        /*
+         * Капча — только на первом сообщении разговора (см. needsCaptcha).
+         * После него посетителя удостоверяет кука, и спрашивать сервис
+         * на каждую реплику значило бы платить задержкой и запросом
+         * к третьей стороне за уже пройденную проверку.
+         */
+        if (! $this->passesCaptcha($guard, $conversation)) {
+            $this->addError(
+                'draft',
+                'Не удалось подтвердить, что вы не робот. Обновите страницу и попробуйте ещё раз '
+                    .'или оставьте почту — менеджер ответит письмом.',
+            );
 
             return;
         }
@@ -831,6 +887,25 @@ class ChatPanel extends Component
         $user = Auth::user();
 
         return $user instanceof User && $user->isFilamentAdmin();
+    }
+
+    /**
+     * Токен проверяется на сервере — через CaptchaManager, то есть теми же
+     * ключами и тем же рубильником, что и остальной магазин.
+     *
+     * Пустой токен и отказ сервиса посетителя не пускают. Единственное
+     * исключение — авария на стороне капчи: недоступный сервис пропускает
+     * (см. SmartCaptchaVerifier), и чат тут не делает себе строгости
+     * сверх остальных — он единственный, кто в этот момент прикрыт ещё
+     * и всем содержимым ChatAbuseGuard.
+     */
+    private function passesCaptcha(ChatAbuseGuard $guard, ?ChatConversation $conversation): bool
+    {
+        if (! $guard->needsCaptcha($conversation)) {
+            return true;
+        }
+
+        return app(CaptchaManager::class)->verify($this->captchaToken, request()->ip());
     }
 
     private function conversation(): ?ChatConversation
