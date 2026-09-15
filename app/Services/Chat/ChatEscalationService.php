@@ -2,10 +2,15 @@
 
 namespace App\Services\Chat;
 
+use App\Jobs\NotifyManagersAboutEscalationJob;
+use App\Jobs\NotifyVisitorAboutOperatorReplyJob;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Services\Chat\Data\ClaimedLead;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Переходы разговора между ботом и человеком.
@@ -26,9 +31,9 @@ use Illuminate\Support\Str;
  * её менеджер разберёт в любом случае, и письмо о ней уходит уже сейчас.
  *
  * Перехват, возврат боту, закрытие и ответ оператора зовёт карточка диалога
- * в админке. Уведомлений здесь пока нет — ни менеджерам о переданном вопросе,
- * ни покупателю об ответе, пришедшем в закрытую вкладку: разговор, ждущий
- * человека, сейчас виден только бейджем «Диалогов».
+ * в админке. Сам сигнал — пометка на разговоре и бейдж «Диалогов»; доставку
+ * сигнала людям сервис ставит в очередь и никогда не ждёт: почта и пуш
+ * падают, а разговор от этого потеряться не должен.
  *
  * Сотрудник приходит сюда номером и именем, а не моделью пользователя:
  * кто в магазине сотрудник, решает магазин, а сервисы чата моделей магазина
@@ -38,6 +43,8 @@ final class ChatEscalationService
 {
     public function __construct(
         private readonly ChatConversationService $chat,
+        private readonly OperatorPresence $presence,
+        private readonly int $notifyCooldownMinutes,
     ) {}
 
     /** Бот сам позвал человека инструментом escalate_to_operator. */
@@ -52,12 +59,21 @@ final class ChatEscalationService
     /** Посетитель оставил контакты — заявку надо разобрать. */
     public const TRIGGER_CALLBACK = 'callback';
 
+    /** Столько минут после последнего взгляда покупатель считается «в чате». */
+    private const VISITOR_PRESENT_MINUTES = 3;
+
+    /** Не чаще одного письма «менеджер ответил» в час на разговор. */
+    private const VISITOR_NOTIFY_COOLDOWN_SECONDS = 3600;
+
     /**
      * Вопрос ждёт человека.
      *
-     * Пометка ставится один раз, а строка в ленте — на каждый повод: менеджер,
-     * читающий разговор задним числом, должен видеть, сколько раз и почему
-     * бот сдавался.
+     * Идемпотентна по смыслу, а не по букве: пометка ставится один раз,
+     * строка в ленте — на каждый повод (менеджер, читающий разговор задним
+     * числом, должен видеть, сколько раз и почему бот сдавался), а
+     * уведомление уходит не чаще раза в notify_cooldown_minutes. Посетитель
+     * может задать подряд три вопроса, на которые бот не ответит, —
+     * менеджеру нужен один сигнал, а не три.
      */
     public function escalate(
         ChatConversation $conversation,
@@ -73,6 +89,38 @@ final class ChatEscalationService
             'trigger' => $trigger,
             'reason' => $reason,
         ]);
+
+        // Разговор уже у человека — он и так его видит.
+        if ($conversation->status === ChatConversation::STATUS_OPERATOR) {
+            return;
+        }
+
+        /*
+         * Кулдаун не распространяется на оставленные контакты. Три вопроса
+         * подряд, на которые бот не ответил, — один сигнал; а «покупатель
+         * оставил почту» это уже не сигнал, а задача, и терять её из-за того,
+         * что десять минут назад была эскалация, нельзя. Повториться событие
+         * не может: заявка на диалог заводится одна.
+         */
+        if ($trigger !== self::TRIGGER_CALLBACK && ! $this->passesNotifyCooldown($conversation)) {
+            return;
+        }
+
+        try {
+            NotifyManagersAboutEscalationJob::dispatch(
+                $conversation->id,
+                $trigger,
+                $reason,
+                $this->presence->isOnline(),
+            );
+        } catch (Throwable $e) {
+            // Уведомление — доставка сигнала, а не сам сигнал: диалог уже
+            // помечен и виден в «Диалогах». Падать из-за очереди незачем.
+            Log::warning('Escalation notification not queued', [
+                'conversation_id' => $conversation->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -134,6 +182,10 @@ final class ChatEscalationService
             'unread_for_staff' => 0,
         ])->save();
 
+        // Следующая эскалация в этом разговоре должна дойти до менеджера,
+        // даже если предыдущая была пять минут назад.
+        Cache::forget($this->notifyKey($conversation));
+
         $this->note(
             $conversation,
             'Разговор возвращён консультанту.',
@@ -161,6 +213,7 @@ final class ChatEscalationService
             'unread_for_staff' => 0,
         ])->save();
 
+        Cache::forget($this->notifyKey($conversation));
         $this->chat->clearPending($conversation);
 
         $this->note(
@@ -210,7 +263,54 @@ final class ChatEscalationService
         // причине, что и в takeOver().
         $this->chat->clearPending($conversation);
 
+        $this->notifyVisitor($conversation, (string) $message->body);
+
         return $message;
+    }
+
+    /**
+     * Вернуть покупателя в разговор письмом.
+     *
+     * Чат на витрине живёт только в открытой вкладке: менеджер отвечает
+     * через двадцать минут, а покупатель к этому времени закрыл сайт.
+     * Без письма ответ есть, а разговора нет.
+     *
+     * Три условия, и каждое отсекает шум. Почта есть только у вошедшего
+     * в аккаунт — анонима письмом не вернуть вовсе. Покупатель, который
+     * прямо сейчас смотрит в чат, увидит ответ поллингом. И не чаще раза
+     * в час: переписка из пяти реплик менеджера не должна превращаться
+     * в пять писем.
+     *
+     * Саму почту ищет джоба: `App\Models\User` здесь запрещён швом.
+     */
+    private function notifyVisitor(ChatConversation $conversation, string $body): void
+    {
+        if ($conversation->user_id === null) {
+            return;
+        }
+
+        if ($conversation->last_seen_at !== null
+            && $conversation->last_seen_at->greaterThan(now()->subMinutes(self::VISITOR_PRESENT_MINUTES))) {
+            return;
+        }
+
+        if (! Cache::add($this->visitorNotifyKey($conversation), true, self::VISITOR_NOTIFY_COOLDOWN_SECONDS)) {
+            return;
+        }
+
+        try {
+            NotifyVisitorAboutOperatorReplyJob::dispatch(
+                $conversation->id,
+                // Письмо показывает реплику текстом, значит markdown
+                // в нём остался бы звёздочками и скобками.
+                app(ChatMarkdown::class)->toPlainText($body),
+            );
+        } catch (Throwable $e) {
+            Log::warning('Chat visitor notification not queued', [
+                'conversation_id' => $conversation->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -279,5 +379,33 @@ final class ChatEscalationService
         return $reason === null || trim($reason) === ''
             ? $head
             : $head.' '.Str::limit(trim($reason), 500);
+    }
+
+    /**
+     * Первый за окно сигнал об этом разговоре проходит, остальные — нет.
+     * `Cache::add()` атомарен, поэтому две джобы, эскалировавшие
+     * одновременно, не дадут двух писем.
+     */
+    private function passesNotifyCooldown(ChatConversation $conversation): bool
+    {
+        if ($this->notifyCooldownMinutes <= 0) {
+            return true;
+        }
+
+        return Cache::add(
+            $this->notifyKey($conversation),
+            true,
+            $this->notifyCooldownMinutes * 60,
+        );
+    }
+
+    private function notifyKey(ChatConversation $conversation): string
+    {
+        return 'chat:escalation:notified:'.$conversation->id;
+    }
+
+    private function visitorNotifyKey(ChatConversation $conversation): string
+    {
+        return 'chat:visitor-notified:'.$conversation->id;
     }
 }

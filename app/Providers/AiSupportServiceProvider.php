@@ -26,8 +26,10 @@ use App\Services\Catalog\CatalogBrands;
 use App\Services\Chat\AssistantQueueHealth;
 use App\Services\Chat\ChatAnswerCache;
 use App\Services\Chat\ChatConversationService;
+use App\Services\Chat\ChatEscalationService;
 use App\Services\Chat\ChatMarkdown;
 use App\Services\Chat\ChatPreviewGate;
+use App\Services\Chat\Contracts\EscalationTarget;
 use App\Services\Chat\Contracts\LeadIntake;
 use App\Services\Chat\Contracts\PageContextSource;
 use App\Services\Chat\OperatorPresence;
@@ -41,10 +43,13 @@ use App\Services\Kb\KbVectorIndexer;
 use App\Services\Kb\KbVectorStore;
 use App\Services\Kb\Sources\KbArticleKbSource;
 use App\Services\Kb\TiptapTextExtractor;
+use App\Services\Notifications\Contracts\EscalationNotifier;
+use App\Services\Notifications\MaxNotifier;
 use App\Shop\CallbackLeadIntake;
 use App\Shop\CatalogSections;
 use App\Shop\EloquentProductLookup;
 use App\Shop\PageKbSource;
+use App\Shop\SettingsEscalationTarget;
 use App\Shop\SettingsKbSource;
 use App\Shop\ShopPageContext;
 use App\Support\Products\ProductSpecs;
@@ -266,6 +271,10 @@ class AiSupportServiceProvider extends ServiceProvider
         // Форма контактов в чате — заявка «перезвоните» из фазы 1.
         $this->app->singleton(LeadIntake::class, CallbackLeadIntake::class);
 
+        // Кто в магазине сотрудник и как зовут покупателя — тоже знание
+        // магазина: ролей нет, всё решает список почт в настройках.
+        $this->app->singleton(EscalationTarget::class, SettingsEscalationTarget::class);
+
         /*
          * Сотрудник видит виджет и в предпросмотре. Кто сотрудник — решает
          * тот же список почт, что пускает в админку: ролей в проекте нет.
@@ -313,6 +322,29 @@ class AiSupportServiceProvider extends ServiceProvider
             timezone: (string) config('ai_support.operators.timezone', config('app.timezone')),
             activityWindowMinutes: (int) config('ai_support.operators.activity_window_minutes'),
             overrideTtlMinutes: (int) config('ai_support.operators.override_ttl_minutes'),
+        ));
+
+        /*
+         * Переходы разговора. Присутствие ему нужно, чтобы отложенный пуш
+         * помнил, была ли смена в момент эскалации; кулдаун — чтобы три
+         * вопроса подряд не дали трёх писем.
+         */
+        $this->app->singleton(ChatEscalationService::class, fn (Application $app): ChatEscalationService => new ChatEscalationService(
+            chat: $app->make(ChatConversationService::class),
+            presence: $app->make(OperatorPresence::class),
+            notifyCooldownMinutes: (int) config('ai_support.escalation.notify_cooldown_minutes'),
+        ));
+
+        /*
+         * Пуш в мессенджер за интерфейсом: сегодня MAX, завтра что-то ещё,
+         * а джоба уведомлений об этом знать не должна. Не настроен — канал
+         * молча выключается, письмо и уведомление в админке доходят и без него.
+         */
+        $this->app->singleton(EscalationNotifier::class, fn (): EscalationNotifier => new MaxNotifier(
+            baseUrl: (string) config('services.max.base_url'),
+            token: config('services.max.token'),
+            chatId: config('services.max.chat_id'),
+            timeout: (int) config('services.max.timeout', 8),
         ));
     }
 

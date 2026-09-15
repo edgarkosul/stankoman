@@ -5,7 +5,9 @@ namespace App\Console\Commands;
 use App\Providers\AiSupportServiceProvider;
 use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Contracts\LlmClient;
+use App\Services\Chat\Contracts\EscalationTarget;
 use App\Services\Kb\Contracts\KbSource;
+use App\Services\Notifications\Contracts\EscalationNotifier;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -40,6 +42,9 @@ class AiKbDoctor extends Command
 
         $this->section('Очередь');
         $this->queue();
+
+        $this->section('Эскалация');
+        $this->escalation();
 
         if ($this->option('probe')) {
             $this->section('Пробные вызовы');
@@ -301,6 +306,47 @@ class AiKbDoctor extends Command
             sprintf('retry_after %d с (джоба < воркер 240 < retry_after)', $retryAfter),
             sprintf('retry_after %d с — мало, будут дубли вызовов. Нужно ≥ 300.', $retryAfter),
         );
+    }
+
+    /**
+     * Есть ли кому получить сигнал «в чате ждут человека».
+     *
+     * Самая тихая из возможных аварий: почта в настройке есть, строки
+     * в `users` с такой почтой нет — уведомление в колокольчике уходит
+     * в никуда, и ошибки не будет нигде. Поэтому проверяем пересечение,
+     * а не «список не пуст».
+     */
+    private function escalation(): void
+    {
+        $staff = app(EscalationTarget::class);
+
+        $emails = $staff->managerEmails();
+
+        $this->check(
+            $emails !== [],
+            'Письмо менеджерам уйдёт на: '.implode(', ', $emails),
+            'Некому писать: пусты и general.manager_emails, и general.filament_admin_emails',
+        );
+
+        $recipients = collect($staff->panelRecipients());
+
+        $this->check(
+            $recipients->isNotEmpty(),
+            sprintf('Уведомление в админке увидят %d чел.: %s', $recipients->count(), $recipients->pluck('email')->implode(', ')),
+            'Ни у одной почты из general.filament_admin_emails нет пользователя — уведомления в админке уйдут в никуда',
+        );
+
+        $push = app(EscalationNotifier::class);
+
+        $push->isConfigured()
+            ? $this->ok('Пуш в мессенджер настроен')
+            : $this->skip('Пуш в мессенджер выключен: нет MAX_BOT_TOKEN/MAX_BOT_CHAT_ID (письмо и админка работают)');
+
+        $cooldown = (int) config('ai_support.escalation.notify_cooldown_minutes');
+
+        $this->info($cooldown > 0
+            ? sprintf('  · не чаще одного сигнала о диалоге в %d мин', $cooldown)
+            : '  · кулдаун выключен: сигнал уйдёт на каждую эскалацию');
     }
 
     private function probe(LlmClient $llm): void

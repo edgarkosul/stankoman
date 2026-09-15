@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Page;
+use App\Models\User;
 use App\Shop\PageKbSource;
 use App\Shop\SettingsKbSource;
 use Illuminate\Support\Facades\DB;
@@ -83,8 +84,25 @@ it('доктор ругается на пустую базу', function (): void
 it('доктор считает источник без статей пустым, а не сломанным', function (): void {
     $this->artisan('ai:kb-reindex')->assertSuccessful();
 
+    // Получатели эскалации — часть готовности: без них сигнал «в чате ждут
+    // человека» уходит в никуда, и доктор обязан назвать это поломкой.
+    config(['settings.general.filament_admin_emails' => ['admin@intertooler.test']]);
+    User::factory()->create(['email' => 'admin@intertooler.test']);
+
     $this->artisan('ai:kb-doctor')
         ->expectsOutputToContain('Источник «intertooler-kb» пуст')
         ->expectsOutputToContain('Ассистент готов к работе')
         ->assertSuccessful();
+});
+
+it('доктор ловит настройку, в которой некому получить эскалацию', function (): void {
+    $this->artisan('ai:kb-reindex')->assertSuccessful();
+
+    // Почта в настройке есть, пользователя с ней нет — уведомление
+    // в колокольчике уходит в никуда, и ошибки не будет нигде.
+    config(['settings.general.filament_admin_emails' => ['admin@intertooler.test']]);
+
+    $this->artisan('ai:kb-doctor')
+        ->expectsOutputToContain('уведомления в админке уйдут в никуда')
+        ->assertFailed();
 });

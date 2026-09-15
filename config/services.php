@@ -47,4 +47,20 @@ return [
         'id' => env('YANDEX_METRIKA_ID', '108565390'),
     ],
 
+    /*
+     * MAX — мессенджер, в который уходит пуш об эскалации чата. Обычный
+     * HTTP-клиент: официальный SDK существует только на JS, а нам нужен
+     * один POST. Токен выдаёт @MasterBot внутри самого MAX, chat_id —
+     * идентификатор чата или канала менеджеров.
+     *
+     * Не настроен — канал молча выключен: уведомление в админке и письмо
+     * доходят и без него, а падать из-за необязательного пуша незачем.
+     */
+    'max' => [
+        'base_url' => rtrim((string) env('MAX_API_BASE_URL', 'https://platform-api.max.ru'), '/'),
+        'token' => env('MAX_BOT_TOKEN'),
+        'chat_id' => env('MAX_BOT_CHAT_ID'),
+        'timeout' => max(1, (int) env('MAX_API_TIMEOUT', 8)),
+    ],
+
 ];

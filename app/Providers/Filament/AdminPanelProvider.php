@@ -23,6 +23,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Siteko\FilamentResticBackups\Filament\ResticBackupsPlugin;
 
@@ -96,6 +97,16 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::PAGE_END,
                 fn (): View => view('filament.components.product-edit-scroll-top'),
                 scopes: EditProduct::class,
+            )
+            /*
+             * Переключатель «я на смене» рядом с профилем. От него зависит,
+             * предложит ли чат покупателю позвать менеджера или сразу
+             * попросит контакты, — поэтому он должен быть на глазах,
+             * а не в настройках.
+             */
+            ->renderHook(
+                PanelsRenderHook::USER_MENU_BEFORE,
+                fn (): string => Blade::render('@livewire(\'admin.operator-presence-toggle\')'),
             )
             ->navigationGroups([
                 NavigationGroup::make('Категории')->collapsed(),
