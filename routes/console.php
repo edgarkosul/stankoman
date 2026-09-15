@@ -44,6 +44,22 @@ Schedule::command('search:audit', ['--fix'])
     ->withoutOverlapping(180)
     ->appendOutputTo(storage_path('logs/search-audit.log'));
 
+/*
+ * База знаний ИИ-ассистента — страховочный ночной проход.
+ *
+ * Правки страниц и статей доезжают до индекса сразу, наблюдателями через очередь.
+ * Ночью ловится то, что мимо них: реквизиты из настроек (воркер держит конфиг
+ * с момента запуска и новых значений не видит), потерянные задачи очереди,
+ * страница, убранная из белого списка (--prune).
+ *
+ * Проход инкрементный по content_hash: неизменившийся текст не пересчитывается
+ * и не оплачивается, так что ночь без правок стоит ноль вызовов шлюза.
+ */
+Schedule::command('ai:kb-reindex', ['--prune'])
+    ->dailyAt('04:00')
+    ->withoutOverlapping(180)
+    ->appendOutputTo(storage_path('logs/ai-kb-reindex.log'));
+
 Schedule::command('legacy:kraton-match')
     ->dailyAt('05:20')
     ->withoutOverlapping(180)

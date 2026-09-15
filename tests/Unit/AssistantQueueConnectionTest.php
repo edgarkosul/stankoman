@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\ReindexKbDocumentJob;
 use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
 
@@ -43,6 +44,19 @@ it('keeps the timeout invariant that prevents a double paid call', function (): 
     expect($retryAfter)->toBe(300)
         ->and($worker)->toBe(240)
         ->and($worker)->toBeLessThan($retryAfter);
+});
+
+it('keeps knowledge base reindexing inside the assistant worker timeout', function (): void {
+    /*
+     * Переиндексация базы знаний едет той же очередью, что и ответы бота.
+     * Сетевой вызов эмбеддингов, переживший воркер, был бы убит посреди
+     * записи и выдан заново — второй оплаченный вызов на ту же правку.
+     */
+    $job = new ReindexKbDocumentJob('intertooler-page', 'dostavka-i-oplata');
+
+    expect($job->connection)->toBe('redis-assistant')
+        ->and($job->queue)->toBe('assistant')
+        ->and($job->timeout)->toBeLessThan(assistantWorkerTimeout());
 });
 
 /**

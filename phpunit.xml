@@ -36,6 +36,15 @@
             документ настоящего товара с тем же номером.
         -->
         <env name="SCOUT_DRIVER" value="collection"/>
+        <!--
+            ИИ-ассистент в тестах — только заглушка без сети. .env читается
+            и в тестах, а в нём живой ключ шлюза, общий с turbo и с боем:
+            тест, дошедший до настоящего клиента, тратил бы чужие деньги
+            молча. Пустой ключ — вторая стена: без заглушки клиент падает,
+            а не платит.
+        -->
+        <env name="AI_EMBEDDING_FAKE" value="true"/>
+        <env name="AI_GATEWAY_KEY" value=""/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
