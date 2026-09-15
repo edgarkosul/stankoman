@@ -1,6 +1,11 @@
 import tooltip from './plugins/tooltip';
 import cartModalFactory from './alpine/cart-modal';
+import chatLauncherFactory from './alpine/chat-launcher';
+import chatAvatarFactory from './alpine/chat-avatar';
+import autogrowTextareaFactory from './alpine/autogrow-textarea';
 import { initRuPhoneMask } from './modules/phone-mask-ru';
+import './modules/session-keepalive';
+import './modules/livewire-session-guard';
 import Swiper from 'swiper';
 import { A11y, Autoplay, FreeMode, Mousewheel, Navigation, Pagination, Thumbs } from 'swiper/modules';
 import PhotoSwipeLightbox from 'photoswipe/lightbox';
@@ -1505,6 +1510,9 @@ const registerAlpineData = () => {
     alpine.data('overflowTooltip', overflowTooltipFactory);
     alpine.data('prettyNumberInput', prettyNumberInputFactory);
     alpine.data('cartModal', cartModalFactory);
+    alpine.data('chatLauncher', chatLauncherFactory);
+    alpine.data('chatAvatar', chatAvatarFactory);
+    alpine.data('autogrowTextarea', autogrowTextareaFactory);
     registerRecentProductsStore(alpine);
 };
 

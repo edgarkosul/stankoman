@@ -23,8 +23,21 @@ uses(TestCase::class);
  * не принадлежат, у них нет витрины и другой реализации.
  */
 
-/** @var list<string> */
-$allowed = ['App\Models\KbArticle', 'App\Models\KbCategory'];
+/*
+ * Разговор, сообщения и расходная книга чата — тоже модели ассистента:
+ * во втором магазине они те же самые. А заявка, товар, страница и
+ * пользователь — магазинные, и чат получает их через PageContextSource
+ * и LeadIntake.
+ *
+ * @var list<string>
+ */
+$allowed = [
+    'App\Models\KbArticle',
+    'App\Models\KbCategory',
+    'App\Models\ChatConversation',
+    'App\Models\ChatMessage',
+    'App\Models\AiUsageEntry',
+];
 
 it('сервисы ассистента не знают моделей магазина', function () use ($allowed): void {
     $offenders = [];
@@ -32,6 +45,7 @@ it('сервисы ассистента не знают моделей мага�
     foreach (Finder::create()->files()->name('*.php')->in([
         app_path('Services/Ai'),
         app_path('Services/Kb'),
+        app_path('Services/Chat'),
         app_path('Services/Catalog'),
     ]) as $file) {
         preg_match_all('/^use (App\\\\Models\\\\[A-Za-z]+)/m', (string) file_get_contents($file->getRealPath()), $matches);

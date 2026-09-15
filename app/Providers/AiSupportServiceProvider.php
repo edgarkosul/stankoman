@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\User;
+use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Contracts\LlmClient;
 use App\Services\Ai\Contracts\ProductLookup;
 use App\Services\Ai\Exceptions\LlmException;
@@ -21,6 +23,14 @@ use App\Services\Ai\Tools\RequestContactTool;
 use App\Services\Ai\Tools\SearchKnowledgeBaseTool;
 use App\Services\Ai\Tools\SearchProductsTool;
 use App\Services\Catalog\CatalogBrands;
+use App\Services\Chat\AssistantQueueHealth;
+use App\Services\Chat\ChatAnswerCache;
+use App\Services\Chat\ChatConversationService;
+use App\Services\Chat\ChatMarkdown;
+use App\Services\Chat\ChatPreviewGate;
+use App\Services\Chat\Contracts\LeadIntake;
+use App\Services\Chat\Contracts\PageContextSource;
+use App\Services\Chat\OperatorPresence;
 use App\Services\Kb\Contracts\KbSource;
 use App\Services\Kb\HtmlKbTextExtractor;
 use App\Services\Kb\KbChunker;
@@ -28,13 +38,17 @@ use App\Services\Kb\KbVectorIndexer;
 use App\Services\Kb\KbVectorStore;
 use App\Services\Kb\Sources\KbArticleKbSource;
 use App\Services\Kb\TiptapTextExtractor;
+use App\Shop\CallbackLeadIntake;
 use App\Shop\CatalogSections;
 use App\Shop\EloquentProductLookup;
 use App\Shop\PageKbSource;
 use App\Shop\SettingsKbSource;
+use App\Shop\ShopPageContext;
 use App\Support\Products\ProductSpecs;
 use App\Support\Search\ProductTextSearch;
+use App\Support\WorkSchedule;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -45,8 +59,8 @@ use Illuminate\Support\ServiceProvider;
  * классов дало бы там другие значения, чем на dev: классическая ошибка,
  * которая проявляется только после деплоя.
  *
- * Классы App\Services\{Ai,Kb} про магазин не знают ничего. Всё знание о нём —
- * название, страницы, настройки — приходит отсюда и из App\Shop.
+ * Классы App\Services\{Ai,Kb,Chat} про магазин не знают ничего. Всё знание
+ * о нём — название, страницы, настройки, заявки — приходит отсюда и из App\Shop.
  */
 class AiSupportServiceProvider extends ServiceProvider
 {
@@ -187,6 +201,12 @@ class AiSupportServiceProvider extends ServiceProvider
             maxTokens: (int) config('ai_support.agent.max_tokens'),
         ));
 
+        $this->app->singleton(AssistantConfig::class, fn (): AssistantConfig => new AssistantConfig(
+            shopName: self::shopName() ?: self::siteHost(),
+        ));
+
+        $this->registerChat();
+
         /*
          * Реестр источников: команды и джоба перебирают его, а не знают
          * про конкретные классы. Добавление источника — одна строка здесь.
@@ -198,6 +218,76 @@ class AiSupportServiceProvider extends ServiceProvider
 
         $this->app->bind('kb.sources', fn (Application $app): array => array_values(
             iterator_to_array($app->tagged('kb.sources'))
+        ));
+    }
+
+    /**
+     * Чат на витрине: разговор, его швы к магазину и то, что решает,
+     * кому и когда он виден.
+     */
+    private function registerChat(): void
+    {
+        $this->app->singleton(ChatConversationService::class, fn (Application $app): ChatConversationService => new ChatConversationService(
+            cookieName: (string) config('ai_support.chat.cookie'),
+            historyMessages: (int) config('ai_support.chat.history_messages'),
+            pendingTtl: (int) config('ai_support.chat.pending_ttl'),
+            typingTtl: (int) config('ai_support.chat.typing_ttl'),
+            redactor: $app->make(PiiRedactor::class),
+        ));
+
+        // Где стоит посетитель и какую цену он видит — знает магазин.
+        $this->app->singleton(PageContextSource::class, ShopPageContext::class);
+
+        // Форма контактов в чате — заявка «перезвоните» из фазы 1.
+        $this->app->singleton(LeadIntake::class, CallbackLeadIntake::class);
+
+        /*
+         * Сотрудник видит виджет и в предпросмотре. Кто сотрудник — решает
+         * тот же список почт, что пускает в админку: ролей в проекте нет.
+         */
+        $this->app->singleton(ChatPreviewGate::class, fn (): ChatPreviewGate => new ChatPreviewGate(
+            previewOnly: (bool) config('ai_support.chat.preview.enabled'),
+            key: (string) config('ai_support.chat.preview.key'),
+            isStaff: static fn (): bool => ($user = Auth::user()) instanceof User && $user->isFilamentAdmin(),
+        ));
+
+        $this->app->singleton(ChatAnswerCache::class, fn (): ChatAnswerCache => new ChatAnswerCache(
+            ttl: (int) config('ai_support.chat.answer_cache_ttl'),
+            // Порог тот же, что у поиска: промах по базе знаний — сырьё
+            // экрана «Пробелы», и кэшировать его нельзя.
+            minScore: (float) config('ai_support.knowledge_base.min_score'),
+        ));
+
+        $this->app->singleton(AssistantQueueHealth::class, fn (): AssistantQueueHealth => new AssistantQueueHealth(
+            connection: 'redis-assistant',
+            queue: 'assistant',
+            backlogLimit: (int) config('ai_support.chat.queue_backlog_limit'),
+            silenceSeconds: (int) config('ai_support.chat.queue_silence'),
+        ));
+
+        /*
+         * Разметка ленты. Свой хост берём из конфига приложения: от него
+         * зависит, останется ли ссылка кликабельной, и на проде значение
+         * обязано быть настоящим — иначе кликабельными не будут даже свои.
+         */
+        $this->app->singleton(ChatMarkdown::class, fn (): ChatMarkdown => new ChatMarkdown(
+            appUrl: (string) config('app.url'),
+            ownHosts: (array) config('ai_support.chat.own_hosts', []),
+        ));
+
+        /*
+         * Расписание менеджеров — режим работы магазина из «Настроек», тот же,
+         * что в шапке и подвале (решение 15.09.2026: один факт — одно место).
+         * Конфиг ассистента — только запасное значение на случай, когда
+         * настройки нет вовсе.
+         */
+        $this->app->singleton(OperatorPresence::class, fn (): OperatorPresence => new OperatorPresence(
+            schedule: is_array(config('company.work_schedule'))
+                ? WorkSchedule::fromConfig()->days
+                : (array) config('ai_support.operators.schedule', []),
+            timezone: (string) config('ai_support.operators.timezone', config('app.timezone')),
+            activityWindowMinutes: (int) config('ai_support.operators.activity_window_minutes'),
+            overrideTtlMinutes: (int) config('ai_support.operators.override_ttl_minutes'),
         ));
     }
 

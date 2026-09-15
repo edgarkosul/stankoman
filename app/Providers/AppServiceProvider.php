@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Filament\Forms\Components\RichEditor\TipTapExtensions\ImageExtension as AppImageExtension;
+use App\Listeners\Chat\AttachConversationToUser;
+use App\Listeners\Chat\ForgetConversationCookie;
 use App\Listeners\CloneCartOnLogout;
 use App\Listeners\SyncCartOnLogin;
 use App\Listeners\SyncFavoritesOnLogin;
@@ -60,6 +62,8 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(Logout::class, CloneCartOnLogout::class);
         Event::listen(Login::class, SyncFavoritesOnLogin::class);
         Event::listen(Logout::class, SyncFavoritesOnLogout::class);
+        Event::listen(Login::class, AttachConversationToUser::class);
+        Event::listen(Logout::class, ForgetConversationCookie::class);
     }
 
     protected function configureDefaults(): void

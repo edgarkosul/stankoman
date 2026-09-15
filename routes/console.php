@@ -60,6 +60,16 @@ Schedule::command('ai:kb-reindex', ['--prune'])
     ->withoutOverlapping(180)
     ->appendOutputTo(storage_path('logs/ai-kb-reindex.log'));
 
+/*
+ * Сроки хранения переписки чата: через 30 дней диалог обезличивается,
+ * через 180 — удаляется насовсем (config/ai_support.php, `chat.retention`).
+ * Расходная книга бота при этом остаётся — в ней нет ни текста, ни адреса.
+ */
+Schedule::command('chat:purge')
+    ->dailyAt('04:15')
+    ->withoutOverlapping(60)
+    ->appendOutputTo(storage_path('logs/chat-purge.log'));
+
 Schedule::command('legacy:kraton-match')
     ->dailyAt('05:20')
     ->withoutOverlapping(180)

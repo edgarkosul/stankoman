@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\GenerateChatReplyJob;
 use App\Jobs\ReindexKbDocumentJob;
 use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
@@ -56,6 +57,22 @@ it('keeps knowledge base reindexing inside the assistant worker timeout', functi
 
     expect($job->connection)->toBe('redis-assistant')
         ->and($job->queue)->toBe('assistant')
+        ->and($job->timeout)->toBeLessThan(assistantWorkerTimeout());
+});
+
+it('gives up on a chat reply before the worker kills it', function (): void {
+    /*
+     * Первое число инварианта. Джоба, убитая воркером сигналом, не успевает
+     * написать посетителю заглушку сама — остаётся надеяться на failed().
+     * Сдавшаяся по своему таймауту получает исключение внутрь handle()
+     * и отвечает «передал менеджеру».
+     */
+    $job = new GenerateChatReplyJob(1, 1);
+
+    expect($job->connection)->toBe('redis-assistant')
+        ->and($job->queue)->toBe('assistant')
+        ->and($job->tries)->toBe(1)
+        ->and($job->timeout)->toBe(200)
         ->and($job->timeout)->toBeLessThan(assistantWorkerTimeout());
 });
 

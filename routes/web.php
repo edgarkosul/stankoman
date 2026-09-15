@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\ChatResumeController;
+use App\Http\Controllers\ChatUnreadController;
 use App\Http\Controllers\LegacyKratonRedirectController;
 use App\Http\Controllers\MailPreviewController;
 use App\Http\Controllers\PageController;
@@ -108,6 +110,55 @@ Route::get('/checkout/success/{date}/{seq}', function (string $date, string $seq
 
 Route::get('/favorites', FavoritesIndex::class)
     ->name('favorites.index');
+
+/*
+ * Свёрнутый чат спрашивает, не ответили ли ему. Опознание — по куке,
+ * в ответе только число непрочитанного. Потолок щедрый: интервал опроса
+ * 20 секунд, то есть три запроса в минуту с вкладки, и упереться в него
+ * можно только специально.
+ *
+ * Сессия маршруту не нужна и снята намеренно: иначе каждый тик писал бы
+ * сессию и переставлял куку в браузере — три раза в минуту ради одного
+ * числа. Куку чата расшифровывает EncryptCookies, а он остаётся.
+ */
+Route::get('/chat/unread', ChatUnreadController::class)
+    ->middleware('throttle:60,1')
+    ->withoutMiddleware([
+        StartSession::class,
+        ShareErrorsFromSession::class,
+        ValidateCsrfToken::class,
+        SubstituteBindings::class,
+    ])
+    ->name('chat.unread');
+
+/*
+ * Возврат в чат по ссылке из письма «менеджер ответил»: переписка
+ * переезжает на другое устройство вместе с новой кукой. Подпись даёт
+ * ссылке срок годности, throttle — защиту от перебора токенов.
+ *
+ * Ниже /chat/unread намеренно: иначе слово «unread» уедет в {token}.
+ */
+Route::get('/chat/{token}', ChatResumeController::class)
+    ->middleware(['signed', 'throttle:20,1'])
+    ->name('chat.resume');
+
+/*
+ * Продление сессии и свежий CSRF-токен одним запросом.
+ *
+ * Страницы магазина держат открытыми часами, а сессия живёт два. Умершая
+ * сессия — это 419 на первое же действие, и Livewire отвечает на него
+ * английским «This page has expired»; с чатом это случалось бы в ответ
+ * на вопрос покупателя. Токен возвращается не для удобства: если сессия
+ * успела умереть, этот запрос заводит НОВУЮ, а с ней и новый токен, и
+ * страница со старым всё равно получила бы 419. Отдавать токен наружу
+ * безопасно: он и так лежит в разметке, а прочитать ответ с чужого origin
+ * браузер не даст.
+ */
+Route::get('/session/keepalive', fn () => response()
+    ->json(['token' => csrf_token()])
+    ->header('Cache-Control', 'no-store, private'))
+    ->middleware('throttle:60,1')
+    ->name('session.keepalive');
 
 Route::prefix('user')->middleware(['auth', EnsureStorefrontCustomer::class])->group(function (): void {
     Route::livewire('/orders', OrdersIndex::class)
