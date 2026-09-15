@@ -76,6 +76,11 @@ final class SettingsKbSource implements KbSource
                 'ОГРНИП' => $company['ogrnip'] ?? null,
                 'Юридический адрес' => $company['legal_addr'] ?? null,
                 'Адрес для корреспонденции' => $company['correspondence_addr'] ?? null,
+                // Та же формулировка, что под ценой на карточке товара. Внутри раздела,
+                // а не своим разделом: одна строка с цифрами становилась отдельным
+                // фрагментом и притягивала посторонние вопросы про числа и деньги —
+                // замер 15.09.2026: «сколько будет 2+2» 0.458, «курс доллара» 0.440.
+                'Ставка НДС' => $vat > 0 ? $vat.'%, цены на сайте указаны с НДС (в том числе)' : null,
             ]),
             'Банковские реквизиты' => $this->fields([
                 'Банк' => $bank['name'] ?? null,
@@ -89,10 +94,6 @@ final class SettingsKbSource implements KbSource
                 'Сайт' => $company['site_url'] ?? null,
             ]),
             'Режим работы' => $this->schedule(WorkSchedule::fromArray($company['work_schedule'] ?? null)),
-            // Та же формулировка, что под ценой на карточке товара.
-            'НДС' => $this->fields([
-                'Ставка НДС' => $vat > 0 ? $vat.'%, цены на сайте указаны с НДС (в том числе)' : null,
-            ]),
         ];
 
         $blocks = [];
