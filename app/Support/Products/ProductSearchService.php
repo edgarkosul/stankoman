@@ -4,6 +4,8 @@ namespace App\Support\Products;
 
 use App\Models\Product;
 use App\Support\Search\LatinQuery;
+use App\Support\Search\ProductTextSearch;
+use App\Support\Search\SearchOutcome;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -22,16 +24,36 @@ class ProductSearchService
 
     public function searchPage(string $query, int $perPage = 24): LengthAwarePaginator
     {
-        $normalizedQuery = $this->normalizeQuery($query);
-        $scoutResults = $this->searchPageWithScout($normalizedQuery, $perPage);
+        return $this->searchPageOutcome($query, $perPage)->result;
+    }
 
-        if ($scoutResults instanceof LengthAwarePaginator && $scoutResults->total() > 0) {
-            return $scoutResults;
+    /**
+     * Страница поиска вместе с тем, как она найдена.
+     *
+     * Если выдача собрана без части слов, странице нужно сказать об этом
+     * покупателю: иначе «электропитбайк white siberia belluga», показавший
+     * электромотоциклы, выглядит ошибкой поиска.
+     *
+     * @return SearchOutcome<LengthAwarePaginator>
+     */
+    public function searchPageOutcome(string $query, int $perPage = 24): SearchOutcome
+    {
+        $normalizedQuery = $this->normalizeQuery($query);
+        $outcome = $this->searchPageWithScout($query, $normalizedQuery, $perPage);
+
+        if ($outcome !== null && $outcome->result->total() > 0) {
+            return $outcome;
         }
 
-        return $this->fallbackQuery($query, $normalizedQuery)
-            ->with('categories')
-            ->paginate($perPage);
+        $unmatched = $outcome === null ? [] : $outcome->unmatched;
+
+        return new SearchOutcome(
+            $this->fallbackQuery($query, $normalizedQuery, $unmatched)
+                ->with('categories')
+                ->paginate($perPage),
+            $normalizedQuery,
+            $unmatched,
+        );
     }
 
     /**
@@ -40,60 +62,79 @@ class ProductSearchService
     public function suggestions(string $query, int $limit = 8): Collection
     {
         $normalizedQuery = $this->normalizeQuery($query);
-        $scoutResults = $this->searchSuggestionsWithScout($normalizedQuery, $limit);
+        $outcome = $this->searchSuggestionsWithScout($query, $normalizedQuery, $limit);
 
-        if ($scoutResults->isNotEmpty()) {
-            return $scoutResults;
+        if ($outcome !== null && $outcome->result->isNotEmpty()) {
+            return $outcome->result;
         }
 
-        return $this->fallbackQuery($query, $normalizedQuery)
+        return $this->fallbackQuery($query, $normalizedQuery, $outcome === null ? [] : $outcome->unmatched)
             ->limit($limit)
             ->get();
     }
 
-    private function searchPageWithScout(string $query, int $perPage): ?LengthAwarePaginator
+    /**
+     * @return SearchOutcome<LengthAwarePaginator>|null
+     */
+    private function searchPageWithScout(string $query, string $normalizedQuery, int $perPage): ?SearchOutcome
     {
-        if ($query === '') {
+        if ($normalizedQuery === '') {
             return null;
         }
 
         try {
-            return Product::search($query)
-                ->query(
-                    fn (Builder $builder): Builder => $builder
-                        ->with('categories')
-                        ->where('is_active', true)
-                )
-                ->paginate($perPage);
+            return app(ProductTextSearch::class)->run(
+                $query,
+                fn ($search): LengthAwarePaginator => $search
+                    ->query(
+                        fn (Builder $builder): Builder => $builder
+                            ->with('categories')
+                            ->where('is_active', true)
+                    )
+                    ->paginate($perPage),
+            );
         } catch (Throwable) {
             return null;
         }
     }
 
     /**
-     * @return Collection<int, Product>
+     * @return SearchOutcome<Collection<int, Product>>|null
      */
-    private function searchSuggestionsWithScout(string $query, int $limit): Collection
+    private function searchSuggestionsWithScout(string $query, string $normalizedQuery, int $limit): ?SearchOutcome
     {
-        if ($query === '') {
-            return collect();
+        if ($normalizedQuery === '') {
+            return null;
         }
 
         try {
-            return Product::search($query)
-                ->query(
-                    fn (Builder $builder): Builder => $builder->where('is_active', true)
-                )
-                ->take($limit)
-                ->get();
+            return app(ProductTextSearch::class)->run(
+                $query,
+                fn ($search): Collection => $search
+                    ->query(
+                        fn (Builder $builder): Builder => $builder->where('is_active', true)
+                    )
+                    ->take($limit)
+                    ->get(),
+            );
         } catch (Throwable) {
-            return collect();
+            return null;
         }
     }
 
-    private function fallbackQuery(string $query, string $normalizedQuery): Builder
+    /**
+     * @param  list<string>  $unmatched  слова, по которым индекс не нашёл ни одного товара
+     */
+    private function fallbackQuery(string $query, string $normalizedQuery, array $unmatched = []): Builder
     {
+        /*
+         * Слова, которых нет в индексе, ищем ещё и ВНУТРИ слов названия.
+         * Meilisearch середину слова не ищет: «трицикл двухместный» не находил
+         * ни одного «Электротрицикла», хотя их пять. Короткие слова не берём —
+         * «гбо» или «шм» внутри чужих слов найдутся где угодно.
+         */
         $terms = collect([$query, $normalizedQuery])
+            ->merge(array_filter($unmatched, static fn (string $word): bool => preg_match_all('/\p{L}/u', $word) >= 5))
             ->map(fn (string $term): string => trim((string) preg_replace('/\s+/u', ' ', $term)))
             ->filter()
             ->unique()
