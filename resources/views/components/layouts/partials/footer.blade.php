@@ -22,8 +22,15 @@
             @if (filled($companySiteHost))
                 <a href="{{ $companySiteUrl }}" class="text-sm underline-offset-4 hover:underline">{{ $companySiteHost }}</a>
             @endif
-            <span>ПН - Пт: 9:00 - 18:00
-                Сб-Вс: выходной</span>
+            @php($workSchedule = App\Support\WorkSchedule::fromConfig())
+            <div class="flex flex-col gap-1">
+                @foreach ($workSchedule->lines() as $line)
+                    <span>{{ $line }}</span>
+                @endforeach
+                @if (filled($workSchedule->note))
+                    <span class="text-sm text-zinc-300">{{ $workSchedule->note }}</span>
+                @endif
+            </div>
         </div>
 
         <div class="lg:justify-self-center">

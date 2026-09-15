@@ -43,6 +43,14 @@
                 </div>
             @endif
 
+            @if (! empty($bank))
+                <div class="grid gap-0.5 text-xs text-zinc-600">
+                    @foreach ($bank as $label => $value)
+                        <span>{{ $label }}: {{ $value }}</span>
+                    @endforeach
+                </div>
+            @endif
+
             @if ($email || $phone)
                 <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
                     @if ($email)

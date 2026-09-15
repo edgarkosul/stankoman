@@ -113,6 +113,18 @@ it('собирает в абзацы текст без обёртки и не п
     expect($result)->toBe("Текст жирный\n\nАбзац\n\nхвост");
 });
 
+it('не дублирует боту реквизиты и режим работы из блоков настроек', function () use ($extract): void {
+    // Эти блоки рисуют значения настроек, а их бот уже знает из SettingsKbSource:
+    // вторая копия тех же фактов в выдаче только конкурировала бы с первой.
+    $result = $extract(
+        '<p>Наш адрес: Краснодар</p>'
+        .'<div data-type="customBlock" data-config="{&quot;show_bank&quot;:true}" data-id="seller-requisites"></div>'
+        .'<div data-type="customBlock" data-config="null" data-id="work-schedule"></div>'
+    );
+
+    expect($result)->toBe('Наш адрес: Краснодар');
+});
+
 it('не выдаёт жирный абзац за заголовок', function () use ($extract): void {
     // «Доставка и оплата» размечена так вместо <h2>. Угадывать заголовки
     // по оформлению не берёмся: «ИП Кодаченко» жирным тоже стал бы разделом.

@@ -3,7 +3,9 @@
 namespace App\Filament\Resources\Settings\Tables;
 
 use App\Enums\SettingType;
+use App\Filament\Resources\Settings\Schemas\SettingForm;
 use App\Models\Setting;
+use App\Support\WorkSchedule;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -18,6 +20,7 @@ class SettingsTable
         'mail.from.address',
         'company.public_email',
         'company.phone',
+        'company.work_schedule',
         'company.site_url',
         'company.site_host',
         'company.brand_line',
@@ -47,9 +50,12 @@ class SettingsTable
 
                 TextColumn::make('value')
                     ->label('Значение')
-                    ->formatStateUsing(fn (?string $state, Setting $record): string => $record->type === SettingType::Bool
-                        ? ($record->getValueForConfig() ? 'Включено' : 'Выключено')
-                        : (string) $state)
+                    ->formatStateUsing(fn (?string $state, Setting $record): string => match (true) {
+                        $record->type === SettingType::Bool => $record->getValueForConfig() ? 'Включено' : 'Выключено',
+                        // JSON расписания админу ни о чём не говорит — показываем, как на сайте.
+                        $record->key === SettingForm::WORK_SCHEDULE_KEY => WorkSchedule::fromArray($record->getValueForConfig())->summary(),
+                        default => (string) $state,
+                    })
                     ->limit(60)
                     ->tooltip(fn (Setting $record): string => (string) $record->value),
             ])

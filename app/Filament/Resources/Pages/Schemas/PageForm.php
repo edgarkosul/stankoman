@@ -11,6 +11,7 @@ use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RawHtmlBloc
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\RutubeVideoBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\SellerRequisitesBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\VkVideoBlock;
+use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\WorkScheduleBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YandexMapBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\YoutubeVideoBlock;
 use Filament\Actions\Action;
@@ -95,6 +96,7 @@ class PageForm
                         ImageGalleryBlock::class,
                         PdfLinkBlock::class,
                         SellerRequisitesBlock::class,
+                        WorkScheduleBlock::class,
                         RutubeVideoBlock::class,
                         YoutubeVideoBlock::class,
                         VkVideoBlock::class,

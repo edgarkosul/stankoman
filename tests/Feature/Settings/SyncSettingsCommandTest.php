@@ -5,12 +5,18 @@ use App\Models\Setting;
 use App\Providers\SettingsServiceProvider;
 
 it('syncs settings from config into database', function (): void {
-    // Миграции заводят ровно одну строку — переключатель кнопки звонка:
-    // хук деплоя settings:sync не зовёт, и без миграции его не было бы в админке.
-    expect(Setting::query()->pluck('key')->all())->toBe(['product.show_callback_button']);
+    // Миграции заводят ровно две строки — переключатель кнопки звонка и режим работы:
+    // хук деплоя settings:sync не зовёт, и без миграций их не было бы в админке.
+    expect(Setting::query()->orderBy('key')->pluck('key')->all())
+        ->toBe(['company.work_schedule', 'product.show_callback_button']);
 
     $this->artisan('settings:sync')
         ->assertSuccessful();
+
+    // Режим работы — вложенный массив, и синхронизация разложила бы его по отдельным
+    // ключам вида company.work_schedule.days.1. Поэтому в config/settings.php его нет.
+    expect(Setting::query()->where('key', 'like', 'company.work_schedule.%')->exists())->toBeFalse()
+        ->and(Setting::query()->where('key', 'company.work_schedule')->sole()->type)->toBe(SettingType::Json);
 
     $callbackButtonSetting = Setting::query()->where('key', 'product.show_callback_button')->sole();
 
