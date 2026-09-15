@@ -17,6 +17,17 @@
             <directory>app</directory>
         </include>
     </source>
+    <!--
+        Тесты на настоящем шлюзе ИИ — только по явной команде (php artisan test
+        с опцией group=live, точная команда в CLAUDE.md). Они ходят в сеть
+        и стоят копейки, в обычный прогон им незачем. В комментариях XML
+        двойной дефис запрещён — поэтому команда здесь не написана целиком.
+    -->
+    <groups>
+        <exclude>
+            <group>live</group>
+        </exclude>
+    </groups>
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
@@ -37,14 +48,11 @@
         -->
         <env name="SCOUT_DRIVER" value="collection"/>
         <!--
-            ИИ-ассистент в тестах — только заглушка без сети. .env читается
-            и в тестах, а в нём живой ключ шлюза, общий с turbo и с боем:
-            тест, дошедший до настоящего клиента, тратил бы чужие деньги
-            молча. Пустой ключ — вторая стена: без заглушки клиент падает,
-            а не платит.
+            ИИ-ассистент в обычном прогоне — заглушка без сети: вектор из хэша
+            одинаков от запуска к запуску, и тест на близости не мигает, а набор
+            не ждёт шлюз по пятнадцать секунд. Настоящий шлюз — группа live.
         -->
         <env name="AI_EMBEDDING_FAKE" value="true"/>
-        <env name="AI_GATEWAY_KEY" value=""/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

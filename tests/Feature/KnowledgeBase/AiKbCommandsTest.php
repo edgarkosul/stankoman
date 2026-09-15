@@ -4,10 +4,18 @@ use App\Models\Page;
 use App\Shop\PageKbSource;
 use App\Shop\SettingsKbSource;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 
 beforeEach(function (): void {
     Queue::fake();
+
+    // Ключ шлюза из .env виден и тестам, а доктор спрашивает у шлюза его настройки.
+    // В обычном прогоне в сеть не ходим — отвечаем за шлюз сами.
+    Http::preventStrayRequests();
+    Http::fake([
+        '*/aitunnel/key' => Http::response(['name' => 'test', 'budget' => null, 'pii' => ['mode' => 'mask', 'types' => null]]),
+    ]);
 
     Page::factory()->create([
         'slug' => 'dostavka-i-oplata',
