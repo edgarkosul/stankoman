@@ -7,13 +7,16 @@ use App\Models\Product;
 use App\Services\Ai\Contracts\ProductLookup;
 use App\Services\Ai\Data\CatalogSection;
 use App\Services\Ai\Data\ProductCard;
+use App\Services\Ai\Data\ProductMatches;
 use App\Services\Ai\Data\ProductQuery;
 use App\Services\Ai\Support\ProductTextExtractor;
 use App\Services\Catalog\CatalogQueryShape;
 use App\Support\Products\DiscountVisibility;
 use App\Support\Products\ProductSpecs;
-use App\Support\Search\LatinQuery;
+use App\Support\Search\ProductTextSearch;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Laravel\Scout\Builder as ScoutBuilder;
 use Throwable;
 
 /**
@@ -38,6 +41,8 @@ final class EloquentProductLookup implements ProductLookup
     private const BRANDS_CACHE_TTL = 3600;
 
     public function __construct(
+        /** Поиск по словам — общий с витриной, см. search(). */
+        private readonly ProductTextSearch $search,
         private readonly CatalogSections $sections,
         private readonly ProductSpecs $specs,
         private readonly ProductTextExtractor $extractor,
@@ -80,24 +85,37 @@ final class EloquentProductLookup implements ProductLookup
             : $this->card($product, $seesDiscounts, withDescription: true, specsLimit: 0);
     }
 
-    public function search(ProductQuery $query): array
+    public function search(ProductQuery $query): ProductMatches
     {
         $filter = self::filterFor($query);
 
         /*
-         * Словам — латиницей, как и витрине (ProductSearchService). Иначе
-         * «хансман» не находит Hansmann: у kratonshop 07.09.2026 поиск в шапке
-         * показывал семь компрессоров, а бот на тот же запрос отвечал «не нашлось».
+         * Слова ищет ProductTextSearch — та же точка входа, что у шапки сайта
+         * и страницы поиска. В ней три правила, и своей копии ни одного у бота
+         * быть не должно: у донора разошлись ровно две такие копии, и бот
+         * отвечал «не нашлось» на то, что показывал сайт.
+         *
+         *   - латиница: «хансман» иначе не находит Hansmann;
+         *   - написание бренда вместо прочтения: «сталекс» → Stalex;
+         *   - пустой многословный запрос повторяется без слов, которых нет
+         *     в каталоге: «бензогенератор tehnotek» давал 0 при 78 товарах бренда.
+         *
+         * Слова проверяются без фильтров вызывающего — вопрос «есть ли такое
+         * слово в каталоге вообще». Поэтому пустоту от фильтра по типу повтор
+         * без слов не маскирует: её разбирает сам инструмент.
          */
-        $ids = Product::search(LatinQuery::normalize($query->text))
-            ->when($filter !== '', fn ($search) => $search->options(['filter' => $filter]))
-            ->take($query->limit)
-            ->keys()
-            ->map(static fn ($id): int => (int) $id)
-            ->all();
+        $outcome = $this->search->run(
+            $query->text,
+            static fn (ScoutBuilder $search): Collection => $search
+                ->when($filter !== '', static fn (ScoutBuilder $search): ScoutBuilder => $search->options(['filter' => $filter]))
+                ->take($query->limit)
+                ->keys(),
+        );
+
+        $ids = $outcome->result->map(static fn ($id): int => (int) $id)->all();
 
         if ($ids === []) {
-            return [];
+            return new ProductMatches([], $outcome->text, $outcome->unmatched, $outcome->relaxed);
         }
 
         $products = Product::query()
@@ -152,7 +170,7 @@ final class EloquentProductLookup implements ProductLookup
             );
         }
 
-        return $cards;
+        return new ProductMatches($cards, $outcome->text, $outcome->unmatched, $outcome->relaxed);
     }
 
     public function sections(string $query, int $limit): array
@@ -254,7 +272,9 @@ final class EloquentProductLookup implements ProductLookup
         }
 
         try {
-            $ids = Product::search(LatinQuery::normalize($text))->take(10)->keys()->all();
+            // Через ту же точку входа, что и поиск: повтор без незнакомых
+            // слов здесь безопасен — чужое отсеет строгая сверка ниже.
+            $ids = $this->search->keys($text, 10)->all();
         } catch (Throwable) {
             // Поиск недоступен — это не повод отвечать неправдой.
             return null;

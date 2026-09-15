@@ -4,10 +4,10 @@ namespace App\Services\Ai\Tools;
 
 use App\Services\Ai\Contracts\ProductLookup;
 use App\Services\Ai\Data\ProductCard;
+use App\Services\Ai\Data\ProductMatches;
 use App\Services\Ai\Data\ProductQuery;
 use App\Services\Catalog\CatalogBrands;
 use App\Services\Catalog\CatalogQueryShape;
-use App\Support\Search\LatinQuery;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -121,7 +121,7 @@ final class SearchProductsTool implements AssistantTool
             $section = $this->sectionFor($query, $arguments, $context);
             $sectionIds = $this->sectionIds($section, $query);
 
-            $search = fn (array $ids): array => $this->products->search(new ProductQuery(
+            $search = fn (array $ids): ProductMatches => $this->products->search(new ProductQuery(
                 text: $query,
                 seesDiscounts: $context->seesDiscounts,
                 inStockOnly: ($arguments['in_stock'] ?? null) === true,
@@ -132,7 +132,7 @@ final class SearchProductsTool implements AssistantTool
                 limit: self::LIMIT,
             ));
 
-            $cards = $search($sectionIds);
+            $matches = $search($sectionIds);
 
             /*
              * Фильтр по типу не дал ничего — ищем ещё раз без него.
@@ -146,10 +146,10 @@ final class SearchProductsTool implements AssistantTool
              * Что тип не применён, выдача говорит вслух — иначе бот выдаст
              * найденное за технику названного типа.
              */
-            $typeDropped = $cards === [] && $sectionIds !== [];
+            $typeDropped = $matches->cards === [] && $sectionIds !== [];
 
             if ($typeDropped) {
-                $cards = $search([]);
+                $matches = $search([]);
             }
         } catch (Throwable $e) {
             Log::warning('Поиск товаров для ассистента не ответил', ['error' => $e->getMessage()]);
@@ -157,9 +157,10 @@ final class SearchProductsTool implements AssistantTool
             return 'Поиск по каталогу временно недоступен. Предложи связаться с менеджером.';
         }
 
+        $cards = $matches->cards;
+
         if ($cards === []) {
-            return 'В каталоге ничего не нашлось по этому запросу. Не предполагай, что товар '
-                .'есть: уточни название или передай вопрос менеджеру.';
+            return $this->nothingFound($matches);
         }
 
         foreach ($cards as $card) {
@@ -223,13 +224,16 @@ final class SearchProductsTool implements AssistantTool
          * латиницей данных и решил, что поиск подсунул похожее. Подпись
          * описывает данные, а не политику: что искали и почему написание
          * разошлось, — вывод «это тот же бренд» уже следует из неё.
+         *
+         * Текст подписи — тот, что РЕАЛЬНО ушёл в индекс: с написанием бренда
+         * вместо прочтения («сталекс» → stalex), а не буквальная транслитерация.
          */
-        $latin = LatinQuery::normalize($query);
-
-        $script = $latin === $query ? '' : ' (искали в латинской записи «'.$latin
-            .'», потому что бренды в каталоге пишутся латиницей: бренд, написанный'
-            .' в выдаче латиницей, и его кириллическое написание в вопросе —'
-            .' ОДИН И ТОТ ЖЕ бренд, а не замена ему)';
+        $script = preg_match('/\p{Cyrillic}/u', $query) === 1 && $matches->searchedText !== ''
+            ? ' (искали в латинской записи «'.$matches->searchedText
+                .'», потому что бренды в каталоге пишутся латиницей: бренд, написанный'
+                .' в выдаче латиницей, и его кириллическое написание в вопросе —'
+                .' ОДИН И ТОТ ЖЕ бренд, а не замена ему)'
+            : '';
 
         $scope = 'из каталога (это ТОЛЬКО САМЫЕ ПОДХОДЯЩИЕ, а не весь список: '
             .'не говори «в ассортименте всего столько-то» и «есть только одна модель» — '
@@ -241,6 +245,19 @@ final class SearchProductsTool implements AssistantTool
         $note = $outOfStock
             ? ' ВНИМАНИЕ: всего найденного НЕТ В НАЛИЧИИ. Скажи об этом покупателю прямо'
                 .' и предложи поискать то, что есть в наличии (in_stock: true).'
+            : '';
+
+        /*
+         * Выдача собрана без части слов — и модель обязана это знать. Иначе
+         * «электропитбайк white siberia belluga», по которому поиск отдал
+         * электромотоциклы White Siberia, она подаст как точный ответ.
+         * Витрина над такой выдачей пишет «Не нашлось: …»; бот говорит то же.
+         */
+        $relaxed = $matches->relaxed
+            ? ' ВНИМАНИЕ: '.self::quoted($matches->unmatched).' — таких слов нет ни в одном товаре каталога,'
+                .' и выдача собрана БЕЗ НИХ, по остальным словам запроса. Скажи покупателю прямо,'
+                .' что именно '.self::quoted($matches->unmatched).' не нашлось, и не выдавай найденное'
+                .' за то, что он просил.'
             : '';
 
         /*
@@ -257,7 +274,7 @@ final class SearchProductsTool implements AssistantTool
          */
         return 'Найдено '.count($cards).' '.$scope
             .' Имя каждого товара дано готовой ссылкой — переноси его в ответ'
-            .' целиком, вместе со ссылкой: без неё покупателю некуда нажать.'.$note."\n\n"
+            .' целиком, вместе со ссылкой: без неё покупателю некуда нажать.'.$note.$relaxed."\n\n"
             .implode("\n\n", array_map(static fn (ProductCard $card): string => $card->toPromptText(), $cards))
             ."\n\nСЛУЖЕБНОЕ, покупателю не пересказывать и не объяснять: "
             .'характеристики бери ТОЛЬКО из строк «Характеристики с карточки» '
@@ -267,6 +284,32 @@ final class SearchProductsTool implements AssistantTool
             .'вызови get_product по артикулу, в полной карточке все характеристики '
             .'и описание. Совместимость — единственное, чего в данных нет совсем: '
             .'такой вопрос передавай менеджеру.';
+    }
+
+    /**
+     * Пустая выдача — со словами, которых в каталоге нет, если они известны.
+     *
+     * Такое слово чаще всего — вид техники, названный не так, как в каталоге:
+     * «бензогенератор» против «Генератор бензиновый». Сказать это модели —
+     * значит дать ей шанс на второй поиск, а не на «такого у нас нет».
+     */
+    private function nothingFound(ProductMatches $matches): string
+    {
+        $unknown = $matches->unmatched === []
+            ? ''
+            : ' Слов '.self::quoted($matches->unmatched).' нет ни в одном товаре: если это вид'
+                .' техники, назови его так, как пишут в названиях товаров, и поищи ещё раз.';
+
+        return 'В каталоге ничего не нашлось по этому запросу.'.$unknown.' Не предполагай, что товар '
+            .'есть: уточни название или передай вопрос менеджеру.';
+    }
+
+    /**
+     * @param  list<string>  $words
+     */
+    private static function quoted(array $words): string
+    {
+        return implode(', ', array_map(static fn (string $word): string => '«'.$word.'»', $words));
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Services\Ai\Support\ProductTextExtractor;
 use App\Shop\CatalogSections;
 use App\Shop\EloquentProductLookup;
 use App\Support\Products\ProductSpecs;
+use App\Support\Search\ProductTextSearch;
 
 /*
  * Шов «товар и каталог» на живых моделях.
@@ -20,13 +21,17 @@ use App\Support\Products\ProductSpecs;
  *
  * Драйвер поиска в тестах — `collection` (phpunit.xml), поэтому фильтры
  * Meilisearch здесь не работают: строка фильтра проверяется отдельно,
- * без базы.
+ * без базы. Проба слов для повтора запроса у этого драйвера тоже своя —
+ * там, где она нужна, она подменяется.
  */
 
-function assistantLookup(int $specsInList = 8): EloquentProductLookup
+function assistantLookup(int $specsInList = 8, ?ProductTextSearch $search = null): EloquentProductLookup
 {
+    $search ??= new ProductTextSearch;
+
     return new EloquentProductLookup(
-        sections: new CatalogSections,
+        search: $search,
+        sections: new CatalogSections($search),
         specs: new ProductSpecs,
         extractor: new ProductTextExtractor,
         descriptionLimit: 3000,
@@ -57,7 +62,7 @@ function assistantProduct(array $overrides = []): Product
 }
 
 it('гостю называет базовую цену и процент скидки, но не сумму со скидкой', function (): void {
-    $product = assistantProduct();
+    assistantProduct();
 
     $text = assistantLookup()->find('RSE 7.5-8', '', seesDiscounts: false)->toPromptText();
 
@@ -120,7 +125,7 @@ it('в списке выдачи характеристики обрезаны, 
 
     // Пять карточек по 67 строк (наш максимум) утопили бы ответ, поэтому
     // в списке строк меньше. А у get_product спросили про ОДИН товар.
-    $inList = assistantLookup(specsInList: 3)->search(new ProductQuery(text: 'Hansmann', limit: 5));
+    $inList = assistantLookup(specsInList: 3)->search(new ProductQuery(text: 'Hansmann', limit: 5))->cards;
     $single = assistantLookup(specsInList: 3)->find('RSE 7.5-8', '', seesDiscounts: false);
 
     expect($inList[0]->specs)->toHaveCount(3)
@@ -136,8 +141,8 @@ it('в списке описание получает только товар, �
     // На обычном «компрессор» описание привешивалось бы к каждому поиску.
     assistantProduct();
 
-    $byDesignation = assistantLookup()->search(new ProductQuery(text: 'RSE 7.5-8'));
-    $byKind = assistantLookup()->search(new ProductQuery(text: 'компрессор'));
+    $byDesignation = assistantLookup()->search(new ProductQuery(text: 'RSE 7.5-8'))->cards;
+    $byKind = assistantLookup()->search(new ProductQuery(text: 'компрессор'))->cards;
 
     expect($byDesignation[0]->description)->toContain('AISI 304')
         ->and($byKind[0]->description)->toBeNull();
@@ -162,7 +167,55 @@ it('снятый с публикации товар не отдаётся', func
     assistantProduct(['is_active' => false]);
 
     expect(assistantLookup()->find('RSE 7.5-8', '', seesDiscounts: false))->toBeNull()
-        ->and(assistantLookup()->search(new ProductQuery(text: 'Hansmann')))->toBe([]);
+        ->and(assistantLookup()->search(new ProductQuery(text: 'Hansmann'))->cards)->toBe([]);
+});
+
+it('незнакомое слово не обнуляет выдачу, и выдача говорит, без каких слов собрана', function (): void {
+    /*
+     * Живой запрос с прода: «бензогенератор tehnotek» давал 0 при 78 товарах
+     * бренда — Meilisearch выбрасывает слова с конца, а незнакомое стояло
+     * первым. Бот ищет той же точкой входа, что и витрина, и должен знать,
+     * что выдача собрана без слова: иначе подаст её как точный ответ.
+     *
+     * Проба слов подменена: у драйвера collection её нет.
+     */
+    assistantProduct([
+        'name' => 'Генератор Tehnotek T1500',
+        'slug' => 'generator-tehnotek-t1500',
+        'sku' => 'T1500',
+        'brand' => 'Tehnotek',
+    ]);
+
+    $search = new ProductTextSearch(
+        wordHits: static fn (array $words): array => array_map(
+            static fn (string $word): int => $word === 'benzogenerator' ? 0 : 78,
+            $words,
+        ),
+    );
+
+    $matches = assistantLookup(search: $search)->search(new ProductQuery(text: 'бензогенератор tehnotek'));
+
+    expect($matches->cards)->toHaveCount(1)
+        ->and($matches->cards[0]->name)->toBe('Генератор Tehnotek T1500')
+        ->and($matches->relaxed)->toBeTrue()
+        ->and($matches->unmatched)->toBe(['бензогенератор'])
+        ->and($matches->searchedText)->toBe('tehnotek');
+});
+
+it('кириллическое прочтение бренда находит товар так же, как на сайте', function (): void {
+    // «Сталекс» буквальной транслитерацией — staleks, в каталоге — Stalex.
+    assistantProduct([
+        'name' => 'Ленточнопильный станок Stalex BS-712N',
+        'slug' => 'stalex-bs-712n',
+        'sku' => 'BS-712N',
+        'brand' => 'Stalex',
+    ]);
+
+    $matches = assistantLookup()->search(new ProductQuery(text: 'сталекс'));
+
+    expect($matches->cards)->toHaveCount(1)
+        ->and($matches->searchedText)->toBe('stalex')
+        ->and($matches->relaxed)->toBeFalse();
 });
 
 it('отдаёт листовые разделы с числом товаров и ссылкой', function (): void {
@@ -243,7 +296,7 @@ it('бренды каталога отдаёт без мусора', function ()
     sort($brands);
 
     expect($brands)->toBe(['Hansmann', 'Термит']);
-})->skip(fn (): bool => config('cache.default') === 'redis', 'кэш брендов общий с дев-проектами');
+});
 
 it('строит фильтр Meilisearch из запроса', function (): void {
     // Единственное место, где фильтры вообще проверяемы: драйвер поиска

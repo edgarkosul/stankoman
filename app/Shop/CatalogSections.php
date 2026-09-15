@@ -3,8 +3,7 @@
 namespace App\Shop;
 
 use App\Models\Category;
-use App\Models\Product;
-use App\Support\Search\LatinQuery;
+use App\Support\Search\ProductTextSearch;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +32,8 @@ final class CatalogSections
 {
     /** Сколько товаров из поисковой выдачи сворачивать в разделы. */
     private const PRODUCTS_SAMPLE = 60;
+
+    public function __construct(private readonly ProductTextSearch $search) {}
 
     /**
      * Листовые разделы по слову, от самого подходящего к менее.
@@ -136,9 +137,10 @@ final class CatalogSections
         $empty = ['categories' => collect(), 'weights' => []];
 
         try {
-            // Латиницей по той же причине, что и поиск товаров: «хансман»
-            // иначе не найдёт ни одного Hansmann, и разделов тоже не будет.
-            $ids = Product::search(LatinQuery::normalize($query))->take(self::PRODUCTS_SAMPLE)->keys()->all();
+            // Той же точкой входа, что поиск товаров и шапка сайта: иначе
+            // «хансман» или «бензогенератор tehnotek» не находят ни одного
+            // товара, и разделов по ним тоже не будет.
+            $ids = $this->search->keys($query, self::PRODUCTS_SAMPLE)->all();
         } catch (Throwable) {
             // Поиск недоступен — остаётся ветка по названию: половина
             // ответа лучше отказа.

@@ -4,6 +4,7 @@ namespace App\Services\Ai\Contracts;
 
 use App\Services\Ai\Data\CatalogSection;
 use App\Services\Ai\Data\ProductCard;
+use App\Services\Ai\Data\ProductMatches;
 use App\Services\Ai\Data\ProductQuery;
 
 /**
@@ -35,12 +36,11 @@ interface ProductLookup
     public function find(string $sku, string $slug, bool $seesDiscounts): ?ProductCard;
 
     /**
-     * Товары по запросу, в порядке релевантности. Описание есть только
-     * у товара, который покупатель назвал по обозначению.
-     *
-     * @return list<ProductCard>
+     * Товары по запросу, в порядке релевантности, — и то, как они найдены:
+     * без каких слов собрана выдача, если без каких-то пришлось. Описание
+     * есть только у товара, который покупатель назвал по обозначению.
      */
-    public function search(ProductQuery $query): array;
+    public function search(ProductQuery $query): ProductMatches;
 
     /**
      * Листовые разделы каталога по слову покупателя, от самого подходящего.

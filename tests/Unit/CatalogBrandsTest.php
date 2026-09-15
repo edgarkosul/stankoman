@@ -118,6 +118,28 @@ it('на обычном вопросе о технике молчит', function
     }
 });
 
+it('узнаёт бренд по звучанию так же, как его находит поиск', function () use ($catalog, $lookalikes): void {
+    /*
+     * Поиск находит Stalex по «сталекс» (BrandSpelling, 15.09.2026). Справочник,
+     * который бренд здесь не узнал бы, навесил бы на запрос фильтр по типу
+     * и отнял бы у выдачи то, что поиск нашёл. «Сталекс» при этом начинается
+     * с двойника «стал» — проверка по звучанию обязана идти раньше списка.
+     */
+    expect(CatalogBrands::match('ленточнопильный станок сталекс', $catalog, $lookalikes))->toBe('Stalex')
+        ->and(CatalogBrands::match('компрессор кроссэйр', $catalog, $lookalikes))->toBe('CrossAir')
+        ->and(CatalogBrands::match('пылесос вактул', $catalog, $lookalikes))->toBe('Vactool')
+        ->and(CatalogBrands::match('мотокоса эфко', $catalog, $lookalikes))->toBe('EFCO');
+});
+
+it('по звучанию не узнаёт бренд в обычных словах', function () use ($catalog, $lookalikes): void {
+    // Совпадение только точное: допуск на опечатку поверх свёртки вернул бы
+    // ровно те ложные срабатывания, ради которых заведён список двойников.
+    foreach (['резка стали', 'стальной уголок', 'металла 5 мм', 'зерно абразива', 'вакуумный насос'] as $question) {
+        expect(CatalogBrands::match($question, $catalog, $lookalikes))
+            ->toBeNull("«{$question}» не должен считаться брендовым запросом");
+    }
+});
+
 it('известные и принятые потери: бренд, совпавший с обычным словом', function () use ($catalog, $lookalikes): void {
     /*
      * Dali (607 товаров, крупнейший бренд каталога) и START пишутся

@@ -3,6 +3,7 @@
 namespace App\Services\Catalog;
 
 use App\Services\Ai\Contracts\ProductLookup;
+use App\Support\Search\BrandSpelling;
 use App\Support\Search\LatinQuery;
 
 /**
@@ -77,6 +78,12 @@ final class CatalogBrands
      */
     public static function match(string $query, array $brands, array $lookalikes = []): ?string
     {
+        $spoken = self::bySound($query, $brands);
+
+        if ($spoken !== null) {
+            return $spoken;
+        }
+
         $haystack = self::words(self::withoutLookalikes($query, $lookalikes));
 
         if ($haystack === '') {
@@ -186,6 +193,66 @@ final class CatalogBrands
         }
 
         return implode(' ', $kept);
+    }
+
+    /**
+     * Бренд, записанный кириллицей «как слышится»: «сталекс», «кроссэйр», «вактул».
+     *
+     * Правило то же, что у поиска (BrandSpelling::fold), и обязано быть тем же.
+     * Поиск находит Stalex по «сталекс» (fix(search) 15.09.2026), и справочник,
+     * не узнавший здесь бренд, повесил бы на такой запрос фильтр по типу
+     * техники — отняв у выдачи ровно то, что поиск нашёл.
+     *
+     * Совпадение только точное. У свёртки на 1 593 кириллических словах
+     * каталога ноль ложных совпадений, а допуск на опечатку поверх неё вернул
+     * бы «стали» → Stalex. Проверка идёт раньше списка двойников: «сталекс»
+     * начинается с «стал» и иначе был бы выброшен до сравнения.
+     *
+     * Бренды из нескольких слов и свёртки, общие для двух брендов, пропускаются —
+     * так же, как у поиска.
+     *
+     * @param  list<string>  $brands
+     */
+    private static function bySound(string $query, array $brands): ?string
+    {
+        $known = [];
+        $ambiguous = [];
+
+        foreach ($brands as $brand) {
+            $needle = self::words($brand);
+
+            if ($needle === '' || str_contains($needle, ' ')) {
+                continue;
+            }
+
+            $key = BrandSpelling::fold($needle);
+
+            if (strlen($key) < self::MIN_LENGTH) {
+                continue;
+            }
+
+            if (isset($known[$key]) && $known[$key] !== $brand) {
+                $ambiguous[$key] = true;
+            }
+
+            $known[$key] ??= $brand;
+        }
+
+        $known = array_diff_key($known, $ambiguous);
+
+        foreach (explode(' ', self::words($query)) as $token) {
+            if ($token === '') {
+                continue;
+            }
+
+            $key = BrandSpelling::fold($token);
+
+            if (isset($known[$key])) {
+                return $known[$key];
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -33,6 +33,7 @@ use App\Shop\EloquentProductLookup;
 use App\Shop\PageKbSource;
 use App\Shop\SettingsKbSource;
 use App\Support\Products\ProductSpecs;
+use App\Support\Search\ProductTextSearch;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 
@@ -118,6 +119,8 @@ class AiSupportServiceProvider extends ServiceProvider
          * а список брендов она кэширует у себя.
          */
         $this->app->singleton(ProductLookup::class, fn (Application $app): ProductLookup => new EloquentProductLookup(
+            // Та же точка входа, что у шапки сайта: слова бот и витрина ищут одинаково.
+            search: $app->make(ProductTextSearch::class),
             sections: $app->make(CatalogSections::class),
             specs: $app->make(ProductSpecs::class),
             extractor: $app->make(ProductTextExtractor::class),
