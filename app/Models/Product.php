@@ -993,18 +993,7 @@ class Product extends Model
         $unitSuffix = $displayUnit?->symbol ? (' '.$displayUnit->symbol) : '';
 
         // Форматтер числа с учётом категории
-        $fmt = function (float $ui) use ($attribute, $category): string {
-            $dec = $attribute->filterNumberDecimalsForCategory($category);
-            $uiQ = $attribute->quantizeForCategory($ui, $category);
-
-            $str = number_format($uiQ, $dec, '.', '');
-
-            if ($dec > 0 && str_contains($str, '.')) {
-                $str = rtrim(rtrim($str, '0'), '.');
-            }
-
-            return $str === '' ? '0' : $str;
-        };
+        $fmt = fn (float $ui): string => $attribute->formatNumberForCategory($ui, $category);
 
         // === select / multiselect ===
         if ($attribute->usesOptions()) {

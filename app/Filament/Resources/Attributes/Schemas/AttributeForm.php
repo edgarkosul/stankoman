@@ -13,6 +13,7 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class AttributeForm
@@ -292,12 +293,44 @@ HTML)
                     ->minValue(0)
                     ->maxValue(6)
                     ->label('Знаков после запятой')
+                    ->rule(fn (?Attribute $record): Closure => function (string $attribute, mixed $value, Closure $fail) use ($record): void {
+                        if (! $record?->exists) {
+                            return;
+                        }
+
+                        $decimals = filled($value) ? (int) $value : Attribute::DEFAULT_NUMBER_DECIMALS;
+
+                        // Категории без своих знаков, но со своим шагом ползунка,
+                        // берут знаки отсюда — уменьшение не должно сломать их поля «от/до».
+                        $conflicts = DB::table('category_attribute as ca')
+                            ->join('categories as c', 'c.id', '=', 'ca.category_id')
+                            ->where('ca.attribute_id', $record->getKey())
+                            ->whereNull('ca.number_decimals')
+                            ->whereNotNull('ca.number_step')
+                            ->get(['c.name', 'ca.number_step'])
+                            ->filter(fn (object $row): bool => Attribute::stepDecimals($row->number_step) > $decimals);
+
+                        if ($conflicts->isNotEmpty()) {
+                            $fail('Эти знаки берут категории со своим шагом ползунка, которому их мало: '
+                                .$conflicts->map(fn (object $row): string => "«{$row->name}» (шаг ".(float) $row->number_step.')')->implode(', ')
+                                .'. Задайте этим категориям свои знаки после запятой или увеличьте их здесь.');
+                        }
+                    })
                     ->visible(fn (Get $get) => in_array($get('data_type'), ['number', 'range'], true)),
 
                 TextInput::make('number_step')
                     ->numeric()
-                    ->label('Шаг значений')
-                    ->helperText('Напр. 1, 0.1, 0.01')
+                    ->label('Шаг ползунка фильтра')
+                    ->helperText('Напр. 1, 0.5, 0.1. Только для ползунка на витрине — на значения товаров и их показ не влияет. Если пусто — по знакам после запятой.')
+                    ->rule(fn (Get $get): Closure => function (string $attribute, mixed $value, Closure $fail) use ($get): void {
+                        $decimals = filled($get('number_decimals'))
+                            ? (int) $get('number_decimals')
+                            : Attribute::DEFAULT_NUMBER_DECIMALS;
+
+                        if ($error = Attribute::stepPrecisionError($value, $decimals)) {
+                            $fail($error);
+                        }
+                    })
                     ->visible(fn (Get $get) => in_array($get('data_type'), ['number', 'range'], true)),
 
                 Select::make('number_rounding')
