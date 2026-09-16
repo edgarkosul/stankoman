@@ -27,6 +27,7 @@ test('help center routes match real admin routes and only omit explicitly unsupp
 
     $unsupportedRouteNames = collect([
         // Страницы без статьи в справочном центре.
+        'filament.admin.pages.bot-questions',
         'filament.admin.pages.pricing-survey',
         'filament.admin.pages.site-exports',
     ])->sort()->values();
