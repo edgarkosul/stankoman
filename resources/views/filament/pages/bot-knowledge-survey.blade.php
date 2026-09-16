@@ -564,7 +564,7 @@
                         <template x-if="q.kraton">
                             <div class="bq-kraton">
                                 <span>KratonShop</span>
-                                <b>Для KratonShop вы ответили так. Здесь так же?</b>
+                                <b>Так отвечает KratonShop, где такой помощник уже работает. У вас так же?</b>
                                 <span x-text="q.kraton"></span>
                             </div>
                         </template>
