@@ -18,6 +18,16 @@ final readonly class ProductQuery
     public function __construct(
         public string $text,
         public bool $seesDiscounts = false,
+        /**
+         * Покупатель назвал ОБОЗНАЧЕНИЕ: артикул, модель или бренд.
+         *
+         * Решает это тот, кто знает справочник брендов (SearchProductsTool
+         * с CatalogBrands), а не поиск: иначе каталог спрашивал бы бренды
+         * у самого себя по кругу. Смысловому поиску признак нужен, чтобы
+         * срезать долю вектора, — выдуманное слово смысла не несёт, и вектор
+         * на нём чистый шум (CatalogSemanticIndex::ratioFor).
+         */
+        public bool $designation = false,
         public bool $inStockOnly = false,
         public ?int $priceMin = null,
         public ?int $priceMax = null,

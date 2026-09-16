@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Providers\AiSupportServiceProvider;
 use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Contracts\LlmClient;
+use App\Services\Catalog\CatalogSemanticIndex;
 use App\Services\Chat\Contracts\EscalationTarget;
 use App\Services\Kb\Contracts\KbSource;
 use App\Services\Notifications\Contracts\EscalationNotifier;
@@ -39,6 +40,9 @@ class AiKbDoctor extends Command
 
         $this->section('База знаний');
         $this->knowledgeBase($llm);
+
+        $this->section('Смысловой поиск');
+        $this->semanticSearch($llm);
 
         $this->section('Очередь');
         $this->queue();
@@ -280,6 +284,73 @@ class AiKbDoctor extends Command
         }
 
         return true;
+    }
+
+    /**
+     * Зеркало каталога: собрано ли, тем ли, и не устарело ли.
+     *
+     * Проверяется здесь, а не глазами в Meilisearch, потому что все три
+     * поломки зеркала МОЛЧАЛИВЫ: без эмбеддера гибрид отвечает ошибкой
+     * на каждый запрос, с векторами другой модели — находит не то, а отставший
+     * счётчик документов значит, что часть каталога боту просто не видна.
+     * Ни одна из них не видна ни в логе, ни в ответе бота.
+     */
+    private function semanticSearch(LlmClient $llm): void
+    {
+        $index = app(CatalogSemanticIndex::class);
+
+        $active = (int) DB::table('products')->where('is_active', true)->count();
+        $documents = $index->count();
+
+        $rows = DB::table('product_embeddings')
+            ->selectRaw('count(*) as total, group_concat(distinct model) as models,
+                         min(dimensions) as min_dim, max(dimensions) as max_dim')
+            ->first();
+
+        $embedded = (int) ($rows->total ?? 0);
+
+        if ($embedded === 0) {
+            /*
+             * Предупреждение, а не ошибка: до первого прогона команды бот ищет
+             * товары по словам и покупателю отвечает. Красная строка здесь
+             * означала бы «ассистент не готов», что неправда.
+             */
+            $this->warn('  ! Векторов каталога нет — поиск идёт по словам, без смысла.');
+            $this->skip('  Собрать зеркало: php artisan ai:catalog-embed');
+
+            return;
+        }
+
+        $this->ok(sprintf('Зеркало «%s»: %d документов, векторов посчитано %d, активных товаров %d',
+            $index->name(), $documents, $embedded, $active));
+
+        // Разошлись — значит часть каталога боту не видна вовсе: либо ночной
+        // прогон не доходил, либо документы не доехали до индекса.
+        if (abs($documents - $active) > max(10, (int) ($active * 0.02))) {
+            $this->bad(sprintf('  Зеркало разошлось с каталогом на %d товаров — нужен прогон ai:catalog-embed.',
+                abs($documents - $active)));
+        }
+
+        $this->check(
+            $index->embedderDeclared(),
+            'Эмбеддер объявлен — гибридный поиск включён',
+            'Эмбеддер в зеркале НЕ объявлен: поиск по смыслу не работает, хотя векторы есть. '
+                .'Лечится прогоном ai:catalog-embed.',
+        );
+
+        $models = array_filter(explode(',', (string) ($rows->models ?? '')));
+
+        if (count($models) > 1) {
+            $this->bad('  Векторы от разных моделей: '.implode(', ', $models).'. Нужен ai:catalog-embed --force.');
+        } elseif ($models !== [] && $models[0] !== $llm->embeddingModel()) {
+            $this->bad(sprintf('  Векторы посчитаны моделью %s, а в конфиге %s. Нужен ai:catalog-embed --force.',
+                $models[0], $llm->embeddingModel()));
+        }
+
+        if ((int) ($rows->min_dim ?? 0) !== $llm->embeddingDimensions()) {
+            $this->bad(sprintf('  Размерность векторов %d, в конфиге %d. Нужен ai:catalog-embed --force.',
+                (int) ($rows->min_dim ?? 0), $llm->embeddingDimensions()));
+        }
     }
 
     private function queue(): void

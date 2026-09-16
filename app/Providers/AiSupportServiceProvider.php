@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\Product;
 use App\Models\User;
 use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Contracts\LlmClient;
@@ -24,6 +25,8 @@ use App\Services\Ai\Tools\SearchKnowledgeBaseTool;
 use App\Services\Ai\Tools\SearchProductsTool;
 use App\Services\Captcha\CaptchaManager;
 use App\Services\Catalog\CatalogBrands;
+use App\Services\Catalog\CatalogSemanticIndex;
+use App\Services\Catalog\CatalogSemanticSearch;
 use App\Services\Chat\AssistantQueueHealth;
 use App\Services\Chat\ChatAbuseGuard;
 use App\Services\Chat\ChatAnswerCache;
@@ -51,6 +54,7 @@ use App\Shop\CallbackLeadIntake;
 use App\Shop\CatalogSections;
 use App\Shop\EloquentProductLookup;
 use App\Shop\PageKbSource;
+use App\Shop\ProductEmbeddingText;
 use App\Shop\SettingsEscalationTarget;
 use App\Shop\SettingsKbSource;
 use App\Shop\ShopPageContext;
@@ -60,6 +64,7 @@ use App\Support\WorkSchedule;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
+use Meilisearch\Client as MeilisearchClient;
 
 /**
  * Сборка ИИ-ассистента.
@@ -174,6 +179,45 @@ class AiSupportServiceProvider extends ServiceProvider
             specsInList: (int) config('ai_support.agent.product_specs_in_list'),
             // Та же ставка, что стоит под ценой на карточке товара.
             vatRate: (int) config('settings.product.stavka_nds'),
+            /*
+             * Смысл поверх слов. Пока зеркало не собрано — его нет, и поиск
+             * идёт по словам: это рабочий режим до первого ai:catalog-embed,
+             * а не поломка.
+             */
+            semantic: $app->make(CatalogSemanticSearch::class),
+        ));
+
+        /*
+         * Зеркало каталога со смыслом (фаза 8). ОТДЕЛЬНЫЙ индекс, а не рабочий:
+         * причина — в шапке CatalogSemanticIndex, и она про выручку витрины,
+         * а не про чистоту.
+         *
+         * Настройки поиска по словам зеркало берёт у витрины (config/scout.php),
+         * своей копии не заводит: расхождение здесь читалось бы покупателем
+         * как «сайт и бот отвечают по-разному на один запрос».
+         */
+        $this->app->singleton(CatalogSemanticIndex::class, fn (Application $app): CatalogSemanticIndex => new CatalogSemanticIndex(
+            client: $app->make(MeilisearchClient::class),
+            indexName: (string) config('ai_support.catalog_search.index'),
+            embedder: (string) config('ai_support.catalog_search.embedder'),
+            dimensions: (int) config('ai_support.embedding.dimensions'),
+            semanticRatio: (float) config('ai_support.catalog_search.semantic_ratio'),
+            modelSemanticRatio: (float) config('ai_support.catalog_search.semantic_ratio_model'),
+            settings: (array) config('scout.meilisearch.index-settings.'.Product::class, []),
+        ));
+
+        $this->app->singleton(CatalogSemanticSearch::class, fn (Application $app): CatalogSemanticSearch => new CatalogSemanticSearch(
+            index: $app->make(CatalogSemanticIndex::class),
+            llm: fn (): LlmClient => $app->make(LlmClient::class),
+            // Вектор запроса считает шлюз, значит из текста уходят телефон
+            // и почта — ровно тем же правилом, что и у базы знаний.
+            redactor: $app->make(PiiRedactor::class),
+        ));
+
+        $this->app->singleton(ProductEmbeddingText::class, fn (Application $app): ProductEmbeddingText => new ProductEmbeddingText(
+            extractor: $app->make(ProductTextExtractor::class),
+            specs: $app->make(ProductSpecs::class),
+            limit: (int) config('ai_support.catalog_search.text_limit'),
         ));
 
         $this->app->singleton(CatalogBrands::class, fn (Application $app): CatalogBrands => new CatalogBrands(

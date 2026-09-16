@@ -11,6 +11,7 @@ use App\Services\Ai\Data\ProductMatches;
 use App\Services\Ai\Data\ProductQuery;
 use App\Services\Ai\Support\ProductTextExtractor;
 use App\Services\Catalog\CatalogQueryShape;
+use App\Services\Catalog\CatalogSemanticSearch;
 use App\Support\Products\DiscountVisibility;
 use App\Support\Products\ProductSpecs;
 use App\Support\Search\ProductTextSearch;
@@ -52,6 +53,14 @@ final class EloquentProductLookup implements ProductLookup
         private readonly int $specsInList,
         /** Ставка НДС из настроек — та же, что стоит под ценой на карточке. */
         private readonly int $vatRate,
+        /**
+         * Поиск по смыслу — зеркало `products_semantic` (фаза 8).
+         *
+         * Необязателен намеренно: до первого прогона `ai:catalog-embed`,
+         * в тестах и при сломанном зеркале бот ищет по словам. Это хуже
+         * подбирает, но не отказывает покупателю.
+         */
+        private readonly ?CatalogSemanticSearch $semantic = null,
     ) {}
 
     public function find(string $sku, string $slug, bool $seesDiscounts): ?ProductCard
@@ -90,6 +99,15 @@ final class EloquentProductLookup implements ProductLookup
         $filter = self::filterFor($query);
 
         /*
+         * Вектор считаем ДО поиска и по оригинальной формулировке покупателя:
+         * смысл живёт в словах, а не в их записи, и «компрессор для гаража»
+         * эмбеддер понимает, а «kompressor dlya garazha» — нет. Пустой вектор
+         * значит «искать по смыслу нечем», и дальше всё идёт как раньше.
+         */
+        $vector = $this->semantic?->vectorFor($query->text) ?? [];
+        $semantic = false;
+
+        /*
          * Слова ищет ProductTextSearch — та же точка входа, что у шапки сайта
          * и страницы поиска. В ней три правила, и своей копии ни одного у бота
          * быть не должно: у донора разошлись ровно две такие копии, и бот
@@ -106,16 +124,46 @@ final class EloquentProductLookup implements ProductLookup
          */
         $outcome = $this->search->run(
             $query->text,
-            static fn (ScoutBuilder $search): Collection => $search
-                ->when($filter !== '', static fn (ScoutBuilder $search): ScoutBuilder => $search->options(['filter' => $filter]))
-                ->take($query->limit)
-                ->keys(),
+            function (ScoutBuilder $search) use ($query, $filter, $vector, &$semantic): Collection {
+                /*
+                 * Зеркало держит и слова, и вектор, поэтому «BSM-115» находится
+                 * точным совпадением, «для гаража» — по смыслу, и оба в одном
+                 * запросе вместе с фильтрами. Слова отдаём ровно те, что ушли бы
+                 * в витринный индекс: их уже нормализовал ProductTextSearch.
+                 */
+                $keys = $vector === [] ? null : $this->semantic?->keys(
+                    (string) $search->query,
+                    $vector,
+                    $filter,
+                    $query->limit,
+                    $query->designation,
+                );
+
+                if ($keys !== null) {
+                    $semantic = true;
+
+                    return collect($keys);
+                }
+
+                return $search
+                    ->when($filter !== '', static fn (ScoutBuilder $search): ScoutBuilder => $search->options(['filter' => $filter]))
+                    ->take($query->limit)
+                    ->keys();
+            },
+            /*
+             * При гибриде выдача почти никогда не пуста — вектор всегда назовёт
+             * ближайших соседей, — поэтому слова проверяются отдельной пробой.
+             * Иначе бот молча выдал бы за ответ товары, подобранные по смыслу
+             * выдуманного слова: шумовой пол вектора (0.75–0.78) выше цены
+             * точного попадания с опечаткой.
+             */
+            probeAlways: $vector !== [],
         );
 
         $ids = $outcome->result->map(static fn ($id): int => (int) $id)->all();
 
         if ($ids === []) {
-            return new ProductMatches([], $outcome->text, $outcome->unmatched, $outcome->relaxed);
+            return new ProductMatches([], $outcome->text, $outcome->unmatched, $outcome->relaxed, $semantic);
         }
 
         $products = Product::query()
@@ -170,7 +218,7 @@ final class EloquentProductLookup implements ProductLookup
             );
         }
 
-        return new ProductMatches($cards, $outcome->text, $outcome->unmatched, $outcome->relaxed);
+        return new ProductMatches($cards, $outcome->text, $outcome->unmatched, $outcome->relaxed, $semantic);
     }
 
     public function sections(string $query, int $limit): array

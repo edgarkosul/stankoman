@@ -19,11 +19,16 @@ final readonly class ProductMatches
      *                                с написанием бренда вместо прочтения, без выброшенных слов
      * @param  list<string>  $unmatched  слова покупателя, по которым в каталоге нет ни одного товара
      * @param  bool  $relaxed  выдача собрана повтором без слов из `$unmatched`
+     * @param  bool  $semantic  выдача собрана гибридным поиском: слова плюс смысл.
+     *                          Тогда `$unmatched` бывает непустым и БЕЗ повтора —
+     *                          слов в каталоге нет, а товары нашлись по смыслу
+     *                          запроса, и выдавать их за точное попадание нельзя
      */
     public function __construct(
         public array $cards,
         public string $searchedText,
         public array $unmatched = [],
         public bool $relaxed = false,
+        public bool $semantic = false,
     ) {}
 }
