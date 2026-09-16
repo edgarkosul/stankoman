@@ -39,8 +39,8 @@ use Throwable;
  * впереди в очереди.
  *
  * Кто такой сотрудник и как его зовут, джоба спрашивает у шва
- * `EscalationTarget`: в intertooler это список почт из настроек, во втором
- * магазине заказчика правило может быть другим.
+ * `EscalationTarget`: в intertooler это список почт из настроек, в kratonshop
+ * правило может быть другим.
  */
 class NotifyManagersAboutEscalationJob implements ShouldQueue
 {
