@@ -80,11 +80,6 @@ yarn-error.log*
 /_ide_helper_facades.php
 /.phpstorm.meta.php
 /.vscode/
-public/sitemap-static.xml
-public/sitemap.xml
-public/sitemap-categories.xml
-public/sitemap-products-*.xml
-public/robots.txt
 /changes.diff
 AGENTS.md
 boost.json

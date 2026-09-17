@@ -8,9 +8,23 @@ use App\Models\Product;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 
+/**
+ * Карта сайта лежит в storage, а не в public/, и отдаётся маршрутом.
+ *
+ * Релиз на бою собирается из `git archive` в новую папку, и сгенерированное
+ * в public/ предыдущего релиза туда не попадает: после каждого деплоя и до
+ * ночной генерации sitemap и robots.txt отдавали 404, Яндекс Вебмастер
+ * регулярно слал «робот не смог получить доступ к robots.txt». storage же
+ * общая для всех релизов.
+ */
 class SitemapGenerator
 {
+    private const DISK = 'local';
+
+    private const DIRECTORY = 'sitemaps';
+
     private const STATIC_FILENAME = 'sitemap-static.xml';
 
     private const CATEGORIES_FILENAME = 'sitemap-categories.xml';
@@ -23,14 +37,11 @@ class SitemapGenerator
 
     private const PRODUCT_DB_CHUNK = 5000;
 
-    private const ROBOTS_FILENAME = 'robots.txt';
-
     /**
      * @return array{
      *     index: string,
      *     static: string,
      *     categories: string,
-     *     robots: string,
      *     product_sitemaps: int,
      *     product_urls: int
      * }
@@ -38,8 +49,7 @@ class SitemapGenerator
     public function generate(): array
     {
         $baseUrl = $this->baseUrl();
-        $publicPath = public_path();
-        $paths = $this->buildPaths($publicPath);
+        $paths = $this->buildPaths($this->directory());
 
         File::ensureDirectoryExists($paths['dir']);
 
@@ -58,32 +68,73 @@ class SitemapGenerator
             ],
         );
 
-        $this->writeRobotsFile($paths['robots'], $baseUrl);
         $this->cleanupStaleProductSitemaps($existingProductFiles, $productsResult['files']);
 
         return [
             'index' => $paths['index'],
             'static' => $paths['static'],
             'categories' => $paths['categories'],
-            'robots' => $paths['robots'],
             'product_sitemaps' => count($productsResult['files']),
             'product_urls' => $productsResult['urls_count'],
         ];
     }
 
-    /**
-     * @return array{dir: string, static: string, categories: string, index: string, robots: string}
-     */
-    private function buildPaths(string $publicPath): array
+    public function directory(): string
     {
-        $base = rtrim($publicPath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        return Storage::disk(self::DISK)->path(self::DIRECTORY);
+    }
+
+    /**
+     * Путь к файлу карты по имени из URL. Имя проверяет маршрут, здесь от
+     * обхода каталогов страхует basename.
+     */
+    public function path(string $filename): string
+    {
+        return $this->joinPath($this->directory(), basename($filename));
+    }
+
+    /**
+     * robots.txt не хранится файлом: в нём нет ничего, кроме конфига, и так
+     * ему нечему пропасть при деплое.
+     */
+    public function robotsTxt(): string
+    {
+        if (! $this->shouldAllowIndexing()) {
+            return "User-agent: *\nDisallow: /\n";
+        }
+
+        return implode("\n", [
+            'User-agent: *',
+            'Disallow: /admin/',
+            'Disallow: /login',
+            'Disallow: /register',
+            'Disallow: /password/',
+            'Disallow: /user/',
+            'Disallow: /cart',
+            'Disallow: /compare',
+            'Disallow: /favorites',
+            'Disallow: /checkout',
+            'Disallow: /livewire/',
+            'Disallow: /api/',
+            // Генератор PDF-оферты: тяжёлый для сервера и дублирует карточку товара.
+            'Disallow: /*/print',
+            'Sitemap: '.$this->absoluteUrl(self::INDEX_FILENAME, $this->baseUrl()),
+            '',
+        ]);
+    }
+
+    /**
+     * @return array{dir: string, static: string, categories: string, index: string}
+     */
+    private function buildPaths(string $directory): array
+    {
+        $base = rtrim($directory, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
 
         return [
             'dir' => $base,
             'static' => $this->joinPath($base, self::STATIC_FILENAME),
             'categories' => $this->joinPath($base, self::CATEGORIES_FILENAME),
             'index' => $this->joinPath($base, self::INDEX_FILENAME),
-            'robots' => $this->joinPath($base, self::ROBOTS_FILENAME),
         ];
     }
 
@@ -331,35 +382,6 @@ class SitemapGenerator
         $xml->writeElement('loc', $url);
         $xml->writeElement('lastmod', $lastModificationDate->toAtomString());
         $xml->endElement();
-    }
-
-    private function writeRobotsFile(string $targetPath, string $baseUrl): void
-    {
-        $content = $this->shouldAllowIndexing()
-            ? implode("\n", [
-                'User-agent: *',
-                'Disallow: /admin/',
-                'Disallow: /login',
-                'Disallow: /register',
-                'Disallow: /password/',
-                'Disallow: /user/',
-                'Disallow: /cart',
-                'Disallow: /compare',
-                'Disallow: /favorites',
-                'Disallow: /checkout',
-                'Disallow: /livewire/',
-                'Disallow: /api/',
-                // Генератор PDF-оферты: тяжёлый для сервера и дублирует карточку товара.
-                'Disallow: /*/print',
-                'Sitemap: '.$this->absoluteUrl(self::INDEX_FILENAME, $baseUrl),
-                '',
-            ])
-            : "User-agent: *\nDisallow: /\n";
-
-        File::ensureDirectoryExists(dirname($targetPath));
-        File::put($targetPath.'.tmp', $content);
-
-        $this->moveTempFile($targetPath.'.tmp', $targetPath);
     }
 
     private function shouldAllowIndexing(): bool

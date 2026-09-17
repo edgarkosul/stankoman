@@ -17,6 +17,7 @@ use App\Livewire\Pages\Orders\Show as OrderShow;
 use App\Models\ImportRun;
 use App\Models\Page;
 use App\Support\Products\ProductSearchService;
+use App\Support\Seo\SitemapGenerator;
 use App\Support\Seo\SiteSeoDataBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -131,6 +132,25 @@ Route::get('/market.xml', function () {
         'Content-Type' => 'text/xml; charset=utf-8',
     ]);
 })->name('feeds.yandex-market');
+
+// robots.txt и карта сайта — маршруты, а не файлы в public/: оттуда их
+// стирал каждый деплой (см. SitemapGenerator). На бою для /robots.txt во
+// вхосте nginx нужен фолбэк в index.php — scripts/deploy/nginx/README.md.
+Route::get('/robots.txt', fn (SitemapGenerator $sitemaps) => response($sitemaps->robotsTxt(), 200, [
+    'Content-Type' => 'text/plain; charset=utf-8',
+]))->name('seo.robots');
+
+Route::get('/{sitemap}', function (string $sitemap, SitemapGenerator $sitemaps) {
+    $path = $sitemaps->path($sitemap);
+
+    abort_unless(is_file($path), 404);
+
+    return response()->file($path, [
+        'Content-Type' => 'text/xml; charset=utf-8',
+    ]);
+})
+    ->where('sitemap', 'sitemap(?:-static|-categories|-products-[0-9]+)?\.xml')
+    ->name('seo.sitemap');
 
 Route::middleware(['web', 'auth'])
     ->get('/admin/tools/download-export/{token}/{name}', function (string $token, string $name) {

@@ -47,6 +47,23 @@ location ^~ /index.php/ {
 limit_req zone=intertooler_site burst=20 nodelay;
 ```
 
+Строку `location = /robots.txt` заменить на:
+
+```nginx
+# robots.txt отдаёт приложение (routes/web.php). Файлом в public/ он пропадал
+# после каждого деплоя: релиз собирается из git archive, и сгенерированное
+# в прошлом релизе в новый не попадает. Без фолбэка в index.php nginx
+# отвечает 404 сам, до Laravel запрос не доходит. Лог не выключаем: из-за
+# access_log off и log_not_found off эти 404 никто не видел.
+location = /robots.txt {
+    try_files $uri /index.php?$query_string;
+}
+```
+
+Правка совместима с релизом, где файл ещё лежит в `public/`: `$uri` стоит первым,
+и пока файл есть, nginx отдаёт его. Поэтому её ставят **до** деплоя кода, где
+файла уже нет, — иначе `/robots.txt` станет 404 насовсем, а не до утра.
+
 Применить: `sudo nginx -t && sudo systemctl reload nginx`.
 
 ## Проверка
@@ -56,6 +73,7 @@ S=/product/<slug>
 curl -s -o /dev/null -w '%{http_code}\n' "https://intertooler.ru$S"                 # 200
 curl -s -o /dev/null -D- "https://intertooler.ru/index.php$S" | grep -i ^location    # 301 на чистый
 curl -s -o /dev/null -w '%{http_code}\n' -A Bytespider "https://intertooler.ru$S/print"  # 403
+curl -s https://intertooler.ru/robots.txt | tail -1                                   # Sitemap: https://intertooler.ru/sitemap.xml
 
 # лимит частоты: локалхост исключён, обычный адрес упирается в 429
 for i in $(seq 1 40); do curl -sk -o /dev/null -w '%{http_code} ' \
@@ -86,7 +104,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://intertooler.ru/
   сборка стоила 16-18 секунд php-fpm воркера ([ProductPrintController](../../app/Http/Controllers/ProductPrintController.php));
 - `throttle:12,1` на маршруте `product.print`;
 - заголовок `X-Robots-Tag: noindex, nofollow` на самом PDF;
-- `Disallow: /*/print` в генераторе `robots.txt` (`php artisan sitemap:generate`);
+- `Disallow: /*/print` в `robots.txt` (`SitemapGenerator::robotsTxt()`, отдаётся маршрутом);
 - `rel="nofollow"` на обеих ссылках в карточке товара.
 
 Кэш инвалидируется сам: ключ считается от товара, его значений и опций

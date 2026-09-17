@@ -3,25 +3,17 @@
 use App\Models\Category;
 use App\Models\Page;
 use App\Models\Product;
+use App\Support\Seo\SitemapGenerator;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 
 beforeEach(function (): void {
-    $this->originalPublicPath = public_path();
-    $this->temporaryPublicPath = storage_path('framework/testing/public-'.Str::uuid());
+    Storage::fake('local');
 
-    File::deleteDirectory($this->temporaryPublicPath);
-    File::ensureDirectoryExists($this->temporaryPublicPath);
-
-    app()->usePublicPath($this->temporaryPublicPath);
+    $this->sitemaps = app(SitemapGenerator::class);
 });
 
-afterEach(function (): void {
-    app()->usePublicPath($this->originalPublicPath);
-    File::deleteDirectory($this->temporaryPublicPath);
-});
-
-it('generates sitemap, robots, and product sitemap files', function (): void {
+it('generates sitemap and product sitemap files outside the public directory', function (): void {
     config()->set('company.site_url', 'https://settings.example.com');
     config()->set('app.robots_allow_indexing', true);
 
@@ -68,17 +60,17 @@ it('generates sitemap, robots, and product sitemap files', function (): void {
         ->expectsOutputToContain('Sitemap index:')
         ->assertSuccessful();
 
-    expect(File::exists(public_path('sitemap.xml')))->toBeTrue()
-        ->and(File::exists(public_path('sitemap-static.xml')))->toBeTrue()
-        ->and(File::exists(public_path('sitemap-categories.xml')))->toBeTrue()
-        ->and(File::exists(public_path('sitemap-products-1.xml')))->toBeTrue()
-        ->and(File::exists(public_path('robots.txt')))->toBeTrue();
+    expect(Storage::disk('local')->exists('sitemaps/sitemap.xml'))->toBeTrue()
+        ->and(Storage::disk('local')->exists('sitemaps/sitemap-static.xml'))->toBeTrue()
+        ->and(Storage::disk('local')->exists('sitemaps/sitemap-categories.xml'))->toBeTrue()
+        ->and(Storage::disk('local')->exists('sitemaps/sitemap-products-1.xml'))->toBeTrue()
+        ->and(File::exists(public_path('sitemap.xml')))->toBeFalse()
+        ->and(File::exists(public_path('robots.txt')))->toBeFalse();
 
-    $index = File::get(public_path('sitemap.xml'));
-    $static = File::get(public_path('sitemap-static.xml'));
-    $categories = File::get(public_path('sitemap-categories.xml'));
-    $products = File::get(public_path('sitemap-products-1.xml'));
-    $robots = File::get(public_path('robots.txt'));
+    $index = File::get($this->sitemaps->path('sitemap.xml'));
+    $static = File::get($this->sitemaps->path('sitemap-static.xml'));
+    $categories = File::get($this->sitemaps->path('sitemap-categories.xml'));
+    $products = File::get($this->sitemaps->path('sitemap-products-1.xml'));
 
     expect($index)->toContain('https://settings.example.com/sitemap-static.xml')
         ->toContain('https://settings.example.com/sitemap-categories.xml')
@@ -92,18 +84,13 @@ it('generates sitemap, robots, and product sitemap files', function (): void {
         ->toContain('https://settings.example.com/catalog/stanki/tokarnye');
 
     expect($products)->toContain('https://settings.example.com/product/tokarnyj-stanok-test-500');
-
-    expect($robots)->toContain('User-agent: *')
-        ->toContain('Disallow: /admin/')
-        ->toContain('Disallow: /*/print')
-        ->toContain('Sitemap: https://settings.example.com/sitemap.xml');
 });
 
-it('writes a blocking robots file when indexing is disabled', function (): void {
-    config()->set('app.robots_allow_indexing', false);
+it('removes product sitemap files left from a bigger catalog', function (): void {
+    File::ensureDirectoryExists($this->sitemaps->directory());
+    File::put($this->sitemaps->path('sitemap-products-7.xml'), '<urlset/>');
 
     $this->artisan('seo:generate-sitemap')->assertSuccessful();
 
-    expect(File::get(public_path('robots.txt')))
-        ->toBe("User-agent: *\nDisallow: /\n");
+    expect(File::exists($this->sitemaps->path('sitemap-products-7.xml')))->toBeFalse();
 });

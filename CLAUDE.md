@@ -69,6 +69,25 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 Перед сверкой в 04:40 идёт `scout:sync-index-settings` — иначе новые фильтруемые
 поля доедут до Meilisearch только руками.
 
+### robots.txt и sitemap
+
+Ни того, ни другого в `public/` нет, и класть туда нельзя. Релиз на бою
+собирается из `git archive`, и сгенерированное в `public/` прошлого релиза
+в новый не попадает. Так и было до 17.09.2026: после каждого деплоя до ночной
+генерации оба файла отдавали 404, а Яндекс Вебмастер слал «робот не смог
+получить доступ к robots.txt».
+
+- `robots.txt` собирается на лету маршрутом (`SitemapGenerator::robotsTxt()`);
+- sitemap пишет `seo:generate-sitemap` (04:30 и кнопка в админке) в
+  `storage/app/private/sitemaps` — `storage` общая для релизов — и отдаёт маршрут `seo.sitemap`;
+- во вхосте nginx `location = /robots.txt` обязан падать в `index.php`
+  ([`scripts/deploy/nginx/README.md`](scripts/deploy/nginx/README.md)): иначе nginx
+  отвечает 404 сам и до Laravel запрос не доходит. На деве так же.
+
+Адреса в sitemap, фиде Маркета и микроразметке строятся из `company.site_url`,
+а он живёт в таблице `settings` и перекрывает конфиг. Главное зеркало —
+`https://intertooler.ru`, www отвечает 301.
+
 ### Импорт товаров
 
 Самая большая подсистема. Слои:
