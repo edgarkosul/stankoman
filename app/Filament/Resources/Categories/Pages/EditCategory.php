@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Categories\Pages;
 
 use App\Filament\Concerns\QueuesContentImageDerivatives;
 use App\Filament\Resources\Categories\CategoryResource;
+use App\Filament\Resources\Categories\Concerns\ManagesCategoryImage;
 use App\Filament\Resources\ImportRuns\ImportRunResource;
 use App\Models\Category;
 use App\Models\ImportRun;
@@ -22,6 +23,7 @@ use Illuminate\Support\Facades\Storage;
 
 class EditCategory extends EditRecord
 {
+    use ManagesCategoryImage;
     use QueuesContentImageDerivatives;
 
     private const CATEGORY_IMAGE_PER_PAGE = 24;
@@ -55,6 +57,7 @@ class EditCategory extends EditRecord
                         'selectedPath' => Category::normalizeImagePath($this->data['img'] ?? $this->record?->img),
                     ],
                 )),
+            $this->categoryImageUploadAction(),
             Action::make('generate_webp_derivatives')
                 ->label('Сгенерировать WebP')
                 ->icon('heroicon-o-photo')
@@ -154,7 +157,7 @@ class EditCategory extends EditRecord
                         return;
                     }
 
-                    $storedPath = $this->resolveStoredImportPath($data['import_file'] ?? null);
+                    $storedPath = $this->resolveStoredUploadPath($data['import_file'] ?? null);
 
                     if (! $storedPath) {
                         Notification::make()
@@ -223,11 +226,6 @@ class EditCategory extends EditRecord
         $this->mountAction('pickCategoryImage');
     }
 
-    public function clearCategoryImage(): void
-    {
-        $this->syncCategoryImageState(null);
-    }
-
     public function selectCategoryImage(string $path): void
     {
         $normalizedPath = Category::normalizeImagePath($path);
@@ -282,29 +280,6 @@ class EditCategory extends EditRecord
         return [
             $state['img'] ?? $this->record?->img,
         ];
-    }
-
-    private function resolveStoredImportPath(mixed $state): ?string
-    {
-        if (is_string($state) && $state !== '') {
-            return $state;
-        }
-
-        if (is_array($state)) {
-            $first = reset($state);
-
-            if (is_string($first) && $first !== '') {
-                return $first;
-            }
-        }
-
-        return null;
-    }
-
-    private function syncCategoryImageState(?string $path): void
-    {
-        $this->data['img'] = $path;
-        $this->form->fill($this->data);
     }
 
     private function getCategoryImageCandidatesPaginator(): LengthAwarePaginator

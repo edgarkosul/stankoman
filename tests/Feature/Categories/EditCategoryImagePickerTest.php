@@ -8,7 +8,7 @@ use App\Models\User;
 use App\Support\Products\CategoryProductImageCandidates;
 use Livewire\Livewire;
 
-test('create category page asks to save record before choosing product image', function (): void {
+test('create category page offers upload and asks to save record before choosing product image', function (): void {
     $user = User::factory()->create();
 
     config([
@@ -18,7 +18,8 @@ test('create category page asks to save record before choosing product image', f
     $this->actingAs($user);
 
     Livewire::test(CreateCategory::class)
-        ->assertSee('Сохраните категорию, затем выберите изображение из товаров.')
+        ->assertSee('Выбор из товаров появится после сохранения категории.')
+        ->assertSee('Загрузить файл')
         ->assertDontSee('Выбрать из товаров');
 });
 
