@@ -35,6 +35,17 @@ use Throwable;
  */
 class YandexMarketFeedDriver implements SupplierImportDriver
 {
+    /**
+     * Сколько категорий фида показывает выпадающий список, пока в нём ничего не ищут.
+     *
+     * Список — это дерево фида целиком, и прокручивать его — обычный способ выбора.
+     * С прежним потолком в 100 опций (а Filament по умолчанию рисует из них только 50)
+     * открытый список обрывался на первых разделах: у Ресанты (270 категорий)
+     * «Сварочное оборудование», «Электроинструмент» и ещё шесть корневых разделов
+     * находились только поиском, и выглядело это как неполный фид.
+     */
+    private const CATEGORY_OPTIONS_LIMIT = 1000;
+
     public function __construct(
         private readonly YandexMarketFeedProfile $profile,
         private readonly YandexMarketFeedImportService $service,
@@ -204,11 +215,12 @@ class YandexMarketFeedDriver implements SupplierImportDriver
                 ->searchable()
                 ->native(false)
                 ->options(fn ($livewire): array => method_exists($livewire, 'yandexFeedCategoryOptions')
-                    ? $livewire->yandexFeedCategoryOptions(limit: 100)
+                    ? $livewire->yandexFeedCategoryOptions(limit: self::CATEGORY_OPTIONS_LIMIT)
                     : [])
                 ->getSearchResultsUsing(fn (string $search, $livewire): array => method_exists($livewire, 'yandexFeedCategoryOptions')
-                    ? $livewire->yandexFeedCategoryOptions(search: $search, limit: 100)
+                    ? $livewire->yandexFeedCategoryOptions(search: $search, limit: self::CATEGORY_OPTIONS_LIMIT)
                     : [])
+                ->optionsLimit(self::CATEGORY_OPTIONS_LIMIT)
                 ->getOptionLabelUsing(fn ($value, $livewire): ?string => method_exists($livewire, 'yandexFeedCategoryOptionLabel')
                     ? $livewire->yandexFeedCategoryOptionLabel($value)
                     : null)
