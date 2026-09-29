@@ -1,0 +1,43 @@
+[Unit]
+# Воркер очереди ИИ-ассистента: ответы бота в чате и переиндексация базы знаний.
+#
+# Зачем отдельный от `intertooler-queue-default`: ответ модели занимает
+# от пяти секунд до минуты, и в общей очереди он задерживал бы письма о заказах
+# и заявки на звонок — их покупатель ждёт сразу. Соединение своё
+# (`redis-assistant`, очередь `assistant`), и числа в нём связаны:
+#
+#     timeout джобы 200 с < --timeout воркера 240 с < retry_after 300 с
+#
+# Нарушить эту лесенку — значит получить второй ответ на тот же вопрос:
+# очередь отдаст задачу повторно, пока первая ещё считается. Сторож —
+# tests/Unit/AssistantQueueConnectionTest.php.
+#
+# `--tries=1`: повтор вызова модели — это вторая оплата шлюзу и риск дубля
+# в ленте. Упавшая задача чинится не повтором, а заглушкой в `failed()`.
+#
+# Установка на бою:
+#     sudo cp scripts/deploy/intertooler-queue-assistant.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now intertooler-queue-assistant
+#     systemctl status intertooler-queue-assistant
+#
+# После выката нового релиза воркер, как и `default`, надо перезапускать:
+# это делает `queue:restart` из post-receive, юнит подхватит новый код сам.
+Description=Intertooler Laravel Queue Worker (assistant)
+After=network.target redis-server.service mariadb.service
+Wants=redis-server.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/srv/www/intertooler/current
+ExecStart=/usr/bin/php8.4 /srv/www/intertooler/current/artisan queue:work redis-assistant --queue=assistant --sleep=3 --tries=1 --timeout=240 --max-time=3600 --force
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=3600
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
