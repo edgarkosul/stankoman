@@ -5,10 +5,17 @@ use App\Models\Setting;
 use App\Providers\SettingsServiceProvider;
 
 it('syncs settings from config into database', function (): void {
-    expect(Setting::query()->count())->toBe(0);
+    // Миграции заводят ровно одну строку — переключатель кнопки звонка:
+    // хук деплоя settings:sync не зовёт, и без миграции его не было бы в админке.
+    expect(Setting::query()->pluck('key')->all())->toBe(['product.show_callback_button']);
 
     $this->artisan('settings:sync')
         ->assertSuccessful();
+
+    $callbackButtonSetting = Setting::query()->where('key', 'product.show_callback_button')->sole();
+
+    expect($callbackButtonSetting->type)->toBe(SettingType::Bool)
+        ->and($callbackButtonSetting->value)->toBe('1');
 
     $setting = Setting::query()->where('key', 'product.stavka_nds')->first();
     $legalNameSetting = Setting::query()->where('key', 'company.legal_name')->first();

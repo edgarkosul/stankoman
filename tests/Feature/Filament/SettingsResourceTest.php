@@ -142,6 +142,46 @@ test('edit setting page saves manager emails repeater into json value', function
         ->and($setting->type)->toBe(SettingType::Json);
 });
 
+test('edit setting page switches the product callback button with a toggle', function (): void {
+    config([
+        'settings.general.filament_admin_emails' => ['admin@example.com'],
+    ]);
+
+    $admin = User::factory()->create([
+        'email' => 'admin@example.com',
+    ]);
+
+    // Строку заводит миграция, фабрика здесь упёрлась бы в уникальный ключ.
+    $setting = Setting::query()->where('key', 'product.show_callback_button')->sole();
+
+    // Подпись проверяем напрямую: админка в тестах рендерится в локали en
+    // (из-за этого же на main падают три соседних теста этого файла).
+    app()->setLocale('ru');
+
+    expect(Setting::translateKey('product.show_callback_button'))
+        ->toBe('Кнопка «Заказать звонок менеджера» на карточке товара');
+
+    $this->actingAs($admin)
+        ->get(SettingResource::getUrl('index', panel: 'admin'))
+        ->assertSuccessful()
+        ->assertSee('Включено');
+
+    Livewire::test(EditSetting::class, [
+        'record' => $setting->getRouteKey(),
+    ])
+        ->assertSet('data.bool_value', true)
+        ->assertFormFieldIsHidden('value')
+        ->set('data.bool_value', false)
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $setting->refresh();
+
+    expect($setting->value)->toBe('0')
+        ->and($setting->type)->toBe(SettingType::Bool)
+        ->and($setting->getValueForConfig())->toBeFalse();
+});
+
 test('edit setting page saves string settings into value column', function (string $key, string $field, string $value): void {
     config([
         'settings.general.filament_admin_emails' => ['admin@example.com'],

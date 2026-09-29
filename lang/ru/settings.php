@@ -21,6 +21,7 @@ return [
     'company.bank.ks' => 'Корреспондентский счет',
     'mail.from.address' => 'Email отправителя писем',
     'product.stavka_nds' => 'Ставка НДС, %',
+    'product.show_callback_button' => 'Кнопка «Заказать звонок менеджера» на карточке товара',
     'product_currency.cny_to_rub' => 'Курс юаня к рублю',
     'product_currency.eur_to_rub' => 'Курс евро к рублю',
     'product_currency.rur_to_rub' => 'Курс рубля к рублю',

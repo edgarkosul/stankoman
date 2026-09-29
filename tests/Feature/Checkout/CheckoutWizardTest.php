@@ -345,21 +345,29 @@ it('opens login modal from checkout and stores preserve cart sync context in ses
         ->and(session(SyncCartOnLogin::CHECKOUT_SYNC_MODE_SESSION_KEY))->toBe(CartService::SYNC_MODE_PRESERVE_GUEST);
 });
 
-it('does not show pickup option on checkout delivery step', function (): void {
+it('shows both delivery and pickup on checkout delivery step', function (): void {
     $product = createCheckoutProduct([
         'price_amount' => 100000,
     ]);
 
     app(CartService::class)->addItem($product->id, 1);
 
-    Livewire::test(Wizard::class)
+    $component = Livewire::test(Wizard::class)
         ->set('contact.customer_name', 'Покупатель')
         ->set('contact.customer_phone', '+79990001122')
         ->call('next')
         ->assertSet('currentStep', 2)
         ->assertSee('Способ доставки')
         ->assertSee('Доставка')
-        ->assertDontSee('Самовывоз');
+        ->assertSee('Самовывоз')
+        // Адрес склада на витрине один: он же в шапке и на «Доставке и оплате».
+        ->assertSee('Андреевская, 2')
+        ->assertSee('Город');
+
+    // У самовывоза адресных полей нет — вместо них обещание менеджера.
+    $component->set('delivery.shipping_method', 'pickup')
+        ->assertDontSee('Индекс')
+        ->assertSee('согласует время');
 });
 
 it('prefills checkout contact data for authenticated user', function (): void {
@@ -401,7 +409,9 @@ it('prefills checkout contact data for authenticated user', function (): void {
         ->assertSet('contact.create_account', false);
 });
 
-it('rejects pickup as shipping method in checkout wizard', function (): void {
+it('accepts pickup and forgets the delivery address', function (): void {
+    // Самовывоз появился в форме 29.09.2026 по просьбе владельца: страница
+    // «Доставка и оплата» обещала его и раньше, а выбрать было нельзя.
     $product = createCheckoutProduct([
         'price_amount' => 100000,
     ]);
@@ -412,7 +422,37 @@ it('rejects pickup as shipping method in checkout wizard', function (): void {
         ->set('contact.customer_name', 'Покупатель')
         ->set('contact.customer_phone', '+79990001122')
         ->set('contact.customer_email', '')
+        ->set('delivery.shipping_city', 'Краснодар')
+        ->set('delivery.shipping_street', 'Андреевская')
         ->set('delivery.shipping_method', 'pickup')
+        ->set('delivery.shipping_comment', 'Заберу сам в пятницу')
+        ->set('review.payment_method', 'cash')
+        ->set('review.accept_terms', true)
+        ->assertSet('delivery.shipping_city', null)
+        ->call('confirm')
+        ->assertHasNoErrors();
+
+    $order = Order::query()->latest('id')->first();
+
+    // Адрес не должен уехать менеджеру: по нему никто ничего не повезёт.
+    expect($order->shipping_method->value)->toBe('pickup')
+        ->and($order->shipping_city)->toBeNull()
+        ->and($order->shipping_street)->toBeNull()
+        ->and($order->shipping_comment)->toBe('Заберу сам в пятницу');
+});
+
+it('rejects an unknown shipping method in checkout wizard', function (): void {
+    $product = createCheckoutProduct([
+        'price_amount' => 100000,
+    ]);
+
+    app(CartService::class)->addItem($product->id, 1);
+
+    Livewire::test(Wizard::class)
+        ->set('contact.customer_name', 'Покупатель')
+        ->set('contact.customer_phone', '+79990001122')
+        ->set('contact.customer_email', '')
+        ->set('delivery.shipping_method', 'teleport')
         ->set('review.payment_method', 'cash')
         ->set('review.accept_terms', true)
         ->call('confirm')
