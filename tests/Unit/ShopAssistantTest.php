@@ -7,6 +7,7 @@ use App\Services\Ai\Data\EmbeddingBatch;
 use App\Services\Ai\Data\ProductCard;
 use App\Services\Ai\Data\ToolCall;
 use App\Services\Ai\ShopAssistant;
+use App\Services\Ai\Support\OfferedLinkGuard;
 use App\Services\Ai\Support\PiiRedactor;
 use App\Services\Ai\Support\ProductLinkGuard;
 use App\Services\Ai\Support\ReplyFormatter;
@@ -93,6 +94,7 @@ function assistant(LlmClient $llm, array $tools = [], int $maxIterations = 4): S
         redactor: new PiiRedactor,
         formatter: new ReplyFormatter,
         links: new ProductLinkGuard,
+        offeredLinks: new OfferedLinkGuard,
         tools: $tools,
         maxIterations: $maxIterations,
         maxTokens: 512,
@@ -433,4 +435,26 @@ it('гостю не показывает цену для зарегистрир�
     ]), [$withholding])->ask('сколько стоит станок');
 
     expect($reply->text)->toBe('Цена 108 596 руб. Оформить?');
+});
+
+it('оставляет ссылку инструмента и снимает выдуманную', function (): void {
+    $tool = scriptedTool(
+        'search_knowledge_base',
+        "Доставка и оплата\n[ссылка: https://intertooler.ru/page/dostavka-i-oplata]",
+    );
+
+    $reply = assistant(scriptedLlm([
+        new ChatResult('', [new ToolCall('c1', 'search_knowledge_base', ['query' => 'доставка'])], 'tool_calls'),
+        new ChatResult(
+            'Отправляем по всей России. Подробнее — [Доставка и оплата](https://intertooler.ru/page/dostavka-i-oplata). '
+            .'Про гарантию — [Гарантия и сервис](https://intertooler.ru/page/guarantee-service).',
+            finishReason: 'stop',
+        ),
+    ]), [$tool])->ask('как доставляете');
+
+    expect($reply->text)
+        ->toContain('[Доставка и оплата](https://intertooler.ru/page/dostavka-i-oplata)')
+        ->not->toContain('guarantee-service')
+        // Подпись выдуманной ссылки остаётся текстом: обрывать предложение нельзя.
+        ->toContain('Про гарантию — Гарантия и сервис.');
 });
