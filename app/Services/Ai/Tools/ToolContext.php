@@ -117,6 +117,35 @@ final class ToolContext
         public readonly bool $seesDiscounts = false,
     ) {}
 
+    /**
+     * Адреса, которые инструменты отдали модели за этот ход: страницы базы
+     * знаний, карточки товаров, разделы каталога.
+     *
+     * Собираем из ТЕКСТА результата, а не из полей: у каждого инструмента
+     * ссылка лежит по-своему (у разделов — строкой «Ссылка: …», у базы
+     * знаний — «[ссылка: …]»), а правило одно на всех — бот не выдаёт
+     * адрес, которого ему никто не приносил (`OfferedLinkGuard`).
+     *
+     * @var list<string>
+     */
+    public array $offeredUrls = [];
+
+    /** Запомнить адреса из результата инструмента. */
+    public function noteOfferedUrls(string $toolResult): void
+    {
+        if (! preg_match_all('~https?://[^\s<>()\[\]"\']+~u', $toolResult, $matches)) {
+            return;
+        }
+
+        foreach ($matches[0] as $url) {
+            $url = rtrim($url, '.,;:');
+
+            if (! in_array($url, $this->offeredUrls, true)) {
+                $this->offeredUrls[] = $url;
+            }
+        }
+    }
+
     /** Запомнить показанный товар. Повторы схлопываются по адресу. */
     public function noteProduct(string $name, string $url): void
     {

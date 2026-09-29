@@ -11,6 +11,7 @@ use App\Services\Ai\Exceptions\LlmException;
 use App\Services\Ai\Providers\AitunnelLlmClient;
 use App\Services\Ai\Providers\FakeLlmClient;
 use App\Services\Ai\ShopAssistant;
+use App\Services\Ai\Support\OfferedLinkGuard;
 use App\Services\Ai\Support\PiiRedactor;
 use App\Services\Ai\Support\ProductLinkGuard;
 use App\Services\Ai\Support\ProductTextExtractor;
@@ -272,6 +273,7 @@ class AiSupportServiceProvider extends ServiceProvider
             redactor: $app->make(PiiRedactor::class),
             formatter: $app->make(ReplyFormatter::class),
             links: $app->make(ProductLinkGuard::class),
+            offeredLinks: $app->make(OfferedLinkGuard::class),
             tools: $app->make('assistant.tools'),
             maxIterations: (int) config('ai_support.agent.max_iterations'),
             maxTokens: (int) config('ai_support.agent.max_tokens'),

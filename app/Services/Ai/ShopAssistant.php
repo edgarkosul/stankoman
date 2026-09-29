@@ -7,6 +7,7 @@ use App\Services\Ai\Contracts\LlmClient;
 use App\Services\Ai\Data\AssistantReply;
 use App\Services\Ai\Data\ToolCall;
 use App\Services\Ai\Exceptions\PiiBlockedException;
+use App\Services\Ai\Support\OfferedLinkGuard;
 use App\Services\Ai\Support\PiiRedactor;
 use App\Services\Ai\Support\ProductLinkGuard;
 use App\Services\Ai\Support\ReplyFormatter;
@@ -35,6 +36,7 @@ final class ShopAssistant
         private readonly PiiRedactor $redactor,
         private readonly ReplyFormatter $formatter,
         private readonly ProductLinkGuard $links,
+        private readonly OfferedLinkGuard $offeredLinks,
         private readonly array $tools,
         private readonly int $maxIterations,
         private readonly int $maxTokens,
@@ -148,8 +150,12 @@ final class ShopAssistant
                         'role' => 'tool',
                         PiiRedactor::ORIGIN => PiiRedactor::ORIGIN_BOT,
                         'tool_call_id' => $call->id,
-                        'content' => $this->runTool($call, $context),
+                        'content' => $result = $this->runTool($call, $context),
                     ];
+
+                    // Адреса из результата — единственное, что боту разрешено
+                    // дать покупателю ссылкой.
+                    $context->noteOfferedUrls($result);
                 }
 
                 continue;
@@ -228,10 +234,16 @@ final class ShopAssistant
                 // названные товары дописываются после форматирования —
                 // иначе развёртка таблиц разобрала бы их обратно на части.
                 text: $this->links->ensure(
-                    // Цена для зарегистрированных, названная гостю, выбрасывается
-                    // здесь же: суммы, которых он на витрине не видит, знает ход,
-                    // а не форматировщик.
-                    $this->formatter->format($text, $context->pricesToWithhold()),
+                    // Выдуманные адреса снимаются до того, как гард допишет
+                    // товарные ссылки: его собственные ссылки инструменты
+                    // приносили, и проверять их заново незачем.
+                    $this->offeredLinks->strip(
+                        // Цена для зарегистрированных, названная гостю, выбрасывается
+                        // здесь же: суммы, которых он на витрине не видит, знает ход,
+                        // а не форматировщик.
+                        $this->formatter->format($text, $context->pricesToWithhold()),
+                        $context->offeredUrls,
+                    ),
                     $context->shownProducts,
                 ),
                 stopReason: $result->finishReason ?: 'stop',
