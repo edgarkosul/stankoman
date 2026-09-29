@@ -11,13 +11,13 @@
 
         @if ($record)
             <p class="text-sm text-gray-600">
-                Выберите картинку из поля <code class="rounded bg-gray-100 px-1 py-0.5 text-xs">products.image</code>.
+                Загрузите файл или выберите картинку из поля <code class="rounded bg-gray-100 px-1 py-0.5 text-xs">products.image</code>.
                 <code class="rounded bg-gray-100 px-1 py-0.5 text-xs">thumb</code> и
                 <code class="rounded bg-gray-100 px-1 py-0.5 text-xs">gallery</code> не используются.
             </p>
         @else
             <p class="text-sm text-gray-600">
-                Сохраните категорию, затем выберите изображение из товаров.
+                Загрузите файл. Выбор из товаров появится после сохранения категории.
             </p>
         @endif
     </div>
@@ -48,8 +48,17 @@
                 @endif
             </div>
 
-            @if ($record)
-                <div class="flex shrink-0 flex-wrap gap-2">
+            <div class="flex shrink-0 flex-wrap gap-2">
+                <x-filament::button
+                    type="button"
+                    color="gray"
+                    icon="heroicon-o-arrow-up-tray"
+                    wire:click="openCategoryImageUpload"
+                >
+                    Загрузить файл
+                </x-filament::button>
+
+                @if ($record)
                     <x-filament::button
                         type="button"
                         color="gray"
@@ -58,18 +67,18 @@
                     >
                         Выбрать из товаров
                     </x-filament::button>
+                @endif
 
-                    @if ($selectedPath)
-                        <x-filament::button
-                            type="button"
-                            color="danger"
-                            wire:click="clearCategoryImage"
-                        >
-                            Очистить
-                        </x-filament::button>
-                    @endif
-                </div>
-            @endif
+                @if ($selectedPath)
+                    <x-filament::button
+                        type="button"
+                        color="danger"
+                        wire:click="clearCategoryImage"
+                    >
+                        Очистить
+                    </x-filament::button>
+                @endif
+            </div>
         </div>
     </div>
 </div>

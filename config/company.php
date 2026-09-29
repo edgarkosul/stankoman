@@ -17,7 +17,9 @@ return [
 
     // Сайт
     'site_host' => 'www.intertooler.ru',
-    'site_url' => 'https://www.intertooler.ru',
+    // Главное зеркало — без www: nginx уводит www на него 301-м, и ссылки в
+    // sitemap, фиде Маркета и микроразметке должны вести сразу сюда.
+    'site_url' => 'https://intertooler.ru',
 
     // Регистрационные данные
     'inn' => '231102927496',

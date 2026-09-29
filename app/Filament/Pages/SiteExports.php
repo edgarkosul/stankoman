@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Jobs\GenerateMarketFeedJob;
 use App\Jobs\GenerateSitemapFilesJob;
+use App\Support\Seo\SitemapGenerator;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -113,24 +114,24 @@ class SiteExports extends Page
      */
     private function sitemapCard(): array
     {
-        $productFiles = array_values(File::glob(public_path('sitemap-products-*.xml')) ?: []);
+        $sitemaps = app(SitemapGenerator::class);
+        $productFiles = array_values(File::glob($sitemaps->path('sitemap-products-*.xml')) ?: []);
 
         return [
-            'title' => 'Sitemap и robots.txt',
-            'description' => 'Индекс sitemap, статика, категории, product-sitemap и robots.txt для поисковых систем.',
+            'title' => 'Sitemap',
+            'description' => 'Индекс sitemap, статика, категории и product-sitemap для поисковых систем. robots.txt файлом не хранится — сайт собирает его на лету.',
             'public_url' => $this->absoluteUrl('/sitemap.xml'),
             'command' => 'php artisan seo:generate-sitemap',
             'files' => [
-                $this->fileState('sitemap.xml', public_path('sitemap.xml'), 'Главный индекс карты сайта'),
-                $this->fileState('sitemap-static.xml', public_path('sitemap-static.xml'), 'Главная и опубликованные страницы'),
-                $this->fileState('sitemap-categories.xml', public_path('sitemap-categories.xml'), 'Маршруты категорий каталога'),
+                $this->fileState('sitemap.xml', $sitemaps->path('sitemap.xml'), 'Главный индекс карты сайта'),
+                $this->fileState('sitemap-static.xml', $sitemaps->path('sitemap-static.xml'), 'Главная и опубликованные страницы'),
+                $this->fileState('sitemap-categories.xml', $sitemaps->path('sitemap-categories.xml'), 'Маршруты категорий каталога'),
                 $this->groupedFileState(
                     'sitemap-products-*.xml',
-                    public_path('sitemap-products-*.xml'),
+                    $sitemaps->path('sitemap-products-*.xml'),
                     $productFiles,
                     $productFiles === [] ? 'Файлы еще не сгенерированы' : sprintf('Найдено файлов: %d', count($productFiles)),
                 ),
-                $this->fileState('robots.txt', public_path('robots.txt'), 'Правила индексации и ссылка на sitemap'),
             ],
         ];
     }

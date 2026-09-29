@@ -119,7 +119,7 @@ class CategoryTree extends TreePage
                     '4:3',
                     '1:1',
                 ])
-                ->directory('pics'),
+                ->directory(Category::IMAGE_UPLOAD_DIRECTORY),
 
             Toggle::make('is_active')
                 ->label('Активна')

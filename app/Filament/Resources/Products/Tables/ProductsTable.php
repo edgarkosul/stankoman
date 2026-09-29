@@ -155,6 +155,22 @@ class ProductsTable
                     ->searchable()
                     ->preload(),
 
+                // Фильтр выше предлагает только листовые категории: к остальным
+                // товар больше не привязать. Но привязки, сделанные до этого запрета,
+                // остались, а на витрине такие товары не видны — страница категории
+                // с подкатегориями показывает подкатегории, а не товары. Здесь их
+                // можно собрать на одной странице и перенести массовым изменением.
+                SelectFilter::make('non_leaf_category')
+                    ->label('В категории с подкатегориями')
+                    ->options(fn (): array => self::nonLeafCategoryWithProductsOptions())
+                    ->multiple()
+                    ->query(fn (Builder $query, array $data): Builder => blank($data['values'] ?? null)
+                        ? $query
+                        : $query->whereHas(
+                            'categories',
+                            fn (Builder $query): Builder => $query->whereKey($data['values']),
+                        )),
+
                 SelectFilter::make('brand')
                     ->label('Бренд')
                     ->options(fn (): array => self::brandOptions())
@@ -1862,6 +1878,23 @@ class ProductsTable
     /**
      * @return array<string, string>
      */
+    /**
+     * @return array<int, string>
+     */
+    private static function nonLeafCategoryWithProductsOptions(): array
+    {
+        return Category::query()
+            ->whereHas('children')
+            ->whereHas('products')
+            ->withCount('products')
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->mapWithKeys(fn (Category $category): array => [
+                $category->getKey() => "{$category->name} ({$category->products_count})",
+            ])
+            ->all();
+    }
+
     private static function brandOptions(): array
     {
         return Product::query()

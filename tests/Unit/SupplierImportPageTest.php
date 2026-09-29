@@ -313,6 +313,55 @@ test('supplier import page loads yandex feed categories and exposes tree select 
     expect($page->yandexFeedCategoryOptionLabel(22))->toBe('— [22] Пылесосы');
 });
 
+test('supplier import page shows the whole yandex feed category tree without search', function () {
+    prepareSupplierImportPageTables();
+
+    // Как у Ресанты: 12 разделов с подкатегориями, всего за 250 категорий.
+    $nodes = [];
+
+    foreach (range(1, 12) as $rootIndex) {
+        $rootId = $rootIndex * 100;
+        $nodes[] = ['id' => $rootId, 'name' => 'Раздел '.$rootIndex, 'parent_id' => null];
+
+        foreach (range(1, 21) as $childIndex) {
+            $nodes[] = ['id' => $rootId + $childIndex, 'name' => 'Подкатегория '.$rootIndex.'.'.$childIndex, 'parent_id' => $rootId];
+        }
+    }
+
+    $service = Mockery::mock(YandexMarketFeedImportService::class);
+    $service->shouldReceive('listCategoryNodes')->once()->andReturn($nodes);
+
+    app()->instance(YandexMarketFeedImportService::class, $service);
+
+    $page = new SupplierImport;
+    $page->mount();
+    $page->data['driver_key'] = 'yandex_market_feed';
+    $page->data['source_settings'] = [
+        'source_mode' => 'url',
+        'source_url' => 'https://example.test/yandex.xml',
+        'source_history_id' => null,
+        'timeout' => 25,
+        'delay_ms' => 0,
+        'download_images' => true,
+    ];
+
+    $page->loadYandexFeedCategories();
+
+    $categoryField = $page->form(Schema::make($page))->getComponent(
+        fn ($component) => $component instanceof Select && $component->getName() === 'runtime.category_id',
+    );
+
+    expect($categoryField)->toBeInstanceOf(Select::class);
+
+    $options = $categoryField->getOptions();
+
+    expect($options)->toHaveCount(count($nodes))
+        ->and($options)->toHaveKey('1200')
+        ->and($options['1221'])->toBe('— [1221] Подкатегория 12.21')
+        ->and($categoryField->getOptionsLimit())->toBeGreaterThanOrEqual(count($nodes))
+        ->and($categoryField->getSearchResults('12.21'))->toBe(['1221' => '— [1221] Подкатегория 12.21']);
+});
+
 test('supplier import page renders loaded yandex category tree below run summary', function () {
     prepareSupplierImportPageTables();
 

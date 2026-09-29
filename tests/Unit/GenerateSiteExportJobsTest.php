@@ -9,26 +9,13 @@ use App\Models\User;
 use App\Support\Feeds\YandexMarketFeedGenerator;
 use App\Support\Seo\SitemapGenerator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
 
 beforeEach(function (): void {
-    $this->originalPublicPath = public_path();
-    $this->temporaryPublicPath = storage_path('framework/testing/public-'.Str::uuid());
-
-    File::deleteDirectory($this->temporaryPublicPath);
-    File::ensureDirectoryExists($this->temporaryPublicPath);
-
-    app()->usePublicPath($this->temporaryPublicPath);
-});
-
-afterEach(function (): void {
-    app()->usePublicPath($this->originalPublicPath);
-    File::deleteDirectory($this->temporaryPublicPath);
+    Storage::fake('local');
 });
 
 it('generate sitemap files job creates files and notifies initiator', function (): void {
@@ -63,9 +50,8 @@ it('generate sitemap files job creates files and notifies initiator', function (
     $job = new GenerateSitemapFilesJob($user->id);
     $job->handle(app(SitemapGenerator::class));
 
-    expect(File::exists(public_path('sitemap.xml')))->toBeTrue()
-        ->and(File::exists(public_path('sitemap-products-1.xml')))->toBeTrue()
-        ->and(File::exists(public_path('robots.txt')))->toBeTrue();
+    expect(Storage::disk('local')->exists('sitemaps/sitemap.xml'))->toBeTrue()
+        ->and(Storage::disk('local')->exists('sitemaps/sitemap-products-1.xml'))->toBeTrue();
 
     $notification = $user->fresh()->notifications()->latest()->first();
 

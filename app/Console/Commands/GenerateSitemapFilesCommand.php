@@ -9,7 +9,7 @@ class GenerateSitemapFilesCommand extends Command
 {
     protected $signature = 'seo:generate-sitemap';
 
-    protected $description = 'Generate robots.txt and sitemap XML files.';
+    protected $description = 'Generate sitemap XML files.';
 
     public function __construct(private SitemapGenerator $generator)
     {
@@ -25,7 +25,6 @@ class GenerateSitemapFilesCommand extends Command
         $this->info('Category sitemap: '.$result['categories']);
         $this->info('Product sitemap files: '.$result['product_sitemaps']);
         $this->info('Product URLs exported: '.$result['product_urls']);
-        $this->info('Robots file: '.$result['robots']);
 
         return self::SUCCESS;
     }

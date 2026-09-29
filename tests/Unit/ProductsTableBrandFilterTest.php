@@ -8,6 +8,7 @@ use App\Models\User;
 use Filament\Tables\Filters\BaseFilter;
 use Filament\Tables\Table;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -205,6 +206,97 @@ it('filters products assigned to a category without a primary category', functio
             $withPrimaryInTargetCategory,
             $withoutPrimaryInOtherCategory,
         ]);
+});
+
+it('offers only categories with subcategories that still hold products directly', function () {
+    $brokenParent = Category::query()->create([
+        'name' => 'Круглопильные станки',
+        'slug' => 'kruglopilnye-stanki',
+        'parent_id' => -1,
+        'order' => 1,
+    ]);
+    $emptyParent = Category::query()->create([
+        'name' => 'Электротранспорт',
+        'slug' => 'elektrotransport',
+        'parent_id' => -1,
+        'order' => 2,
+    ]);
+    $leaf = Category::query()->create([
+        'name' => 'Сверлильные станки',
+        'slug' => 'sverlilnye-stanki',
+        'parent_id' => -1,
+        'order' => 3,
+    ]);
+
+    foreach (['first', 'second'] as $suffix) {
+        $product = Product::query()->create([
+            'name' => "Saw {$suffix}",
+            'slug' => "saw-{$suffix}",
+            'price_amount' => 1000,
+        ]);
+        $product->categories()->attach($brokenParent->id, ['is_primary' => true]);
+    }
+
+    Product::query()
+        ->create(['name' => 'Drill', 'slug' => 'drill', 'price_amount' => 1000])
+        ->categories()
+        ->attach($leaf->id, ['is_primary' => true]);
+
+    // Подкатегории — в обход защиты, как они появились на бою до неё.
+    foreach ([$brokenParent, $emptyParent] as $parent) {
+        DB::table('categories')->insert([
+            'name' => "Подкатегория {$parent->slug}",
+            'slug' => "child-{$parent->slug}",
+            'parent_id' => $parent->id,
+            'order' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    expect(configuredProductsTableFilter('non_leaf_category')->getOptions())->toBe([
+        $brokenParent->id => 'Круглопильные станки (2)',
+    ]);
+});
+
+it('filters products linked directly to a category with subcategories', function () {
+    $this->actingAs(User::factory()->create());
+
+    $parent = Category::query()->create([
+        'name' => 'Круглопильные станки',
+        'slug' => 'kruglopilnye-stanki-table',
+        'parent_id' => -1,
+        'order' => 1,
+    ]);
+
+    $stuck = Product::query()->create([
+        'name' => 'Saw linked to parent',
+        'slug' => 'saw-linked-to-parent',
+        'price_amount' => 1000,
+    ]);
+    $stuck->categories()->attach($parent->id, ['is_primary' => true]);
+
+    $childId = DB::table('categories')->insertGetId([
+        'name' => 'Распиловочные станки',
+        'slug' => 'raspilovochnye-stanki-table',
+        'parent_id' => $parent->id,
+        'order' => 1,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $placed = Product::query()->create([
+        'name' => 'Saw in subcategory',
+        'slug' => 'saw-in-subcategory',
+        'price_amount' => 1100,
+    ]);
+    $placed->categories()->attach($childId, ['is_primary' => true]);
+
+    Livewire::test(ListProducts::class)
+        ->filterTable('staging_category', false)
+        ->filterTable('non_leaf_category', [$parent->id])
+        ->assertCanSeeTableRecords([$stuck])
+        ->assertCanNotSeeTableRecords([$placed]);
 });
 
 function configuredProductsTableFilter(string $name): ?BaseFilter

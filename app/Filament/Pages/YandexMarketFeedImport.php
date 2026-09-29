@@ -40,6 +40,9 @@ class YandexMarketFeedImport extends Page implements HasForms
 
     private const DISPLAY_TIMEZONE = 'Europe/Moscow';
 
+    /** Дерево фида в выпадающем списке показывается целиком — см. YandexMarketFeedDriver. */
+    private const CATEGORY_OPTIONS_LIMIT = 1000;
+
     protected static bool $shouldRegisterNavigation = false;
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-cloud-arrow-down';
@@ -225,8 +228,9 @@ class YandexMarketFeedImport extends Page implements HasForms
                             ->placeholder('Весь фид (без фильтра)')
                             ->searchable()
                             ->native(false)
-                            ->options(fn (): array => $this->categoryOptions(limit: 100))
-                            ->getSearchResultsUsing(fn (string $search): array => $this->categoryOptions(search: $search, limit: 100))
+                            ->options(fn (): array => $this->categoryOptions(limit: self::CATEGORY_OPTIONS_LIMIT))
+                            ->getSearchResultsUsing(fn (string $search): array => $this->categoryOptions(search: $search, limit: self::CATEGORY_OPTIONS_LIMIT))
+                            ->optionsLimit(self::CATEGORY_OPTIONS_LIMIT)
                             ->getOptionLabelUsing(fn ($value): ?string => $this->categoryOptionLabel($value))
                             ->hintIcon(
                                 Heroicon::InformationCircle,

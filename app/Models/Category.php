@@ -75,6 +75,13 @@ class Category extends Model
 
     public const CATALOG_MENU_CACHE_KEY = 'catalog.menu.v2';
 
+    /**
+     * Куда админка кладёт загруженные картинки категорий. Файлом распоряжается категория
+     * только отсюда: всё, что вне папки, — чаще всего картинка товара, выбранная в пикере,
+     * и удалять её вместе с категорией нельзя. Под `pics/` — иначе не сработает генерация WebP.
+     */
+    public const IMAGE_UPLOAD_DIRECTORY = 'pics/categories';
+
     protected $fillable = [
         'parent_id',
         'name',
@@ -278,6 +285,13 @@ class Category extends Model
         return Storage::disk('public')->url($path);
     }
 
+    public static function ownsImageFile(?string $path): bool
+    {
+        $path = static::normalizeImagePath($path);
+
+        return $path !== null && Str::startsWith($path, static::IMAGE_UPLOAD_DIRECTORY.'/');
+    }
+
     public function getImageUrlAttribute(): ?string
     {
         return static::resolveImageUrl($this->img);
@@ -320,20 +334,22 @@ class Category extends Model
             }
         });
 
-        // удаляем старый файл при замене
+        // Удаляем только свою загрузку (см. IMAGE_UPLOAD_DIRECTORY). Раньше удалялось всё,
+        // что не http, а пикер кладёт в img сам файл товара — и «Очистить» стирало картинку
+        // у товара. Загрузки до марта 2026 лежат в pics/ вперемешку с товарными, отличить их
+        // нельзя: пусть лучше останутся сиротами, чем снесём товарную.
         static::updating(function (Category $m) {
             if ($m->isDirty('img')) {
                 $old = $m->getOriginal('img');
-                if ($old && ! str_starts_with($old, 'http')) {
-                    Storage::disk('public')->delete($old);
+                if (static::ownsImageFile($old)) {
+                    Storage::disk('public')->delete(static::normalizeImagePath($old));
                 }
             }
         });
 
-        // удаляем файл при удалении записи
         static::deleting(function (Category $m) {
-            if ($m->img && ! str_starts_with($m->img, 'http')) {
-                Storage::disk('public')->delete($m->img);
+            if (static::ownsImageFile($m->img)) {
+                Storage::disk('public')->delete(static::normalizeImagePath($m->img));
             }
         });
 

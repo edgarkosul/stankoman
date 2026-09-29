@@ -18,6 +18,9 @@ use Throwable;
 
 final class MetaltecXmlDriver implements SupplierImportDriver
 {
+    /** Дерево фида в выпадающем списке показывается целиком — см. YandexMarketFeedDriver. */
+    private const CATEGORY_OPTIONS_LIMIT = 1000;
+
     public function __construct(
         private readonly MetaltecSupplierProfile $profile,
         private readonly MetaltecProductImportService $service,
@@ -102,11 +105,12 @@ final class MetaltecXmlDriver implements SupplierImportDriver
                 ->searchable()
                 ->native(false)
                 ->options(fn ($livewire): array => method_exists($livewire, 'metaltecFeedCategoryOptions')
-                    ? $livewire->metaltecFeedCategoryOptions(limit: 100)
+                    ? $livewire->metaltecFeedCategoryOptions(limit: self::CATEGORY_OPTIONS_LIMIT)
                     : [])
                 ->getSearchResultsUsing(fn (string $search, $livewire): array => method_exists($livewire, 'metaltecFeedCategoryOptions')
-                    ? $livewire->metaltecFeedCategoryOptions(search: $search, limit: 100)
+                    ? $livewire->metaltecFeedCategoryOptions(search: $search, limit: self::CATEGORY_OPTIONS_LIMIT)
                     : [])
+                ->optionsLimit(self::CATEGORY_OPTIONS_LIMIT)
                 ->getOptionLabelUsing(fn ($value, $livewire): ?string => method_exists($livewire, 'metaltecFeedCategoryOptionLabel')
                     ? $livewire->metaltecFeedCategoryOptionLabel($value)
                     : null)
