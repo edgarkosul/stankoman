@@ -108,6 +108,33 @@ class Wizard extends Component
 
         if ($property === 'contact.inn') {
             $this->handleInnChanged((string) $value);
+
+            return;
+        }
+
+        if ($property === 'delivery.shipping_method') {
+            $this->handleShippingMethodChanged((string) $value);
+        }
+    }
+
+    /**
+     * Переключились на самовывоз — адрес доставки забываем.
+     *
+     * Иначе он молча уедет в заказ и в письмо менеджеру: человек начал
+     * заполнять доставку, передумал, а в заказе осталась улица, по которой
+     * никто ничего не повезёт. Обратно поля не восстанавливаются — у
+     * авторизованного покупателя их заново подставит профиль.
+     */
+    private function handleShippingMethodChanged(string $method): void
+    {
+        if ($method !== 'pickup') {
+            $this->prefillDeliveryFromAuthenticatedUser();
+
+            return;
+        }
+
+        foreach (['shipping_country', 'shipping_region', 'shipping_city', 'shipping_street', 'shipping_house', 'shipping_postcode'] as $key) {
+            $this->delivery[$key] = null;
         }
     }
 
@@ -230,7 +257,7 @@ class Wizard extends Component
     protected function deliveryRules(): array
     {
         return [
-            'delivery.shipping_method' => ['required', 'in:delivery'],
+            'delivery.shipping_method' => ['required', 'in:delivery,pickup'],
             'delivery.shipping_country' => ['nullable', 'string', 'max:64'],
             'delivery.shipping_region' => ['nullable', 'string', 'max:128'],
             'delivery.shipping_city' => ['nullable', 'string', 'max:128'],

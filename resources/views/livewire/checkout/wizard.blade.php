@@ -109,10 +109,44 @@
                     <div class="space-y-4">
                         <div>
                             <label class="mb-2 block text-sm font-medium text-black">Способ доставки</label>
-                            <div class="border border-brand-green p-3 text-sm font-medium text-black">Доставка</div>
+                            <div class="grid gap-2 md:grid-cols-2">
+                                <label class="flex cursor-pointer items-start gap-2 border border-brand-green p-3 text-sm text-black">
+                                    <input type="radio" wire:model.live="delivery.shipping_method" value="delivery"
+                                        class="mt-0.5 h-4 w-4 border border-brand-green" />
+                                    <span>
+                                        <span class="block font-medium">Доставка</span>
+                                        <span class="block text-xs text-zinc-600">Транспортной компанией или курьером по адресу</span>
+                                    </span>
+                                </label>
+                                <label class="flex cursor-pointer items-start gap-2 border border-brand-green p-3 text-sm text-black">
+                                    <input type="radio" wire:model.live="delivery.shipping_method" value="pickup"
+                                        class="mt-0.5 h-4 w-4 border border-brand-green" />
+                                    <span>
+                                        <span class="block font-medium">Самовывоз</span>
+                                        {{-- Адрес тот же, что в шапке сайта и на «Доставке и оплате». --}}
+                                        <span class="block text-xs text-zinc-600">Краснодар, пос. Новознаменский, ул. Андреевская, 2</span>
+                                    </span>
+                                </label>
+                            </div>
+                            @error('delivery.shipping_method')
+                                <p class="mt-1 text-sm text-brand-red">{{ $message }}</p>
+                            @enderror
                         </div>
 
+                        @if (($delivery['shipping_method'] ?? 'delivery') === 'pickup')
+                            {{--
+                                Обещать время забора здесь нельзя: по ответу владельца
+                                самовывоз согласовывается с менеджером, а товар может
+                                лежать и на складе партнёра в другом городе.
+                            --}}
+                            <div class="border border-brand-green bg-white p-3 text-sm text-black">
+                                Менеджер свяжется с вами и согласует время. Если товар лежит на складе
+                                в другом городе, он подскажет, можно ли забрать его там.
+                            </div>
+                        @endif
+
                         <div class="grid gap-4 md:grid-cols-2">
+                            @if (($delivery['shipping_method'] ?? 'delivery') === 'delivery')
                             <div>
                                 <label class="mb-1 block text-sm font-medium text-black">Город</label>
                                 <input type="text" wire:model.blur="delivery.shipping_city"
@@ -133,6 +167,7 @@
                                 <input type="text" wire:model.blur="delivery.shipping_postcode"
                                     class="h-11 w-full border border-brand-green bg-white px-3 text-sm text-black outline-none focus:border-brand-red" />
                             </div>
+                            @endif
                             <div class="md:col-span-2">
                                 <label class="mb-1 block text-sm font-medium text-black">Комментарий</label>
                                 <textarea wire:model.blur="delivery.shipping_comment" rows="3"
