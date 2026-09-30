@@ -3,16 +3,21 @@
 namespace App\Filament\Resources\Settings\Schemas;
 
 use App\Enums\SettingType;
+use App\Support\WorkSchedule;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\TimePicker;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 
 class SettingForm
 {
+    public const WORK_SCHEDULE_KEY = 'company.work_schedule';
+
     private const EMAIL_LIST_KEYS = [
         'general.manager_emails',
         'general.filament_admin_emails',
@@ -80,6 +85,7 @@ class SettingForm
                         ...self::TEXT_VALUE_KEYS,
                         ...self::TEXTAREA_VALUE_KEYS,
                         ...self::BOOL_VALUE_KEYS,
+                        self::WORK_SCHEDULE_KEY,
                     ], true))
                     ->dehydrated(fn (Get $get): bool => ! in_array($get('key'), [
                         ...self::EMAIL_LIST_KEYS,
@@ -89,6 +95,7 @@ class SettingForm
                         ...self::TEXT_VALUE_KEYS,
                         ...self::TEXTAREA_VALUE_KEYS,
                         ...self::BOOL_VALUE_KEYS,
+                        self::WORK_SCHEDULE_KEY,
                     ], true))
                     ->columnSpanFull(),
 
@@ -240,6 +247,49 @@ class SettingForm
                             ->required(),
                     ])
                     ->visible(fn (Get $get): bool => $get('key') === 'general.filament_admin_emails')
+                    ->columnSpanFull(),
+
+                Repeater::make('work_schedule_days')
+                    ->label('Часы работы по дням недели')
+                    ->helperText('Показываются в шапке и подвале сайта, в блоке «Режим работы» на страницах и известны боту.')
+                    ->addable(false)
+                    ->deletable(false)
+                    ->reorderable(false)
+                    ->columns(3)
+                    ->schema([
+                        Hidden::make('day'),
+                        Toggle::make('open')
+                            // День берётся соседним полем строки: в замыкание поля Filament
+                            // отдаёт состояние самого тумблера, «понедельник» из него не достать.
+                            ->label(fn (Get $get): string => WorkSchedule::DAY_FULL_NAMES[(int) $get('day')] ?? '')
+                            ->inline(false)
+                            ->live(),
+                        // Часы работы — время на часах магазина, а не момент во времени.
+                        // Без явного пояса поле пересчитывает его из пояса панели (Москва)
+                        // в пояс приложения: админ вводит 8:00, а в базу ложится 5:00.
+                        TimePicker::make('from')
+                            ->label('с')
+                            ->seconds(false)
+                            ->timezone(config('app.timezone'))
+                            ->visible(fn (Get $get): bool => (bool) $get('open'))
+                            ->required(fn (Get $get): bool => (bool) $get('open')),
+                        TimePicker::make('to')
+                            ->label('до')
+                            ->seconds(false)
+                            ->timezone(config('app.timezone'))
+                            ->visible(fn (Get $get): bool => (bool) $get('open'))
+                            ->required(fn (Get $get): bool => (bool) $get('open'))
+                            ->after('from'),
+                    ])
+                    ->visible(fn (Get $get): bool => $get('key') === self::WORK_SCHEDULE_KEY)
+                    ->columnSpanFull(),
+
+                Textarea::make('work_schedule_note')
+                    ->label('Примечание')
+                    ->helperText('Необязательно. Показывается под часами на сайте, например: «В субботу и воскресенье — отгрузка по предварительной договорённости».')
+                    ->rows(2)
+                    ->maxLength(300)
+                    ->visible(fn (Get $get): bool => $get('key') === self::WORK_SCHEDULE_KEY)
                     ->columnSpanFull(),
             ])->columns(2);
     }

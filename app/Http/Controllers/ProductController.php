@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Support\ImageDerivativesResolver;
 use App\Support\Products\DiscountVisibility;
+use App\Support\Products\ProductSpecs;
 use App\Support\ViewModels\ProductPageViewModel;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Storage;
@@ -22,7 +23,7 @@ class ProductController extends Controller
             'attributeOptions.attribute',
         ]);
 
-        $specs = $this->buildSpecs($product);
+        $specs = app(ProductSpecs::class)->rows($product);
         $viewModel = app(ProductPageViewModel::class, ['product' => $product]);
 
         return view('pages.product.show', [
@@ -227,81 +228,6 @@ class ProductController extends Controller
         }
 
         return $this->resolveImageUrl($firstImage);
-    }
-
-    /**
-     * @return array<int, array{name: string, value: string, source: string|null}>
-     */
-    private function buildSpecs(Product $product): array
-    {
-        $rawSpecs = $product->specs;
-
-        if (is_string($rawSpecs)) {
-            $decoded = json_decode($rawSpecs, true);
-
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                $rawSpecs = $decoded;
-            }
-        }
-
-        if (! is_array($rawSpecs)) {
-            return [];
-        }
-
-        return collect($rawSpecs)
-            ->map(function (mixed $row, mixed $key): ?array {
-                if (is_array($row)) {
-                    return $this->normalizeSpecRow(
-                        $row['name'] ?? $key,
-                        $row['value'] ?? null,
-                        $row['source'] ?? null,
-                    );
-                }
-
-                return $this->normalizeSpecRow($key, $row);
-            })
-            ->filter()
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return array{name: string, value: string, source: string|null}|null
-     */
-    private function normalizeSpecRow(mixed $nameRaw, mixed $valueRaw, mixed $sourceRaw = null): ?array
-    {
-        $name = $this->normalizeSpecString($nameRaw);
-        $value = $this->normalizeSpecValue($valueRaw);
-
-        if ($name === null || $value === null) {
-            return null;
-        }
-
-        return [
-            'name' => $name,
-            'value' => $value,
-            'source' => $this->normalizeSpecString($sourceRaw),
-        ];
-    }
-
-    private function normalizeSpecString(mixed $value): ?string
-    {
-        if ($value === null || is_array($value) || is_object($value)) {
-            return null;
-        }
-
-        $string = trim((string) $value);
-
-        return $string !== '' ? $string : null;
-    }
-
-    private function normalizeSpecValue(mixed $value): ?string
-    {
-        if (is_bool($value)) {
-            return $value ? 'Да' : 'Нет';
-        }
-
-        return $this->normalizeSpecString($value);
     }
 
     private function normalizeGallery(mixed $gallery): array

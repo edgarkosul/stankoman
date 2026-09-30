@@ -44,6 +44,28 @@ it('запрос, который что-то нашёл, не пробует с�
         ->and($asked->getArrayCopy())->toBe(['tehnotek benzogenerator']);
 });
 
+it('смысловому поиску называет незнакомые слова даже при полной выдаче', function (): void {
+    /*
+     * Гибрид с вектором возвращает ближайших соседей почти всегда, то есть
+     * пустой выдачи — единственного нашего признака «таких слов в каталоге
+     * нет» — у него не бывает. Без пробы шум вектора уехал бы к покупателю
+     * как точный ответ.
+     */
+    [$run, $asked] = fakeProductTextSearch(['elektropitbajk belluga' => [4, 5]]);
+    $search = new ProductTextSearch(
+        wordHits: fn (): array => [0, 12],
+        brands: fn () => [],
+    );
+
+    $outcome = $search->run('электропитбайк belluga', $run, probeAlways: true);
+
+    expect($outcome->result->all())->toBe([4, 5])
+        ->and($outcome->unmatched)->toBe(['электропитбайк'])
+        // Выдача уже есть — повторять нечего, второго поиска быть не должно.
+        ->and($outcome->relaxed)->toBeFalse()
+        ->and($asked->getArrayCopy())->toBe(['elektropitbajk belluga']);
+});
+
 it('пустой запрос повторяет без незнакомого первого слова', function (): void {
     [$run, $asked] = fakeProductTextSearch(['tehnotek' => [7]]);
     $probed = [];

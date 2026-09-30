@@ -56,8 +56,14 @@
                 <div class="border-r border border-zinc-300"></div>
                 <div class="flex flex-col gap-8">
                     <div class="flex items-center gap-2 text-sm">
-                        <x-tooltip {{-- title="Режим работы:" --}} align="right" subtitle="ПН - Пт: 9:00 - 18:00"
-                            subtitle2="Сб-Вс: выходной ">
+                        {{-- Режим работы — из настроек («Настройки» → «Режим работы»), не строкой в шаблоне. --}}
+                        @php
+                            $workSchedule = App\Support\WorkSchedule::fromConfig();
+                            $workScheduleLines = $workSchedule->lines();
+                        @endphp
+                        <x-tooltip align="right" :subtitle="$workScheduleLines[0] ?? null"
+                            :subtitle2="implode(', ', array_slice($workScheduleLines, 1)) ?: null">
+                            {{ $workSchedule->note }}
                             <x-slot:trigger>
                                 <span class="inline-flex items-center gap-2">
                                     <x-icon name="info" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />

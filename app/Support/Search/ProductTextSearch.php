@@ -59,9 +59,15 @@ final class ProductTextSearch
      * @template TResult
      *
      * @param  Closure(Builder<Product>): TResult  $run  как исполнить поиск по готовому запросу
+     * @param  bool  $probeAlways  пробовать слова даже при непустой выдаче.
+     *                             Нужно смысловому поиску бота: гибрид с вектором
+     *                             возвращает ближайших соседей почти всегда, то есть
+     *                             пустой выдачи — единственного нашего признака
+     *                             «таких слов в каталоге нет» — просто не бывает,
+     *                             и шум вектора уехал бы к покупателю как точный ответ
      * @return SearchOutcome<TResult>
      */
-    public function run(string $query, Closure $run): SearchOutcome
+    public function run(string $query, Closure $run, bool $probeAlways = false): SearchOutcome
     {
         // Список брендов нужен только кириллице: латиницу BrandSpelling не трогает.
         $text = preg_match('/\p{Cyrillic}/u', $query) === 1
@@ -70,8 +76,9 @@ final class ProductTextSearch
 
         $result = $run(Product::search($text));
         $words = $text === '' ? [] : explode(' ', $text);
+        $empty = self::isEmpty($result);
 
-        if (! self::isEmpty($result) || ! QueryRelaxation::worthProbing($words)) {
+        if ((! $empty && ! $probeAlways) || ! QueryRelaxation::worthProbing($words)) {
             return new SearchOutcome($result, $text);
         }
 
@@ -87,6 +94,15 @@ final class ProductTextSearch
         $typed = explode(' ', trim((string) preg_replace('/\s+/u', ' ', $query)));
         $source = count($typed) === count($words) ? $typed : $words;
         $unmatched = array_map(static fn (int $i): string => $source[$i], $unmatchedAt);
+
+        /*
+         * Выдача уже есть — повторять нечего, но назвать слова, которых нет
+         * в каталоге, всё равно надо: это и есть предупреждение вызывающему,
+         * что выдача держится не на них.
+         */
+        if (! $empty) {
+            return new SearchOutcome($result, $text, $unmatched);
+        }
 
         $retry = QueryRelaxation::retryWords($words, $unmatchedAt);
 

@@ -30,6 +30,16 @@
     <livewire:auth.forgot-password-inline />
     <livewire:auth.verify-email-inline />
 
+    {{--
+        Чат с консультантом. До клика это чистый Blade и Alpine — ни одного
+        запроса к серверу; панель грузится лениво. Пока идёт предпросмотр
+        (AI_CHAT_PREVIEW), виджет видят только сотрудники и те, кто пришёл
+        по ссылке с ключом.
+    --}}
+    @if (app(\App\Services\Chat\ChatPreviewGate::class)->visibleNow())
+        <x-support.chat-launcher />
+    @endif
+
     <script>
         window.prettyNumberInput = window.prettyNumberInput || function (config = {}) {
             return {

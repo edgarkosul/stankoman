@@ -5,21 +5,27 @@ namespace App\Support\Mail;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
 use App\Mail\CallbackRequestManagerMail;
+use App\Mail\ChatEscalationManagerMail;
+use App\Mail\ChatOperatorRepliedMail;
 use App\Mail\OrderSubmittedCustomerMail;
 use App\Mail\OrderSubmittedManagerMail;
 use App\Mail\WelcomeNoPassword;
 use App\Mail\WelcomeSetPassword;
 use App\Models\CallbackRequest;
+use App\Models\ChatConversation;
+use App\Models\ChatMessage;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\User;
 use App\Notifications\Auth\ResetPasswordNotification;
 use App\Notifications\Auth\VerifyEmailNotification;
+use App\Services\Chat\ChatEscalationService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Mail\Mailable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 class MailPreviewFactory
@@ -47,6 +53,18 @@ class MailPreviewFactory
                 'group' => 'Заявки',
                 'label' => 'Заявка на звонок менеджеру',
                 'expectedText' => 'Заявка на обратный звонок',
+            ],
+            [
+                'key' => 'chat-escalation-manager',
+                'group' => 'Заявки',
+                'label' => 'Чат: вопрос передан менеджеру',
+                'expectedText' => 'Чат: покупатель просит менеджера',
+            ],
+            [
+                'key' => 'chat-operator-replied',
+                'group' => 'Заявки',
+                'label' => 'Чат: менеджер ответил покупателю',
+                'expectedText' => 'Менеджер ответил вам в чате',
             ],
             [
                 'key' => 'welcome-set-password',
@@ -101,6 +119,12 @@ class MailPreviewFactory
             'order-submitted-customer' => new OrderSubmittedCustomerMail($this->sampleOrder()),
             'order-submitted-manager' => new OrderSubmittedManagerMail($this->sampleOrder()),
             'callback-request-manager' => new CallbackRequestManagerMail($this->sampleCallbackRequest()),
+            'chat-escalation-manager' => $this->chatEscalationPreview(),
+            'chat-operator-replied' => new ChatOperatorRepliedMail(
+                preview: 'Да, эта модель есть в наличии — отгрузим завтра со склада в Краснодаре. '
+                    .'Счёт на оплату вышлю на вашу почту.',
+                resumeUrl: url('/chat/'.Str::random(40).'?signature=preview'),
+            ),
             'welcome-set-password' => $this->welcomeSetPasswordPreview(),
             'welcome-no-password' => new WelcomeNoPassword($this->customerUser()),
             'auth-verify-email' => (new VerifyEmailNotification)->toMail($this->unverifiedUser()),
@@ -211,6 +235,48 @@ class MailPreviewFactory
         ]));
 
         return $callbackRequest;
+    }
+
+    /**
+     * Диалог для превью собирается в памяти: ни строки в базе, ни запроса.
+     * Поэтому реплики подкладываются отношением, а заявка — пустым
+     * отношением, чтобы письмо не полезло её искать.
+     */
+    private function chatEscalationPreview(): ChatEscalationManagerMail
+    {
+        $conversation = $this->existing(new ChatConversation, [
+            'id' => 412,
+            'token' => Str::random(40),
+            'status' => ChatConversation::STATUS_BOT,
+            'user_id' => 101,
+            'messages_count' => 6,
+            'escalated_at' => Carbon::parse('2026-03-27 13:02:00'),
+            'created_at' => Carbon::parse('2026-03-27 12:51:00'),
+        ]);
+
+        $conversation->setRelation('callbackRequest', null);
+        $conversation->setRelation('messages', collect([
+            $this->existing(new ChatMessage, [
+                'id' => 8801,
+                'chat_conversation_id' => $conversation->id,
+                'role' => ChatMessage::ROLE_VISITOR,
+                'body' => 'Нужен станок под нержавейку 40 мм. Успеете отгрузить до конца недели?',
+            ]),
+            $this->existing(new ChatMessage, [
+                'id' => 8802,
+                'chat_conversation_id' => $conversation->id,
+                'role' => ChatMessage::ROLE_ASSISTANT,
+                'body' => 'По срокам отгрузки под ваш объём отвечает менеджер — передаю ему вопрос.',
+            ]),
+        ]));
+
+        return new ChatEscalationManagerMail(
+            conversation: $conversation,
+            trigger: ChatEscalationService::TRIGGER_VISITOR,
+            reason: 'Покупатель просит подтвердить срок отгрузки.',
+            adminUrl: url('/admin/chat-conversations/'.$conversation->id),
+            customer: 'Иван Петров (ivan.petrov@example.test)',
+        );
     }
 
     private function welcomeSetPasswordPreview(): WelcomeSetPassword

@@ -44,6 +44,55 @@ Schedule::command('search:audit', ['--fix'])
     ->withoutOverlapping(180)
     ->appendOutputTo(storage_path('logs/search-audit.log'));
 
+/*
+ * База знаний ИИ-ассистента — страховочный ночной проход.
+ *
+ * Правки страниц и статей доезжают до индекса сразу, наблюдателями через очередь.
+ * Ночью ловится то, что мимо них: реквизиты из настроек (воркер держит конфиг
+ * с момента запуска и новых значений не видит), потерянные задачи очереди,
+ * страница, убранная из белого списка (--prune).
+ *
+ * Проход инкрементный по content_hash: неизменившийся текст не пересчитывается
+ * и не оплачивается, так что ночь без правок стоит ноль вызовов шлюза.
+ */
+Schedule::command('ai:kb-reindex', ['--prune'])
+    ->dailyAt('04:00')
+    ->withoutOverlapping(180)
+    ->appendOutputTo(storage_path('logs/ai-kb-reindex.log'));
+
+/*
+ * Векторы каталога для смыслового поиска бота (зеркало products_semantic).
+ *
+ * Проход инкрементный по content_hash: пересчитывается только то, у чего
+ * изменился ТЕКСТ карточки. Цена и остаток в текст не входят, поэтому ночной
+ * пересчёт курсов валют не стоит ни копейки, а вот правки карточек у нас
+ * идут сотнями в неделю — прогон на сотню-другую товаров это норма.
+ *
+ * В 00:30, следом за курсами, идёт проход БЕЗ вызовов модели: он обновляет
+ * в зеркале цену, наличие и разделы. Иначе отбор «до 40 тысяч» и «в наличии»
+ * у бота работал бы по снимку недельной давности — курсы двигают цены
+ * пачками по всему каталогу.
+ */
+Schedule::command('ai:catalog-embed', ['--fields-only'])
+    ->dailyAt('00:30')
+    ->withoutOverlapping(180)
+    ->appendOutputTo(storage_path('logs/ai-catalog-embed.log'));
+
+Schedule::command('ai:catalog-embed')
+    ->dailyAt('03:00')
+    ->withoutOverlapping(180)
+    ->appendOutputTo(storage_path('logs/ai-catalog-embed.log'));
+
+/*
+ * Сроки хранения переписки чата: через 30 дней диалог обезличивается,
+ * через 180 — удаляется насовсем (config/ai_support.php, `chat.retention`).
+ * Расходная книга бота при этом остаётся — в ней нет ни текста, ни адреса.
+ */
+Schedule::command('chat:purge')
+    ->dailyAt('04:15')
+    ->withoutOverlapping(60)
+    ->appendOutputTo(storage_path('logs/chat-purge.log'));
+
 Schedule::command('legacy:kraton-match')
     ->dailyAt('05:20')
     ->withoutOverlapping(180)

@@ -50,6 +50,17 @@
                 </div>
             @endif
 
+            @if (! empty($bank))
+                <div class="grid gap-1">
+                    <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500">Банковские реквизиты</dt>
+                    <dd class="grid gap-1 text-zinc-800">
+                        @foreach ($bank as $label => $value)
+                            <span>{{ $label }}: {{ $value }}</span>
+                        @endforeach
+                    </dd>
+                </div>
+            @endif
+
             @if ($email)
                 <div class="grid gap-1">
                     <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500">Email</dt>

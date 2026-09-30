@@ -13,6 +13,7 @@ return [
     'company.phone' => 'Телефон компании',
     'company.site_url' => 'URL сайта компании',
     'company.public_email' => 'Публичный email',
+    'company.work_schedule' => 'Режим работы',
     'company.legal_addr' => 'Юридический адрес',
     'company.correspondence_addr' => 'Адрес для корреспонденции',
     'company.bank.name' => 'Название банка',

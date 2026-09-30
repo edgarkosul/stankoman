@@ -3,8 +3,10 @@
 namespace App\Filament\Resources\Settings\Pages;
 
 use App\Enums\SettingType;
+use App\Filament\Resources\Settings\Schemas\SettingForm;
 use App\Filament\Resources\Settings\SettingResource;
 use App\Models\Setting;
+use App\Support\WorkSchedule;
 use Filament\Resources\Pages\EditRecord;
 
 class EditSetting extends EditRecord
@@ -51,6 +53,23 @@ class EditSetting extends EditRecord
 
     protected function mutateFormDataBeforeFill(array $data): array
     {
+        if (($data['key'] ?? null) === SettingForm::WORK_SCHEDULE_KEY) {
+            $schedule = WorkSchedule::fromArray(json_decode((string) ($data['value'] ?? ''), true));
+
+            $data['work_schedule_days'] = collect($schedule->days)
+                ->map(fn (?array $hours, int $day): array => [
+                    'day' => $day,
+                    'open' => $hours !== null,
+                    'from' => $hours[0] ?? null,
+                    'to' => $hours[1] ?? null,
+                ])
+                ->values()
+                ->all();
+            $data['work_schedule_note'] = $schedule->note;
+
+            return $data;
+        }
+
         $field = $this->resolveCustomField(self::EMAIL_LIST_KEYS, $data['key'] ?? null);
 
         if ($field !== null) {
@@ -86,6 +105,30 @@ class EditSetting extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        if ($this->getRecord()->key === SettingForm::WORK_SCHEDULE_KEY) {
+            $days = [];
+
+            foreach ($data['work_schedule_days'] ?? [] as $row) {
+                $days[(int) ($row['day'] ?? 0)] = ($row['open'] ?? false)
+                    ? [(string) ($row['from'] ?? ''), (string) ($row['to'] ?? '')]
+                    : null;
+            }
+
+            // Через WorkSchedule, а не как пришло из формы: поле времени отдаёт
+            // «09:00:00», а сайт и чат читают «09:00».
+            $schedule = WorkSchedule::fromArray([
+                'days' => $days,
+                'note' => (string) ($data['work_schedule_note'] ?? ''),
+            ]);
+
+            $data['type'] = SettingType::Json->value;
+            $data['value'] = json_encode($schedule->toArray(), JSON_UNESCAPED_UNICODE);
+
+            unset($data['work_schedule_days'], $data['work_schedule_note']);
+
+            return $data;
+        }
+
         $field = $this->resolveCustomField(self::EMAIL_LIST_KEYS);
 
         if ($field !== null) {
