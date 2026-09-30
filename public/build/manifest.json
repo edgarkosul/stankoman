@@ -6,7 +6,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-DQXgPQ0b.css",
+    "file": "assets/app-CKurnkI8.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -15,7 +15,7 @@
     ]
   },
   "resources/css/filament/admin/theme.css": {
-    "file": "assets/theme-Dy1-vBmm.css",
+    "file": "assets/theme-B3afObUG.css",
     "src": "resources/css/filament/admin/theme.css",
     "isEntry": true,
     "name": "theme",
@@ -31,16 +31,36 @@
     "file": "assets/roboto-flex-latin-7RIjvx03.woff2",
     "src": "resources/fonts/roboto-flex/roboto-flex-latin.woff2"
   },
+  "resources/images/chat-bg.svg": {
+    "file": "assets/chat-bg-DcIQgZFK.svg",
+    "src": "resources/images/chat-bg.svg"
+  },
   "resources/js/app.js": {
-    "file": "assets/app-Dl_6HBKs.js",
+    "file": "assets/app-Cj8j3NHw.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
     "dynamicImports": [
+      "resources/js/mascot/mascot-loader.js",
+      "resources/js/mascot/mascot-loader.js",
+      "resources/js/mascot/mascot-loader.js",
       "node_modules/photoswipe/dist/photoswipe.esm.js"
     ],
     "css": [
       "assets/app-DZU1WGtr.css"
     ]
+  },
+  "resources/js/mascot/mascot-loader.js": {
+    "file": "assets/mascot-loader-BIiodomN.js",
+    "name": "mascot-loader",
+    "src": "resources/js/mascot/mascot-loader.js",
+    "isDynamicEntry": true,
+    "assets": [
+      "assets/robot-head-DUKpxvwC.svg"
+    ]
+  },
+  "resources/js/mascot/robot-head.svg": {
+    "file": "assets/robot-head-DUKpxvwC.svg",
+    "src": "resources/js/mascot/robot-head.svg"
   }
 }
