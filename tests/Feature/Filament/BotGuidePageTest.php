@@ -32,7 +32,10 @@ it('показывает владельцу ссылку с ключом пре�
         ->assertSee('https://intertooler.ru/?bot=klyuch-1')
         // Разделы админки — ссылками: «найдите в меню» этот читатель не осилит.
         ->assertSee(ChatConversationResource::getUrl('index'))
-        ->assertSee(KbArticleResource::getUrl('index'));
+        ->assertSee(KbArticleResource::getUrl('index'))
+        // Совет, из-за которого статьи вообще находятся ботом: заголовок —
+        // вопрос покупателя, одна статья — один вопрос.
+        ->assertSee('Одна статья — один вопрос');
 });
 
 it('после снятия предпросмотра не обещает, что бота видно только владельцу', function (): void {
