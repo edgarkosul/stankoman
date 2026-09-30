@@ -19,17 +19,21 @@
             <div class="space-y-0">
                 @foreach ($column as $spec)
                     @php($specName = (string) ($spec['name'] ?? ''))
+                    {{-- Значение не обрезается ни на какой ширине: ради него таблицу и открывают,
+                         а подсказки у него нет. Название на телефоне тоже переносится — тап по
+                         обрезанному тексту никто не угадает; с sm места хватает, там обрезка
+                         с подсказкой по наведению. --}}
                     <div
-                        class="grid grid-cols-[minmax(0,1fr)_12rem] items-center gap-3 border-b border-zinc-300 py-3 text-sm leading-snug text-zinc-900 sm:grid-cols-[minmax(0,1fr)_12rem] sm:gap-5 lg:grid-cols-[minmax(0,1fr)_12rem]">
+                        class="grid grid-cols-2 items-start gap-3 border-b border-zinc-300 py-3 text-sm leading-snug text-zinc-900 sm:grid-cols-[minmax(0,1fr)_12rem] sm:gap-5">
                         <span
-                            class="min-w-0 truncate whitespace-nowrap pr-2"
+                            class="min-w-0 break-words pr-2 sm:truncate sm:whitespace-nowrap"
                             x-data="overflowTooltip(@js($specName))"
                             x-tooltip.theme-ks-light="tooltipContent"
                             x-on:mouseenter="queueSync()"
                             x-on:focus="queueSync()"
                             data-tooltip-max-width="360"
                         >{{ $specName }}</span>
-                        <span class="truncate whitespace-nowrap text-left font-medium text-zinc-900">{{ $spec['value'] }}</span>
+                        <span class="min-w-0 break-words text-left font-medium text-zinc-900">{{ $spec['value'] }}</span>
                     </div>
                 @endforeach
             </div>
