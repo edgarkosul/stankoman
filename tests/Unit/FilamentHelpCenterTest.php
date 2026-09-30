@@ -39,6 +39,8 @@ test('help center routes match real admin routes and only omit explicitly unsupp
         // Разделы бота — по той же причине: справки нет и писать её некуда.
         // Как вести бота, объясняют сами экраны — подписями и пустыми состояниями.
         'filament.admin.pages.assistant-sandbox',
+        // Страница-инструкция сама себе справка.
+        'filament.admin.pages.bot-guide',
         'filament.admin.pages.assistant-settings',
         'filament.admin.pages.kb-gaps',
         'filament.admin.resources.chat-conversations.index',
