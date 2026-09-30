@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ChatResumeController;
 use App\Http\Controllers\ChatUnreadController;
+use App\Http\Controllers\Hooks\MaxHookController;
 use App\Http\Controllers\LegacyKratonRedirectController;
 use App\Http\Controllers\MailPreviewController;
 use App\Http\Controllers\PageController;
@@ -241,6 +242,20 @@ Route::middleware(['web', 'auth'])
         return response()->download($absPath, $downloadName);
     })
     ->name('admin.tools.download-import');
+
+/*
+ * Webhook бота MAX: подключение и отключение чатов менеджеров.
+ *
+ * Отдельного файла api-маршрутов в проекте нет и заводить его ради одного
+ * хука незачем — поэтому маршрут здесь, а CSRF для него снят точечно
+ * в `bootstrap/app.php`. Что запрос пришёл от MAX, подтверждает секрет
+ * в заголовке: мы сами передали его при регистрации (`php artisan max:hook`).
+ *
+ * Потолок частоты небольшой, но нужен: адрес публичный и угадываемый.
+ */
+Route::post('/hooks/max', MaxHookController::class)
+    ->name('max.hook')
+    ->middleware('throttle:120,1');
 
 if (app()->environment(['local', 'testing'])) {
     Route::prefix('_preview/mail')

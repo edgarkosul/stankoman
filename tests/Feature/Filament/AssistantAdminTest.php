@@ -249,6 +249,7 @@ it('сохраняет настройки бота в таблицу и прим
 
     Livewire::test(AssistantSettings::class)
         ->set('data.enabled', false)
+        ->set('data.mascot', false)
         ->set('data.about', 'Продаём станки и оснастку организациям.')
         ->set('data.forbidden_topics', ['торг'])
         ->call('save')
@@ -259,6 +260,9 @@ it('сохраняет настройки бота в таблицу и прим
     expect(Setting::query()->where('key', 'assistant.enabled')->value('value'))->toBe('0')
         ->and($config->enabled())->toBeFalse()
         ->and($config->disabledByAdmin())->toBeTrue()
+        // Робот выключается тем же сохранением и тем же способом: строкой
+        // в настройках, а не правкой шаблона.
+        ->and($config->mascotEnabled())->toBeFalse()
         ->and($config->promptSettings())->toMatchArray([
             'about' => 'Продаём станки и оснастку организациям.',
             'forbidden_topics' => '- торг',

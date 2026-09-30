@@ -69,6 +69,7 @@ class AssistantSettings extends Page implements HasForms
              * «выключен» туда, где владелец ничего не выключал.
              */
             'enabled' => ! $config->disabledByAdmin(),
+            'mascot' => $config->mascotEnabled(),
             'about' => $config->text('about'),
             /*
              * Простой репитер (`->simple()`) держит в состоянии саму строку,
@@ -107,6 +108,13 @@ class AssistantSettings extends Page implements HasForms
                             ->helperText($this->emergencyOverride()
                                 ? 'Сейчас не действует: бот выключен аварийно, строкой в настройках сервера.'
                                 : null),
+                    ]),
+
+                Section::make('Лицо бота')
+                    ->description('Анимированный робот на кнопке чата — дело вкуса, а не работы бота. Выключите, если он не к месту: на кнопке останется значок разговора, в подсказке и в шапке панели — статичное лицо. Заодно в браузер посетителя не поедут 95 КБ картинки и движка анимации.')
+                    ->schema([
+                        Toggle::make('mascot')
+                            ->label('Анимированный робот вместо простого значка'),
                     ]),
 
                 Section::make('Когда менеджер на связи')
@@ -244,6 +252,7 @@ class AssistantSettings extends Page implements HasForms
 
         $this->persist([
             'enabled' => (bool) ($state['enabled'] ?? true),
+            'mascot' => (bool) ($state['mascot'] ?? true),
             'about' => trim((string) ($state['about'] ?? '')),
             'rules' => $this->rulesFromForm($state['rules'] ?? []),
             'forbidden_topics' => $this->topicsFromForm($state['forbidden_topics'] ?? []),

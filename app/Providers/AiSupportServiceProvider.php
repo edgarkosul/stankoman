@@ -49,8 +49,8 @@ use App\Services\Kb\KbVectorIndexer;
 use App\Services\Kb\KbVectorStore;
 use App\Services\Kb\Sources\KbArticleKbSource;
 use App\Services\Kb\TiptapTextExtractor;
+use App\Services\Messengers\MaxChannelsNotifier;
 use App\Services\Notifications\Contracts\EscalationNotifier;
-use App\Services\Notifications\MaxNotifier;
 use App\Shop\CallbackLeadIntake;
 use App\Shop\CatalogSections;
 use App\Shop\EloquentProductLookup;
@@ -415,15 +415,12 @@ class AiSupportServiceProvider extends ServiceProvider
 
         /*
          * Пуш в мессенджер за интерфейсом: сегодня MAX, завтра что-то ещё,
-         * а джоба уведомлений об этом знать не должна. Не настроен — канал
-         * молча выключается, письмо и уведомление в админке доходят и без него.
+         * а джоба уведомлений об этом знать не должна. Уходит во все чаты
+         * MAX, подписанные на вопросы из чата, — их подключают кнопкой
+         * в админке. Ни одного такого чата нет — канал молча выключается:
+         * письмо и уведомление в админке доходят и без него.
          */
-        $this->app->singleton(EscalationNotifier::class, fn (): EscalationNotifier => new MaxNotifier(
-            baseUrl: (string) config('services.max.base_url'),
-            token: config('services.max.token'),
-            chatId: config('services.max.chat_id'),
-            timeout: (int) config('services.max.timeout', 8),
-        ));
+        $this->app->singleton(EscalationNotifier::class, MaxChannelsNotifier::class);
     }
 
     /**

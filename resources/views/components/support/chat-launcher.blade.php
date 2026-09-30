@@ -43,6 +43,12 @@
     // кто-то отвечает. Выключенному боту она была бы обещанием, которого
     // экран не выполняет.
     $botOnline = $assistant->enabled();
+
+    // Анимированный робот — настройка владельца («Настройки бота» → «Лицо бота»).
+    // Выключенный означает, что в браузер не поедут ни артворк, ни движок:
+    // их подключает динамический import из chatLauncher, и без флага он
+    // не случается вовсе.
+    $mascot = $assistant->mascotEnabled();
 @endphp
 
 <div x-data="chatLauncher(@js([
@@ -52,6 +58,7 @@
         'url' => route('chat.unread'),
         'stopsAfter' => \App\Services\Chat\ChatPollingCadence::LAUNCHER_STOPS_AFTER_SECONDS,
         'invite' => $botInvite,
+        'mascot' => $mascot,
      ]))"
      @chat-close.window="open = false"
      {{--
@@ -135,7 +142,11 @@
                 {{-- Тот же робот, но мелкий и спокойный: рядом с текстом второй
                      пляшущий объект только мешает. --}}
                 <span class="relative block h-10 w-10 shrink-0">
-                    <span x-ref="bubbleMascot" class="chat-mascot-slot--sm relative block h-full w-full"></span>
+                    @if ($mascot)
+                        <span x-ref="bubbleMascot" class="chat-mascot-slot--sm relative block h-full w-full"></span>
+                    @else
+                        <x-support.bot-face />
+                    @endif
                     @if ($botOnline)
                         <span aria-hidden="true"
                               class="absolute -bottom-0.5 -right-0.5 block h-3 w-3 rounded-full

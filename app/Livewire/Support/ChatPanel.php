@@ -234,6 +234,12 @@ class ChatPanel extends Component
              * как подмена.
              */
             'botName' => $assistant->botName(),
+            /*
+             * Лицо в шапке: анимированный робот или статичный значок.
+             * Флаг тот же, что у кнопки чата, — иначе на кнопке был бы
+             * робот, а в шапке значок, и это читалось бы как поломка.
+             */
+            'mascot' => $assistant->mascotEnabled(),
             'managerTitle' => trim('Менеджер '.config('settings.general.shop_name')),
             'workingHours' => $presence->scheduleSummary(),
             /*
