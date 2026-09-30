@@ -5,6 +5,7 @@
     "scripts": {
         "build": "vite build",
         "build:rich-content-plugins": "node bin/build-rich-content-plugins.js",
+        "deploy:prod": "bash scripts/deploy/prod-deploy.sh prod main",
         "dev": "vite"
     },
     "dependencies": {

@@ -531,6 +531,7 @@ GIT_SSH_COMMAND='ssh -o BatchMode=yes' composer install
 Правильный путь — обёртка, которая делает всё по порядку:
 
 ```bash
+npm run deploy:prod                                  # то же, что ниже с prod main
 ./scripts/deploy/prod-deploy.sh [remote=prod] [branch=main]
 ```
 
