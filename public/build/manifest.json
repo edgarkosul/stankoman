@@ -6,7 +6,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-CKurnkI8.css",
+    "file": "assets/app-CwP97XEe.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -15,7 +15,7 @@
     ]
   },
   "resources/css/filament/admin/theme.css": {
-    "file": "assets/theme-B3afObUG.css",
+    "file": "assets/theme-DuSDzZMw.css",
     "src": "resources/css/filament/admin/theme.css",
     "isEntry": true,
     "name": "theme",
@@ -36,7 +36,7 @@
     "src": "resources/images/chat-bg.svg"
   },
   "resources/js/app.js": {
-    "file": "assets/app-Cj8j3NHw.js",
+    "file": "assets/app-BX_ZCHhb.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
