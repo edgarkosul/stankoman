@@ -11,6 +11,7 @@ use App\Listeners\SyncFavoritesOnLogin;
 use App\Listeners\SyncFavoritesOnLogout;
 use App\Models\Category;
 use App\Services\Captcha\CaptchaManager;
+use App\Services\Messengers\MaxClient;
 use App\Support\CartService;
 use App\Support\CompareService;
 use App\Support\FavoritesService;
@@ -51,6 +52,10 @@ class AppServiceProvider extends ServiceProvider
             driver: (string) config('captcha.driver', 'null'),
             drivers: (array) config('captcha.drivers', []),
         ));
+
+        // Не синглтон: клиент дешёвый, а конфиг читается при каждом
+        // разрешении — тесты и `config()->set` видят его сразу.
+        $this->app->bind(MaxClient::class, fn (): MaxClient => MaxClient::fromConfig());
 
         $this->app->singleton(CompareService::class, fn (): CompareService => new CompareService);
         $this->app->singleton(CartService::class, fn (): CartService => new CartService);

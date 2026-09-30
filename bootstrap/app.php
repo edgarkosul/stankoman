@@ -12,7 +12,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Defaults only; extend here if you need custom middleware/groups.
+        /*
+         * Webhook бота MAX приходит снаружи и токена сессии не имеет.
+         * Отдельного файла api-маршрутов в проекте нет, поэтому маршрут
+         * живёт в web.php, а проверка CSRF снимается ровно с него.
+         * Подлинность запроса подтверждает секрет в заголовке —
+         * см. MaxHookController.
+         */
+        $middleware->validateCsrfTokens(except: ['hooks/max']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

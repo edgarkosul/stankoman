@@ -2,13 +2,14 @@
 
 namespace App\Console\Commands;
 
+use App\Models\MessengerChannel;
 use App\Providers\AiSupportServiceProvider;
 use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Contracts\LlmClient;
 use App\Services\Catalog\CatalogSemanticIndex;
 use App\Services\Chat\Contracts\EscalationTarget;
 use App\Services\Kb\Contracts\KbSource;
-use App\Services\Notifications\Contracts\EscalationNotifier;
+use App\Services\Messengers\MaxClient;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -407,11 +408,20 @@ class AiKbDoctor extends Command
             'Ни у одной почты из general.filament_admin_emails нет пользователя — уведомления в админке уйдут в никуда',
         );
 
-        $push = app(EscalationNotifier::class);
+        /*
+         * Пуш в MAX бесполезно проверять одним флагом: бот может быть
+         * настроен, а чатов, подписанных на вопросы из чата, — ни одного,
+         * и тогда уведомление уходит в пустоту. Поэтому два разных
+         * сообщения: нет бота — дело в окружении, нет чатов — в админке.
+         */
+        $max = app(MaxClient::class);
+        $chats = MessengerChannel::query()->forTopic(MessengerChannel::TOPIC_CHAT)->count();
 
-        $push->isConfigured()
-            ? $this->ok('Пуш в мессенджер настроен')
-            : $this->skip('Пуш в мессенджер выключен: нет MAX_BOT_TOKEN/MAX_BOT_CHAT_ID (письмо и админка работают)');
+        match (true) {
+            ! $max->configured() => $this->skip('Пуш в мессенджер выключен: нет MAX_BOT_TOKEN/MAX_BOT_LINK (письмо и админка работают)'),
+            $chats === 0 => $this->skip('Бот MAX настроен, но ни один чат не подписан на вопросы — «Продажи» → «Уведомления в MAX»'),
+            default => $this->ok(sprintf('Пуш в MAX уйдёт в %d чат(а) менеджеров', $chats)),
+        };
 
         $cooldown = (int) config('ai_support.escalation.notify_cooldown_minutes');
 

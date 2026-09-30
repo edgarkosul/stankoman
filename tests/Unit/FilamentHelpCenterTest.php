@@ -33,6 +33,9 @@ test('help center routes match real admin routes and only omit explicitly unsupp
         // писать статью некуда, пока с заказчиком не решено, где живёт справка.
         'filament.admin.resources.callback-requests.index',
         'filament.admin.resources.callback-requests.view',
+        // Уведомления в MAX объясняет сама страница: что куда приходит —
+        // в описании раздела, как подключить чат — надписью на кнопке.
+        'filament.admin.pages.messenger-notifications',
         // Разделы бота — по той же причине: справки нет и писать её некуда.
         // Как вести бота, объясняют сами экраны — подписями и пустыми состояниями.
         'filament.admin.pages.assistant-sandbox',
