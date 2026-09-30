@@ -14,7 +14,7 @@
  * сервер сказал, что есть чего ждать.
  *
  * @param {{open: boolean, unread: number, pollSeconds: number|null, url: string,
- *          stopsAfter: number, invite: string}} config
+ *          stopsAfter: number, invite: string, mascot: boolean}} config
  */
 export default (config) => {
     /*
@@ -238,6 +238,14 @@ export default (config) => {
          * качают все — в том числе те, кому виджет чата вовсе не показан.
          */
         async loadMascot() {
+            /*
+             * Робота выключили в админке — и дальше идти незачем: проверка
+             * стоит ДО динамического import, поэтому ни артворк (70 КБ),
+             * ни движок (25 КБ) браузер не запрашивает вовсе. На кнопке
+             * остаётся облачко-плейсхолдер, которое и так нарисовано.
+             */
+            if (config.mascot === false) return;
+
             const { shouldLoadMascot, attachMascot } = await import('../mascot/mascot-loader.js');
 
             if (!shouldLoadMascot()) return;
@@ -304,6 +312,7 @@ export default (config) => {
          * ни реакции на курсор, вдвое медленнее и вчетверо тише.
          */
         mountBubbleMascot() {
+            if (config.mascot === false) return;
             if (bubbleMascot || !this.$refs.bubbleMascot) return;
             bubbleMascot = true; // занимаем место, пока идёт загрузка
 

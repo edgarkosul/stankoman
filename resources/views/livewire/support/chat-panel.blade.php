@@ -55,8 +55,11 @@
                         <circle cx="12" cy="7" r="4" />
                     </svg>
                 </span>
-            @else
+            @elseif ($mascot)
                 <span wire:ignore x-data="chatAvatar(40)" class="chat-mascot-slot--sm relative block h-10 w-10"></span>
+            @else
+                {{-- Робот выключен в настройках: то же лицо, что и в подсказке у кнопки. --}}
+                <x-support.bot-face variant="header" />
             @endif
 
             <span aria-hidden="true"
