@@ -48,6 +48,27 @@ location ~ "^/livewire-[0-9a-f]{8}/update$" {
     limit_req zone=intertooler_livewire burst=40 nodelay;
 
     try_files $uri $uri/ /index.php?$query_string;
+    expires off;
+    add_header Cache-Control "no-store";
+}
+
+# ⚠️ Блок ассетов Livewire, который уже был во вхосте, обязан стать
+# РЕГУЛЯРКОЙ, иначе потолок выше не сработает ни разу (найдено 30.09.2026
+# при выкате бота).
+#
+# Было `location ^~ /livewire- {`, и префикс с `^~` выигрывает у любых
+# регулярок независимо от порядка — до блока /update запрос не доходил
+# вовсе. Порядок этих двух блоков после замены — часть правила: регулярки
+# nginx перебирает сверху вниз до первого совпадения, поэтому /update
+# стоит ВЫШЕ.
+#
+# Слить их в один блок тоже нельзя: под тем же префиксом Livewire v4
+# отдаёт livewire.min.js и js/css отдельных компонентов, по нескольку
+# на страницу, — они съедали бы счётчик действий.
+location ~ ^/livewire- {
+    try_files $uri $uri/ /index.php?$query_string;
+    expires off;
+    add_header Cache-Control "no-store";
 }
 
 # Опрос бейджа «вам ответили» у свёрнутой панели чата.
@@ -110,13 +131,21 @@ for i in $(seq 1 40); do curl -s -o /dev/null -w '%{http_code} ' \
 вовсе — оттуда ходит резолвер legacy-редиректов, и ключ там намеренно пустой,
 поэтому проверять только снаружи.
 
+И проверять эти зоны надо ВСПЛЕСКОМ, а не последовательным циклом: при
+`rate=180r/m` и `burst=40` бакет пополняется быстрее, чем curl успевает
+отправить следующий запрос, — 45 запросов подряд прошли все до одного и
+ничего не доказали (30.09.2026). Нужны параллельные:
+
 ```
 L=$(curl -s https://intertooler.ru/ | grep -o 'livewire-[0-9a-f]\{8\}/update' | head -1)
-for i in $(seq 1 45); do curl -s -o /dev/null -w '%{http_code} ' \
-    -X POST "https://intertooler.ru/$L"; done; echo   # 419… потом 429
-for i in $(seq 1 15); do curl -s -o /dev/null -w '%{http_code} ' \
-    "https://intertooler.ru/chat/unread"; done; echo   # 200… потом 429
+seq 1 90 | xargs -P 10 -I{} curl -s -o /dev/null -w '%{http_code} ' \
+    -X POST "https://intertooler.ru/$L" | tr ' ' '\n' | sort | uniq -c   # 419 и 429
+seq 1 30 | xargs -P 10 -I{} curl -s -o /dev/null -w '%{http_code} ' \
+    "https://intertooler.ru/chat/unread" | tr ' ' '\n' | sort | uniq -c   # 200 и 429
 ```
+
+Сверить с журналом — там видно, какая зона отбила:
+`sudo grep -c 'zone "intertooler_livewire"' /var/log/nginx/error.log`.
 
 **Лимит обязан считаться по адресу, а не на всех сразу.** Двух проверок выше
 для этого мало: они прошли и на конфиге, где из-за `geo` ключ у всех клиентов
