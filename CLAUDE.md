@@ -427,7 +427,7 @@ composer test    # config:clear + pint --test + artisan test
 
 ### Кеш в Redis общий на все дев-проекты
 
-Все проекты в `/home/edgar/dev` держат кеш в одной базе Redis (`REDIS_CACHE_DB=1`),
+Все проекты в `/home/edgar/projects` держат кеш в одной базе Redis (`REDIS_CACHE_DB=1`),
 различаясь только префиксом ключей. **`php artisan cache:clear` и `optimize:clear`
 на деве не звать:** у Redis-стора это `FLUSHDB`, и уходит кеш kratonshop, siteko
 и остальных. Свой кеш чистить по префиксу:

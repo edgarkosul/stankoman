@@ -21,7 +21,7 @@ SVGO нужен только здесь и только разово, поэто
 результат лежит в репозитории:
 
 ```
-node /home/edgar/dev/blog-siteko/node_modules/svgo/bin/svgo \
+node /home/edgar/projects/blog-siteko/node_modules/svgo/bin/svgo \
   --config resources/js/mascot/svgo.config.mjs \
   -i resources/js/mascot/robot-head.source.svg \
   -o resources/js/mascot/robot-head.svg
