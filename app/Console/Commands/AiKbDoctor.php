@@ -193,10 +193,15 @@ class AiKbDoctor extends Command
             return;
         }
 
+        // Тем же адресом, что и чат: 07.10.2026 адреса из DNS были мертвы,
+        // и без пина доктор называл шлюз недоступным, пока бот отвечал.
+        $resolve = app(GatewayAddressPin::class)->resolveEntry();
+
         try {
             $response = Http::withToken($key)
                 ->acceptJson()
                 ->timeout(15)
+                ->withOptions($resolve === null ? [] : ['curl' => [CURLOPT_RESOLVE => [$resolve]]])
                 ->get(config('ai_support.gateway.base_url').'/aitunnel/key');
         } catch (Throwable $e) {
             $this->bad('Шлюз недоступен: '.$e->getMessage());

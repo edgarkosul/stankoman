@@ -6,8 +6,10 @@ use App\Services\Ai\Contracts\LlmClient;
 use App\Services\Ai\Data\ChatResult;
 use App\Services\Ai\Data\EmbeddingBatch;
 use App\Services\Ai\Providers\FakeLlmClient;
+use App\Services\Ai\Support\GatewayAddressPin;
 use App\Shop\PageKbSource;
 use App\Shop\SettingsKbSource;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -109,6 +111,47 @@ it('доктор ловит настройку, в которой некому �
     $this->artisan('ai:kb-doctor')
         ->expectsOutputToContain('уведомления в админке уйдут в никуда')
         ->assertFailed();
+});
+
+it('доктор проверяет ключ тем же адресом, что и чат', function (): void {
+    // 07.10.2026 адреса из DNS были мертвы, бот отвечал через запасной,
+    // а доктор ходил мимо пина и называл шлюз недоступным. Прокси дева
+    // гасит пин, поэтому на время теста убираем его из окружения.
+    $proxyVars = ['https_proxy', 'HTTPS_PROXY', 'all_proxy', 'ALL_PROXY'];
+    $savedProxy = array_combine($proxyVars, array_map(getenv(...), $proxyVars));
+    array_map(putenv(...), $proxyVars);
+
+    try {
+        config(['ai_support.gateway.key' => 'test-key', 'ai_support.gateway.base_url' => 'https://api.example.test/v1']);
+        $pin = new GatewayAddressPin(
+            baseUrl: 'https://api.example.test/v1',
+            healthPath: '/public/models',
+            timeout: 3,
+            ttl: 1800,
+            enabled: true,
+        );
+        $pin->remember('8.6.112.5');
+        app()->instance(GatewayAddressPin::class, $pin);
+
+        // Ответ отдаёт заглушка из beforeEach; здесь только запоминаем,
+        // каким адресом ушёл запрос ключа.
+        $resolve = null;
+        Http::fake(function (Request $request, array $options) use (&$resolve) {
+            if (str_ends_with($request->url(), '/aitunnel/key')) {
+                $resolve ??= $options['curl'][CURLOPT_RESOLVE] ?? [];
+            }
+
+            return null;
+        });
+
+        $this->artisan('ai:kb-doctor')->expectsOutputToContain('Ключ принят');
+
+        expect($resolve)->toBe(['api.example.test:443:8.6.112.5']);
+    } finally {
+        foreach ($savedProxy as $name => $value) {
+            is_string($value) ? putenv("{$name}={$value}") : putenv($name);
+        }
+    }
 });
 
 /**
