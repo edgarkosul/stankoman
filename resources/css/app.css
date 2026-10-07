@@ -892,9 +892,15 @@ select:focus[data-flux-control] {
     margin: 0.125rem 0;
 }
 
-/* Ссылка на товар — главное, что есть в ответе: цветом сайта, как ссылки на витрине. */
+/*
+ * Ссылка на товар — главное, что есть в ответе: цветом сайта, как ссылки
+ * на витрине, и полужирная. Полужирной её делал не стиль, а модель:
+ * deepseek-v4-flash оборачивал ссылку в **…**, deepseek-v4.1-flash так не
+ * делает ни у одного провайдера (bots, 07.10.2026). Выделяет виджет.
+ */
 .chat-md a {
     color: var(--color-brand-green);
+    font-weight: 600;
     text-decoration: underline;
     text-underline-offset: 2px;
     overflow-wrap: anywhere;
