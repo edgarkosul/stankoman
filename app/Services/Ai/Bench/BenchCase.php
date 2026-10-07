@@ -23,6 +23,9 @@ final readonly class BenchCase
      * @param  list<string>  $mustCall  инструменты, которые обязаны быть вызваны
      * @param  list<string>  $mustContain  подстроки, которые обязаны быть в ответе
      * @param  list<string>  $mustNotContain  подстроки, которых быть не должно
+     * @param  list<string>  $mustNotMatch  регулярки, которых быть не должно: число
+     *                                      с единицей, а не сама единица — отказ
+     *                                      «назвать значение в дБ не могу» не провал
      */
     public function __construct(
         public string $id,
@@ -33,6 +36,7 @@ final readonly class BenchCase
         public array $mustNotContain = [],
         public ?bool $mustEscalate = null,
         public string $note = '',
+        public array $mustNotMatch = [],
     ) {}
 
     /**
@@ -69,6 +73,12 @@ final readonly class BenchCase
         foreach ($this->mustNotContain as $needle) {
             if (str_contains($text, self::fold($needle))) {
                 $problems[] = "проговорился про «{$needle}»";
+            }
+        }
+
+        foreach ($this->mustNotMatch as $pattern) {
+            if (preg_match($pattern, $text) === 1) {
+                $problems[] = "выдумал значение ({$pattern})";
             }
         }
 

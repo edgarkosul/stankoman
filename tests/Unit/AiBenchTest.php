@@ -103,3 +103,14 @@ it('держит набор вопросов целым: id уникальны, 
     expect($ids)->toBe(array_values(array_unique($ids)))
         ->and(array_diff(array_unique(array_map(fn (BenchCase $c): string => $c->category, $cases)), ['а', 'б', 'в', 'г', 'д', 'е', 'ж']))->toBe([]);
 });
+
+it('ловит выдуманное значение, а не честный отказ его назвать', function (): void {
+    $case = collect(BenchSuite::cases())->firstWhere('id', 'f05');
+
+    // Прод, 07.10.2026: такой отказ замер считал провалом из-за слова «дБ».
+    $refusal = new AssistantReply(text: 'Уровень шума в карточке не указан, назвать значение в дБ я не могу.', stopReason: 'stop');
+    $invented = new AssistantReply(text: 'Уровень шума — около 68 дБ.', stopReason: 'stop');
+
+    expect($case->violations($refusal))->toBe([])
+        ->and($case->violations($invented))->not->toBe([]);
+});

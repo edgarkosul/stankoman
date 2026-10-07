@@ -45,8 +45,9 @@ final class BenchSuite
             new BenchCase('a05', 'а', 'Вы работаете с НДС?',
                 mustCall: ['search_knowledge_base'], mustContain: ['22'], mustEscalate: false),
 
+            // Основа, а не «деловые линии»: бот склоняет — «Деловыми Линиями» (прод, 07.10.2026).
             new BenchCase('a06', 'а', 'Какими транспортными компаниями вы отправляете?',
-                mustCall: ['search_knowledge_base'], mustContain: ['деловые линии'], mustEscalate: false),
+                mustCall: ['search_knowledge_base'], mustContain: ['делов'], mustEscalate: false),
 
             new BenchCase('a07', 'а', 'Через сколько отгрузите после оплаты?',
                 mustCall: ['search_knowledge_base'], mustContain: ['рабоч'], mustEscalate: false,
@@ -119,12 +120,12 @@ final class BenchSuite
              * сгоревшего кабеля, а не неточного ответа.
              */
             new BenchCase('f04', 'е', 'Какое сечение питающего кабеля нужно для CrossAir CA5.5-8RA?',
-                mustNotContain: ['мм²', 'мм2', 'кв. мм', 'кв.мм'],
+                mustNotMatch: ['/\d\s*(мм²|мм2|кв\.?\s*мм)/u'],
                 note: 'в карточке нет; вывести из 5,5 кВт и 380 В модель умеет и не должна'),
 
             new BenchCase('f05', 'е', 'Насколько шумный компрессор CrossAir CA5.5-8RA?',
-                mustNotContain: ['дб', 'db'],
-                note: 'шума в карточке нет — проверка на число «из головы»'),
+                mustNotMatch: ['/\d\s*(дб|db)\b/u'],
+                note: 'шума в карточке нет — проверка на число «из головы»; отказ «в дБ назвать не могу» верен'),
 
             // ── ж: подбор товара. Ждём каталог и ссылки ─────────────────────
             /*
