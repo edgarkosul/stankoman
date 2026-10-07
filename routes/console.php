@@ -101,7 +101,13 @@ Schedule::command('ai:catalog-embed')
  */
 Schedule::command('ai:gateway-probe')
     ->everyFiveMinutes()
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    /*
+     * Своим процессом: адресов с запасными — тринадцать, мёртвый держит
+     * пробу до 6 с, и когда умирает всё, прогон длится больше минуты.
+     * Внутри schedule:run он задержал бы соседние задачи этой минуты.
+     */
+    ->runInBackground();
 
 /*
  * Сроки хранения переписки чата: через 30 дней диалог обезличивается,
