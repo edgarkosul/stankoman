@@ -32,7 +32,7 @@ class AiGatewayProbe extends Command
     protected $signature = 'ai:gateway-probe
         {--show : Показать журнал последних проб и выйти}';
 
-    protected $description = 'Пробит каждый адрес шлюза и пинит живой';
+    protected $description = 'Пробить каждый адрес шлюза и подставить клиенту живой';
 
     public function handle(GatewayAddressPin $pin): int
     {
