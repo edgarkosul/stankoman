@@ -454,6 +454,21 @@ composer test    # config:clear + pint --test + artisan test
 бою; сессии в деве — в БД), Meilisearch на 7703, почта в mailpit на 1025.
 В `local`/`testing` доступны превью писем: `/_preview/mail`.
 
+⚠️ **Шлюз ИИ с дева идёт через privoxy, и тот его не пускает** (найдено 07.10.2026).
+В окружении оболочки стоят `http_proxy`/`https_proxy` на `127.0.0.1:8118`, и прокси
+отбивает CONNECT к `api.aitunnel.ru` — `curl` показывает «CONNECT tunnel failed,
+response 403», а `ai:kb-doctor` докладывает «Шлюз недоступен: HTTP 403». Ключ при этом
+рабочий: тот же запрос напрямую отдаёт 200, и с боя — тоже. То есть это не ключ,
+не лимит и не блокировка шлюзом. Любая команда бота, которой нужен шлюз
+(`ai:kb-reindex`, `ai:catalog-embed`, `ai:chat`, `ai:kb-doctor --probe`), на деве
+запускается в обход прокси:
+
+```bash
+env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY php artisan ai:kb-reindex
+```
+
+Обычный прогон тестов это не задевает: там `AI_EMBEDDING_FAKE=true` и сети нет вовсе.
+
 ### Кеш в Redis общий на все дев-проекты
 
 Все проекты в `/home/edgar/projects` держат кеш в одной базе Redis (`REDIS_CACHE_DB=1`),
