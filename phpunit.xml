@@ -53,6 +53,13 @@
             не ждёт шлюз по пятнадцать секунд. Настоящий шлюз — группа live.
         -->
         <env name="AI_EMBEDDING_FAKE" value="true"/>
+        <!--
+            Живой пин адреса шлюза в тестах выключен: без журнала проб доктор
+            ставил бы ✗, а с прокси в окружении шелла (дев) — пропуск, то есть
+            итог зависел бы от того, из какого шелла запущен прогон. Сам пин
+            проверяет GatewayAddressPinTest, собирая его напрямую.
+        -->
+        <env name="AI_GATEWAY_PIN" value="false"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

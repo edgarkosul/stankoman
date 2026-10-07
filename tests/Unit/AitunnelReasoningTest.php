@@ -31,6 +31,7 @@ function reasoningPayload(string $reasoning, bool $switched = false): array
         timeout: 5,
         connectTimeout: 1,
         maxRetries: 0,
+        connectRetries: 0,
         sessionAffinity: false,
         reasoning: $reasoning,
     );

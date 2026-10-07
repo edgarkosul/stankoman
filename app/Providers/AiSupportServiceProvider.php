@@ -11,6 +11,7 @@ use App\Services\Ai\Exceptions\LlmException;
 use App\Services\Ai\Providers\AitunnelLlmClient;
 use App\Services\Ai\Providers\FakeLlmClient;
 use App\Services\Ai\ShopAssistant;
+use App\Services\Ai\Support\GatewayAddressPin;
 use App\Services\Ai\Support\OfferedLinkGuard;
 use App\Services\Ai\Support\PiiRedactor;
 use App\Services\Ai\Support\ProductLinkGuard;
@@ -82,6 +83,14 @@ class AiSupportServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->singleton(GatewayAddressPin::class, fn (): GatewayAddressPin => new GatewayAddressPin(
+            baseUrl: (string) config('ai_support.gateway.base_url'),
+            healthPath: (string) config('ai_support.gateway.pin.health_path'),
+            timeout: (int) config('ai_support.gateway.pin.timeout'),
+            ttl: (int) config('ai_support.gateway.pin.ttl'),
+            enabled: (bool) config('ai_support.gateway.pin.enabled'),
+        ));
+
         $this->app->singleton(LlmClient::class, function (): LlmClient {
             $dimensions = (int) config('ai_support.embedding.dimensions');
 
@@ -110,8 +119,11 @@ class AiSupportServiceProvider extends ServiceProvider
                 timeout: (int) config('ai_support.gateway.timeout'),
                 connectTimeout: (int) config('ai_support.gateway.connect_timeout'),
                 maxRetries: (int) config('ai_support.gateway.max_retries'),
+                connectRetries: (int) config('ai_support.gateway.connect_retries'),
                 sessionAffinity: (bool) config('ai_support.agent.session_affinity'),
+                pin: $this->app->make(GatewayAddressPin::class),
                 reasoning: (string) config('ai_support.agent.reasoning'),
+                providerSort: (string) config('ai_support.gateway.provider_sort'),
             );
         });
 

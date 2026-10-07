@@ -9,6 +9,8 @@ use App\Services\Ai\Data\EmbeddingBatch;
 use App\Services\Ai\Data\ToolCall;
 use App\Services\Ai\Exceptions\LlmException;
 use App\Services\Ai\Exceptions\PiiBlockedException;
+use App\Services\Ai\Support\GatewayAddressPin;
+use GuzzleHttp\Exception\ConnectException as GuzzleConnectException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
@@ -36,9 +38,20 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
         private readonly int $timeout,
         private readonly int $connectTimeout,
         private readonly int $maxRetries,
+        private readonly int $connectRetries,
         private readonly bool $sessionAffinity,
+        /**
+         * Живой пин адреса. Необязателен: без него клиент работает как
+         * раньше, полагаясь на DNS и ретраи.
+         */
+        private readonly ?GatewayAddressPin $pin = null,
         /** ai_support.agent.reasoning: '' | low | minimal | off. Не readonly — ради withoutReasoning(). */
         private string $reasoning = '',
+        /**
+         * ai_support.gateway.provider_sort: '' | latency | throughput | price.
+         * Пустая — объекта `provider` в запросе нет, и шлюз выбирает сам.
+         */
+        private readonly string $providerSort = '',
     ) {}
 
     /**
@@ -113,6 +126,19 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
         // Замер: 0.06 ₽ первый запрос и 0.02 ₽ последующие против 0.10 ₽ всегда.
         if ($this->sessionAffinity && $sessionId !== null && $sessionId !== '') {
             $payload['session_id'] = mb_substr($sessionId, 0, 256);
+        }
+
+        /*
+         * Кому из провайдеров модели отдать запрос. Без поля aitunnel выбирает
+         * «по загруженности»; с sort=latency — того, кто быстрее всех выдаёт
+         * первый токен. Замер bots на проде 07.10.2026 (147 ответов на вариант,
+         * вперемешку): ответ p50 5,8 → 3,1 с, p95 24 → 7,7 с, 0,29 → 0,22 ₽ —
+         * запросы липнут к одному провайдеру, и кэш префикса попадает чаще.
+         * Кого выбрал шлюз, в ответе не видно; ПДн он маскирует до передачи
+         * провайдеру, как и без поля.
+         */
+        if ($this->providerSort !== '') {
+            $payload['provider'] = ['sort' => $this->providerSort];
         }
 
         $response = $this->post('/chat/completions', $payload);
@@ -239,19 +265,63 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
         while (true) {
             $attempt++;
 
+            $request = Http::withToken($this->apiKey)
+                ->acceptJson()
+                ->asJson()
+                ->connectTimeout($this->connectTimeout)
+                ->timeout($this->timeout);
+
+            // Заведомо живой адрес вместо жребия по DNS-ответу. Пин ставит
+            // ai:gateway-probe; его отсутствие — это не ошибка, а обычный
+            // режим «полагаемся на DNS».
+            $resolve = $this->pin?->resolveEntry();
+
+            if ($resolve !== null) {
+                $request = $request->withOptions(['curl' => [CURLOPT_RESOLVE => [$resolve]]]);
+            }
+
             try {
-                $response = Http::withToken($this->apiKey)
-                    ->acceptJson()
-                    ->asJson()
-                    ->connectTimeout($this->connectTimeout)
-                    ->timeout($this->timeout)
-                    ->post($this->baseUrl.$path, $payload);
+                $response = $request->post($this->baseUrl.$path, $payload);
             } catch (ConnectionException $e) {
-                if ($attempt > $this->maxRetries) {
+                $sent = $this->requestLeftTheMachine($e);
+                $limit = $sent ? $this->maxRetries : $this->connectRetries;
+
+                /*
+                 * Пин привёл в никуда — снимаем его немедленно, не дожидаясь
+                 * следующей пробы. Иначе все оставшиеся попытки уткнутся
+                 * в тот же мёртвый адрес, и ретраи, весь смысл которых
+                 * в новом жребии, перестанут работать.
+                 */
+                if (! $sent && $resolve !== null) {
+                    $this->pin?->forget();
+                }
+
+                if ($attempt > $limit) {
                     throw new LlmException('Шлюз недоступен: '.$e->getMessage(), previous: $e);
                 }
 
-                $this->backoff($attempt);
+                Log::warning('Aitunnel connect retry', [
+                    'path' => $path,
+                    'attempt' => $attempt,
+                    // Ушёл ли запрос — это и есть причина разной настойчивости.
+                    'sent' => $sent,
+                    // Адрес, на котором сорвалось. Ради него всё и затевалось:
+                    // без него в логе видно «шлюз недоступен», а не «недоступен
+                    // вот этот edge Cloudflare, а соседний отвечает за 20 мс».
+                    'ip' => $this->remoteIp($e),
+                    'error' => $e->getMessage(),
+                ]);
+
+                /*
+                 * Соединение не поднялось — паузы не нужно: попытка уже
+                 * простояла connect_timeout, и это более чем достаточный
+                 * backoff. Ждать здесь значило бы дарить посетителю лишние
+                 * секунды «печатает» ровно в том случае, который чинится
+                 * немедленным повтором.
+                 */
+                if ($sent) {
+                    $this->backoff($attempt);
+                }
 
                 continue;
             }
@@ -301,6 +371,67 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
     private function backoff(int $attempt): void
     {
         usleep(min(4_000_000, 250_000 * (2 ** ($attempt - 1))));
+    }
+
+    /**
+     * Успел ли запрос покинуть машину.
+     *
+     * От этого зависит, сколько раз повторять, и разница тут денежная,
+     * а не стилистическая. Соединение не поднялось — сервер нас не видел,
+     * модель не работала, повтор бесплатен и нужен настойчиво. Соединение
+     * поднялось, а ответ не пришёл — модель, возможно, отработала и деньги
+     * списаны; повтор тогда платит дважды и рискует двумя ответами на один
+     * вопрос, поэтому остаётся осторожным.
+     *
+     * По классу исключения эти случаи не различить: Guzzle 7 кладёт cURL 28
+     * в ConnectException независимо от того, на какой фазе истекло время
+     * (CurlFactory::createRejection, список $connectionErrors). Поэтому
+     * смотрим в контекст обработчика — это curl_getinfo(): нулевой
+     * appconnect_time означает, что TLS-сессия не состоялась, а без неё
+     * ни один байт запроса на сервер не ушёл.
+     *
+     * Чего в контексте нет — то считаем отправленным. Ошибиться в эту
+     * сторону значит недоретраить, в обратную — заплатить дважды.
+     *
+     * Перенесено из kratonshop по его аварии 17.09.2026: api.aitunnel.ru
+     * отдаёт два адреса Cloudflare, и TCP до одного из них с того сервера
+     * терялся (ICMP проходил, SYN — нет). Резолвер выбирал мёртвый адрес
+     * в ~70% случаев, и каждый такой вызов висел весь connect_timeout.
+     */
+    private function requestLeftTheMachine(ConnectionException $e): bool
+    {
+        $context = $this->handlerContext($e);
+
+        // На http запроса без TLS appconnect_time нулевой и у здорового
+        // соединения — там признаком служит сам факт установленного TCP.
+        $key = str_starts_with($this->baseUrl, 'https://') ? 'appconnect_time' : 'connect_time';
+
+        if (! array_key_exists($key, $context)) {
+            return true;
+        }
+
+        return (float) $context[$key] > 0.0;
+    }
+
+    /** Адрес, к которому шло соединение, — если обработчик его назвал. */
+    private function remoteIp(ConnectionException $e): ?string
+    {
+        $ip = $this->handlerContext($e)['primary_ip'] ?? null;
+
+        return is_string($ip) && $ip !== '' ? $ip : null;
+    }
+
+    /**
+     * curl_getinfo() из-под Guzzle. Пустой массив — обработчик не curl
+     * либо подменён в тестах.
+     *
+     * @return array<string, mixed>
+     */
+    private function handlerContext(ConnectionException $e): array
+    {
+        $previous = $e->getPrevious();
+
+        return $previous instanceof GuzzleConnectException ? $previous->getHandlerContext() : [];
     }
 
     /**

@@ -2,10 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AiGatewayProbe;
 use App\Models\MessengerChannel;
 use App\Providers\AiSupportServiceProvider;
 use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Contracts\LlmClient;
+use App\Services\Ai\Support\GatewayAddressPin;
 use App\Services\Catalog\CatalogSemanticIndex;
 use App\Services\Chat\Contracts\EscalationTarget;
 use App\Services\Kb\Contracts\KbSource;
@@ -35,6 +37,9 @@ class AiKbDoctor extends Command
     {
         $this->section('Конфигурация');
         $this->configuration($llm);
+
+        $this->section('Связность со шлюзом');
+        $this->gatewayAddresses();
 
         $this->section('Ключ шлюза');
         $this->gatewayKey();
@@ -99,8 +104,78 @@ class AiKbDoctor extends Command
         $this->check($key !== '' || $fake, 'Ключ шлюза задан', 'AI_GATEWAY_KEY пуст');
 
         $this->info(sprintf('  · модель диалога   %s', $llm->chatModel()));
+        $this->info(sprintf('  · рассуждения      %s', (string) config('ai_support.agent.reasoning') ?: 'как решит шлюз'));
+        $this->info(sprintf('  · провайдер        %s', (string) config('ai_support.gateway.provider_sort') !== ''
+            ? 'sort='.config('ai_support.gateway.provider_sort')
+            : 'как решит шлюз'));
         $this->info(sprintf('  · эмбеддинги       %s, %d измерений', $llm->embeddingModel(), $llm->embeddingDimensions()));
         $this->info(sprintf('  · порог поиска     %.2f', (float) config('ai_support.knowledge_base.min_score')));
+    }
+
+    /**
+     * Живой ли путь до шлюза — и по всем ли его адресам.
+     *
+     * Отдельной секцией перед ключом, потому что это разные диагнозы.
+     * «Ключ отозван» админ понимает и чинит в панели; «до одного из двух
+     * адресов Cloudflare не доходит SYN» — это к хостеру, и без такой
+     * строки оно выглядит как «шлюз иногда недоступен» (авария kratonshop
+     * 17.09.2026, из-за которой проба и появилась).
+     *
+     * Читаем журнал `ai:gateway-probe` за сутки, а не ходим в сеть сами:
+     * доктор должен показывать, что происходит постоянно, а не как
+     * повезло в секунду запуска.
+     */
+    private function gatewayAddresses(): void
+    {
+        $pin = app(GatewayAddressPin::class);
+
+        if (($proxy = $pin->proxy()) !== null) {
+            $this->skip('Трафик идёт через прокси '.$proxy.' — связность по адресам здесь не проверить.');
+
+            return;
+        }
+
+        if (! $pin->enabled()) {
+            $this->skip('Живой пин выключен — адреса выбирает DNS.');
+
+            return;
+        }
+
+        $rows = AiGatewayProbe::query()
+            // Алиас не `ok`: одноимённая колонка кастуется в boolean,
+            // и сумма схлопнулась бы в единицу.
+            ->selectRaw('ip, COUNT(*) n, SUM(ok) ok_count, ROUND(AVG(CASE WHEN ok THEN latency_ms END)) ms')
+            ->where('created_at', '>=', now()->subDay())
+            ->groupBy('ip')
+            ->orderBy('ip')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            $this->bad('Проб за сутки нет — ai:gateway-probe не в расписании или планировщик стоит.');
+
+            return;
+        }
+
+        foreach ($rows as $row) {
+            $share = $row->n > 0 ? (int) $row->ok_count / (int) $row->n : 0.0;
+            $line = sprintf(
+                '%s — %d%% из %d проб%s',
+                $row->ip,
+                (int) round($share * 100),
+                (int) $row->n,
+                $row->ms !== null ? ', в среднем '.(int) $row->ms.' мс' : '',
+            );
+
+            // Порог низкий намеренно: адрес, который теряет даже пару
+            // процентов, уже ворует у посетителя секунды ожидания.
+            $share >= 0.98 ? $this->ok($line) : $this->bad($line);
+        }
+
+        $current = $pin->current();
+
+        $current === null
+            ? $this->skip('Пин не выставлен — идём по DNS. Так и должно быть, если живых адресов нет.')
+            : $this->ok('Пин сейчас на '.$current);
     }
 
     /**
