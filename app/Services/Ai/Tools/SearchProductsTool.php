@@ -6,6 +6,7 @@ use App\Services\Ai\Contracts\ProductLookup;
 use App\Services\Ai\Data\ProductCard;
 use App\Services\Ai\Data\ProductMatches;
 use App\Services\Ai\Data\ProductQuery;
+use App\Services\Ai\Data\ProductSort;
 use App\Services\Catalog\CatalogBrands;
 use App\Services\Catalog\CatalogQueryShape;
 use Illuminate\Support\Facades\Log;
@@ -86,6 +87,16 @@ final class SearchProductsTool implements AssistantTool
                                 .'раздела даёт browse_categories — сначала спроси покупателя, '
                                 .'какой раздел ему ближе.',
                         ],
+                        'sort' => [
+                            'type' => 'string',
+                            'enum' => ['price_asc', 'price_desc'],
+                            'description' => 'Порядок выдачи. По умолчанию — по совпадению '
+                                .'с запросом, и цена на него НЕ влияет. Покупатель просит '
+                                .'подешевле, спрашивает самое доступное или называет скромный '
+                                .'бюджет — ставь «price_asc», иначе ты покажешь просто самые '
+                                .'подходящие и выдашь их за дешёвые. «price_desc» — когда просят '
+                                .'самое мощное или топовое.',
+                        ],
                         'section' => [
                             'type' => 'string',
                             'description' => 'ТИП техники словом покупателя: «винтовой», '
@@ -128,6 +139,8 @@ final class SearchProductsTool implements AssistantTool
             $section = $this->sectionFor($query, $arguments, $context, $brandNamed);
             $sectionIds = $this->sectionIds($section, $query);
 
+            $sort = ProductSort::tryFromInput($arguments['sort'] ?? null);
+
             $search = fn (array $ids): ProductMatches => $this->products->search(new ProductQuery(
                 text: $query,
                 seesDiscounts: $context->seesDiscounts,
@@ -137,6 +150,7 @@ final class SearchProductsTool implements AssistantTool
                 priceMax: is_numeric($arguments['price_max'] ?? null) ? (int) $arguments['price_max'] : null,
                 categoryId: is_numeric($arguments['category_id'] ?? null) ? (int) $arguments['category_id'] : null,
                 sectionIds: $ids,
+                sort: $sort,
                 limit: self::LIMIT,
             ));
 
@@ -214,6 +228,21 @@ final class SearchProductsTool implements AssistantTool
         if (is_numeric($arguments['category_id'] ?? null)) {
             $applied[] = 'раздел №'.(int) $arguments['category_id'];
         }
+
+        /*
+         * Порядок выдачи подписывается ВСЕГДА, а не только когда он задан.
+         *
+         * 05.10.2026, разговор 5: на «подберите дешевый» модель получила
+         * обычную пятёрку по релевантности и назвала её «самыми доступными
+         * винтовыми компрессорами из наличия». В каталоге в ту минуту стояли
+         * в наличии три модели дешевле — просто ниже по совпадению. Шапка
+         * говорила «это только самые подходящие», но про ЦЕНУ не говорила
+         * ничего, и модель достроила недостающее сама.
+         */
+        $applied[] = $sort?->label()
+            ?? 'порядок: по совпадению с запросом, НЕ по цене — не называй эту выдачу '
+                .'самой дешёвой или самой дорогой; нужен порядок по цене, спроси поиск '
+                .'заново с sort';
 
         if ($section !== '') {
             $applied[] = $typeDropped

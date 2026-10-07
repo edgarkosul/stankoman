@@ -33,6 +33,13 @@ final readonly class ProductQuery
         public ?int $priceMax = null,
         public ?int $categoryId = null,
         public array $sectionIds = [],
+        /**
+         * Чем упорядочить выдачу. `null` — порядком поиска, то есть
+         * по совпадению с запросом; цена на него не влияет вовсе
+         * (почему это однажды стоило покупателю лишних 25 тысяч —
+         * см. ProductSort).
+         */
+        public ?ProductSort $sort = null,
         public int $limit = 5,
     ) {}
 }

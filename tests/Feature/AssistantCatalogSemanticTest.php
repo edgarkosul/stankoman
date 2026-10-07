@@ -4,6 +4,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Services\Ai\Contracts\LlmClient;
 use App\Services\Ai\Data\ProductQuery;
+use App\Services\Ai\Data\ProductSort;
 use App\Services\Ai\Providers\FakeLlmClient;
 use App\Services\Ai\Support\PiiRedactor;
 use App\Services\Ai\Support\ProductTextExtractor;
@@ -197,4 +198,50 @@ it('смысловая выдача называет слова, которых 
         // Повтора без слова не было: выдача и так не пуста.
         ->and($matches->relaxed)->toBeFalse()
         ->and($matches->semantic)->toBeTrue();
+});
+
+it('порядок по цене и фильтр цены едут в зеркало вместе', function (): void {
+    $product = semanticProduct();
+
+    // Ловим параметры, с которыми ушёл запрос: у Scout `options()` присваивает,
+    // а не дополняет, и собрать фильтр с сортировкой двумя вызовами нельзя —
+    // поиск продолжал бы работать, только потолок цены перестал бы значить что-либо.
+    $sent = [];
+
+    $hits = Mockery::mock(SearchResult::class);
+    $hits->shouldReceive('getHits')->andReturn([['id' => $product->id]]);
+
+    $index = Mockery::mock(Indexes::class);
+    $index->shouldReceive('stats')->andReturn(['numberOfDocuments' => 3762]);
+    $index->shouldReceive('search')
+        ->andReturnUsing(function (string $query, array $params) use (&$sent, $hits) {
+            $sent = $params;
+
+            return $hits;
+        });
+
+    $client = Mockery::mock(Client::class);
+    $client->shouldReceive('index')->andReturn($index);
+
+    $semantic = new CatalogSemanticSearch(
+        index: new CatalogSemanticIndex(
+            client: $client,
+            indexName: 'products_semantic',
+            embedder: 'shop',
+            dimensions: 1024,
+            semanticRatio: 0.5,
+            modelSemanticRatio: 0.2,
+        ),
+        llm: fn (): LlmClient => new FakeLlmClient(1024),
+        redactor: new PiiRedactor,
+    );
+
+    semanticLookup($semantic)->search(new ProductQuery(
+        text: 'винтовой компрессор',
+        priceMax: 110000,
+        sort: ProductSort::PriceAsc,
+    ));
+
+    expect($sent['sort'] ?? null)->toBe(['price:asc'])
+        ->and($sent['filter'] ?? '')->toContain('price <= 110000');
 });

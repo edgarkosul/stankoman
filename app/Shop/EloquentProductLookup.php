@@ -108,6 +108,13 @@ final class EloquentProductLookup implements ProductLookup
         $semantic = false;
 
         /*
+         * Порядок выдачи. Пусто — обычный порядок поиска, по совпадению:
+         * цена на него не влияет, и «подбери подешевле» без этого правила
+         * отдавало первую пятёрку по релевантности (разговор 5, 05.10.2026).
+         */
+        $sort = $query->sort === null ? [] : [$query->sort->rule()];
+
+        /*
          * Слова ищет ProductTextSearch — та же точка входа, что у шапки сайта
          * и страницы поиска. В ней три правила, и своей копии ни одного у бота
          * быть не должно: у донора разошлись ровно две такие копии, и бот
@@ -124,7 +131,7 @@ final class EloquentProductLookup implements ProductLookup
          */
         $outcome = $this->search->run(
             $query->text,
-            function (ScoutBuilder $search) use ($query, $filter, $vector, &$semantic): Collection {
+            function (ScoutBuilder $search) use ($query, $filter, $vector, $sort, &$semantic): Collection {
                 /*
                  * Зеркало держит и слова, и вектор, поэтому «BSM-115» находится
                  * точным совпадением, «для гаража» — по смыслу, и оба в одном
@@ -137,6 +144,7 @@ final class EloquentProductLookup implements ProductLookup
                     $filter,
                     $query->limit,
                     $query->designation,
+                    $sort,
                 );
 
                 if ($keys !== null) {
@@ -145,8 +153,19 @@ final class EloquentProductLookup implements ProductLookup
                     return collect($keys);
                 }
 
+                /*
+                 * Опции собираются ОДНИМ массивом: `Builder::options()`
+                 * у Scout присваивает, а не дополняет, и второй вызов
+                 * молча снёс бы фильтр — поиск продолжал бы работать,
+                 * только «до 100 тысяч» перестало бы значить что-либо.
+                 */
+                $options = array_filter([
+                    'filter' => $filter !== '' ? $filter : null,
+                    'sort' => $sort !== [] ? $sort : null,
+                ], static fn (mixed $value): bool => $value !== null);
+
                 return $search
-                    ->when($filter !== '', static fn (ScoutBuilder $search): ScoutBuilder => $search->options(['filter' => $filter]))
+                    ->when($options !== [], static fn (ScoutBuilder $search): ScoutBuilder => $search->options($options))
                     ->take($query->limit)
                     ->keys();
             },

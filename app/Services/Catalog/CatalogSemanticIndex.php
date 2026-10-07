@@ -237,14 +237,26 @@ final class CatalogSemanticIndex
      * @param  string  $query  слова запроса в том виде, в каком они уходят
      *                         в витринный индекс (латиница, написание бренда)
      * @param  list<float>  $vector  вектор ОРИГИНАЛЬНОЙ формулировки покупателя
+     * @param  list<string>  $sort  правила сортировки Meilisearch («price:asc»); пусто —
+     *                              порядок по релевантности
      * @return list<int> id товаров в порядке релевантности
      */
-    public function search(string $query, array $vector, string $filter = '', int $limit = 5, bool $designation = false): array
+    public function search(string $query, array $vector, string $filter = '', int $limit = 5, bool $designation = false, array $sort = []): array
     {
         $params = ['limit' => $limit];
 
         if ($filter !== '') {
             $params['filter'] = $filter;
+        }
+
+        /*
+         * Сортировка работает и с гибридом: у Meilisearch это правило ранга,
+         * стоящее после слов, опечаток, близости и атрибута, — то есть она
+         * упорядочивает одинаково подходящие товары, а не отменяет поиск.
+         * Проверено на бою 07.10.2026 на обоих индексах.
+         */
+        if ($sort !== []) {
+            $params['sort'] = array_values($sort);
         }
 
         if ($vector !== []) {

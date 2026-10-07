@@ -84,16 +84,17 @@ final class CatalogSemanticSearch
      * @param  string  $keywords  слова в том виде, в каком они ушли бы в витринный индекс
      * @param  list<float>  $vector  вектор оригинальной формулировки
      * @param  bool  $designation  покупатель назвал обозначение: артикул, модель или бренд
+     * @param  list<string>  $sort  правила сортировки Meilisearch; пусто — по релевантности
      * @return list<int>|null id товаров; null — зеркало не ответило, ищите словами
      */
-    public function keys(string $keywords, array $vector, string $filter, int $limit, bool $designation): ?array
+    public function keys(string $keywords, array $vector, string $filter, int $limit, bool $designation, array $sort = []): ?array
     {
         if ($vector === []) {
             return null;
         }
 
         try {
-            return $this->index->search($keywords, $vector, $filter, $limit, $designation);
+            return $this->index->search($keywords, $vector, $filter, $limit, $designation, $sort);
         } catch (Throwable $e) {
             Log::warning('Зеркало каталога не ответило на поиск', ['error' => $e->getMessage()]);
 

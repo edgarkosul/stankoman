@@ -5,6 +5,7 @@ use App\Services\Ai\Data\CatalogSection;
 use App\Services\Ai\Data\ProductCard;
 use App\Services\Ai\Data\ProductMatches;
 use App\Services\Ai\Data\ProductQuery;
+use App\Services\Ai\Data\ProductSort;
 use App\Services\Ai\Tools\SearchProductsTool;
 use App\Services\Ai\Tools\ToolContext;
 use App\Services\Catalog\CatalogBrands;
@@ -153,4 +154,50 @@ it('пустоту от фильтра по типу не выдаёт за пу
     expect($asked)->toBe([[128], []])
         ->and($result)->toContain('тип «ручной» НЕ применён')
         ->and($result)->toContain('Ленточнопильный станок BSM-115');
+});
+
+it('дешевле — это порядок выдачи, а не угаданный потолок цены', function (): void {
+    // Разговор 5 на бою, 05.10.2026: на «подберите дешевый» поиск отдал пятёрку
+    // по совпадению — Metal Master MC от 125 972 ₽, — а бот назвал её «самыми
+    // доступными». В наличии в ту минуту стояли HITCOM за 93 150 и CrossAir
+    // за 102 337. Порядок по цене инструмент тогда не умел вовсе.
+    $asked = null;
+
+    $tool = searchToolWith(static function (ProductQuery $query) use (&$asked): ProductMatches {
+        $asked = $query->sort;
+
+        return new ProductMatches([searchToolCard('Винтовой компрессор CrossAir CA5.5-8RA')], 'vintovoj kompressor');
+    });
+
+    $result = $tool->run(['query' => 'винтовой компрессор', 'sort' => 'price_asc'], new ToolContext);
+
+    expect($asked)->toBe(ProductSort::PriceAsc)
+        ->and($result)->toContain('сначала ДЕШЁВЫЕ')
+        // И тут же — честная граница: сортировка у Meilisearch упорядочивает
+        // подходящее, а не весь каталог.
+        ->and($result)->toContain('ИЗ ПОДХОДЯЩЕГО');
+});
+
+it('без порядка по цене выдача сама говорит, что она не про цену', function (): void {
+    $tool = searchToolWith(static fn (): ProductMatches => new ProductMatches(
+        [searchToolCard('Винтовой компрессор с прямым приводом Metal Master MC 4-10 INVERTER')],
+        'vintovoj kompressor',
+    ));
+
+    expect($tool->run(['query' => 'винтовой компрессор'], new ToolContext))
+        ->toContain('по совпадению с запросом, НЕ по цене');
+});
+
+it('чужое слово в порядке выдачи не ломает поиск, а просто не применяется', function (): void {
+    $asked = 'не спрашивали';
+
+    $tool = searchToolWith(static function (ProductQuery $query) use (&$asked): ProductMatches {
+        $asked = $query->sort;
+
+        return new ProductMatches([searchToolCard()], 'tehnotek t1500');
+    });
+
+    $tool->run(['query' => 'tehnotek t1500', 'sort' => 'подешевле'], new ToolContext);
+
+    expect($asked)->toBeNull();
 });
