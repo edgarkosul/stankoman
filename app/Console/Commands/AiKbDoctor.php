@@ -448,12 +448,25 @@ class AiKbDoctor extends Command
 
         try {
             $started = microtime(true);
+            // Потолок — сотни, хоть ждём одно слово: модель рассуждающая, и при
+            // 16 токенах рассуждение съедало всё, а проба рапортовала успех
+            // с пустым ответом (первая проверка прода bots, 26.09.2026).
             $result = $llm->chat(
                 'Ты отвечаешь одним словом.',
                 [['role' => 'user', 'content' => 'Скажи «ок».']],
-                maxTokens: 16,
+                maxTokens: 400,
                 sessionId: 'kb-doctor',
             );
+
+            if (trim($result->content) === '') {
+                $this->bad(sprintf(
+                    'Диалог: модель вернула пустой ответ (%d токенов, finish_reason «%s») — рассуждение съело потолок max_tokens?',
+                    $result->outputTokens,
+                    $result->finishReason,
+                ));
+
+                return;
+            }
 
             $this->ok(sprintf(
                 'Диалог: «%s» за %.0f мс, %d/%d токенов, %.4f ₽',

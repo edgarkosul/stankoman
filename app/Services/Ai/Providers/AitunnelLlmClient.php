@@ -3,6 +3,7 @@
 namespace App\Services\Ai\Providers;
 
 use App\Services\Ai\Contracts\LlmClient;
+use App\Services\Ai\Contracts\ReasoningSwitch;
 use App\Services\Ai\Data\ChatResult;
 use App\Services\Ai\Data\EmbeddingBatch;
 use App\Services\Ai\Data\ToolCall;
@@ -22,7 +23,7 @@ use Illuminate\Support\Facades\Log;
  * всё это живёт в агенте. Здесь только транспорт, ретраи, разбор ответа и учёт
  * стоимости.
  */
-final class AitunnelLlmClient implements LlmClient
+final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
 {
     public function __construct(
         private readonly string $baseUrl,
@@ -36,7 +37,21 @@ final class AitunnelLlmClient implements LlmClient
         private readonly int $connectTimeout,
         private readonly int $maxRetries,
         private readonly bool $sessionAffinity,
+        /** ai_support.agent.reasoning: '' | low | minimal | off. Не readonly — ради withoutReasoning(). */
+        private string $reasoning = '',
     ) {}
+
+    /**
+     * Копия, а не переключатель: клиент — синглтон, и следующий разговор
+     * обязан рассуждать так, как задано настройкой.
+     */
+    public function withoutReasoning(): LlmClient
+    {
+        $client = clone $this;
+        $client->reasoning = 'off';
+
+        return $client;
+    }
 
     public function chatModel(): string
     {
@@ -69,6 +84,17 @@ final class AitunnelLlmClient implements LlmClient
                 ...$messages,
             ],
         ];
+
+        /*
+         * Шлюз понимает оба вида: reasoning_effort (как у OpenAI) и
+         * reasoning.enabled (как у OpenRouter). Выключить совсем умеет только
+         * второй: thinking.type=disabled оставлял десятки токенов рассуждений.
+         */
+        $payload += match ($this->reasoning) {
+            '' => [],
+            'off' => ['reasoning' => ['enabled' => false]],
+            default => ['reasoning_effort' => $this->reasoning],
+        };
 
         if ($tools !== []) {
             $payload['tools'] = $tools;

@@ -111,6 +111,7 @@ class AiSupportServiceProvider extends ServiceProvider
                 connectTimeout: (int) config('ai_support.gateway.connect_timeout'),
                 maxRetries: (int) config('ai_support.gateway.max_retries'),
                 sessionAffinity: (bool) config('ai_support.agent.session_affinity'),
+                reasoning: (string) config('ai_support.agent.reasoning'),
             );
         });
 

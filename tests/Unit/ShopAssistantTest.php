@@ -2,6 +2,7 @@
 
 use App\Livewire\Common\RequestCallback;
 use App\Services\Ai\Contracts\LlmClient;
+use App\Services\Ai\Contracts\ReasoningSwitch;
 use App\Services\Ai\Data\ChatResult;
 use App\Services\Ai\Data\EmbeddingBatch;
 use App\Services\Ai\Data\ProductCard;
@@ -32,6 +33,57 @@ function scriptedLlm(array $steps): LlmClient
             ?int $maxTokens = null, ?string $sessionId = null, ?string $toolChoice = null): ChatResult
         {
             $this->seen[] = ['toolChoice' => $toolChoice, 'messages' => $messages, 'system' => $system];
+
+            return array_shift($this->steps) ?? new ChatResult('конец', finishReason: 'stop');
+        }
+
+        public function embed(array $texts, string $mode = 'doc'): EmbeddingBatch
+        {
+            return new EmbeddingBatch([], 'fake', 1024);
+        }
+
+        public function chatModel(): string
+        {
+            return 'fake';
+        }
+
+        public function embeddingModel(): string
+        {
+            return 'fake';
+        }
+
+        public function embeddingDimensions(): int
+        {
+            return 1024;
+        }
+    };
+}
+
+/**
+ * Та же записанная модель, но умеющая отвечать без рассуждений; в `seen`
+ * у каждого вызова — с рассуждениями он был или без.
+ */
+function switchableLlm(array $steps): LlmClient
+{
+    return new class($steps) implements LlmClient, ReasoningSwitch
+    {
+        public array $seen = [];
+
+        private bool $off = false;
+
+        public function __construct(private array $steps) {}
+
+        public function withoutReasoning(): LlmClient
+        {
+            $this->off = true;
+
+            return $this;
+        }
+
+        public function chat(string $system, array $messages, array $tools = [],
+            ?int $maxTokens = null, ?string $sessionId = null, ?string $toolChoice = null): ChatResult
+        {
+            $this->seen[] = ['toolChoice' => $toolChoice, 'messages' => $messages, 'reasoning' => $this->off ? 'off' : ''];
 
             return array_shift($this->steps) ?? new ChatResult('конец', finishReason: 'stop');
         }
@@ -144,6 +196,68 @@ it('считает провалом пустой ответ и ответ из �
 
         expect($reply->stopReason)->toBe('empty');
     }
+});
+
+it('пустой ответ повторяет один раз без рассуждений — тот же шаг, та же история', function (): void {
+    // Замеры bots 28–29.09.2026: пустой ответ deepseek — 1 100–1 500 токенов
+    // рассуждений; без повтора посетитель получал «передал менеджеру».
+    $llm = switchableLlm([
+        new ChatResult('', [new ToolCall('c1', 't', [])], 'tool_calls'),
+        new ChatResult('...', finishReason: 'length', outputTokens: 1400, costRub: 0.05),
+        new ChatResult('Доставка по Москве — 1 500 ₽.', finishReason: 'stop', costRub: 0.01),
+    ]);
+
+    $reply = assistant($llm, [scriptedTool('t')])->ask('сколько доставка?');
+
+    expect($reply->text)->toBe('Доставка по Москве — 1 500 ₽.')
+        ->and(array_column($llm->seen, 'reasoning'))->toBe(['', '', 'off'])
+        // Повтор — того же шага: история без пустого ответа, выбор инструментов прежний.
+        ->and($llm->seen[2]['messages'])->toBe($llm->seen[1]['messages'])
+        ->and($llm->seen[2]['toolChoice'])->toBe($llm->seen[1]['toolChoice'])
+        ->and($reply->costRub)->toEqualWithDelta(0.06, 1e-9);
+});
+
+it('второй пустой ответ — провал, больше одного повтора нет', function (): void {
+    $llm = switchableLlm([new ChatResult('', finishReason: 'stop'), new ChatResult('', finishReason: 'stop')]);
+
+    $reply = assistant($llm)->ask('вопрос');
+
+    expect($reply->stopReason)->toBe('empty')
+        ->and($llm->seen)->toHaveCount(2);
+});
+
+it('ответ, упёршийся в потолок токенов, отдаёт без оборванного хвоста — и в историю тоже', function (): void {
+    $llm = scriptedLlm([
+        new ChatResult('', [new ToolCall('c1', 't', [])], 'tool_calls'),
+        new ChatResult("Подойдут две модели.\n\n**1. CrossAir 420** — 52 900 ₽.\n\n**2. [Hansmann](https://intertooler.ru/product/hansmann", finishReason: 'length'),
+    ]);
+
+    $reply = assistant($llm, [scriptedTool('t')])->ask('подберите компрессор');
+
+    expect($reply->text)->toBe("Подойдут две модели.\n\n**1. CrossAir 420** — 52 900 ₽.")
+        ->and($reply->stopReason)->toBe('length')
+        ->and($reply->messages[array_key_last($reply->messages)]['content'])->toBe("Подойдут две модели.\n\n**1. CrossAir 420** — 52 900 ₽.");
+});
+
+it('вызов инструмента, написанный текстом, посетитель не видит', function (): void {
+    $reply = assistant(scriptedLlm([
+        new ChatResult("Оплата по счёту для юрлиц.\n\n<｜DSML｜ calls>\n<｜DSML｜ invoke name=\"request_contact\">\n</｜DSML｜ invoke>\n</｜DSML｜ calls>", finishReason: 'stop'),
+    ]))->ask('как платить');
+
+    expect($reply->text)->toBe('Оплата по счёту для юрлиц.')
+        ->and($reply->messages[array_key_last($reply->messages)]['content'])->toBe('Оплата по счёту для юрлиц.');
+});
+
+it('ответ из одного вызова текстом — пустой, и его повторяют без рассуждений', function (): void {
+    $llm = switchableLlm([
+        new ChatResult('<｜DSML｜tool_calls><｜DSML｜invoke name="search_products">', finishReason: 'stop'),
+        new ChatResult('Есть три модели в наличии.', finishReason: 'stop'),
+    ]);
+
+    $reply = assistant($llm)->ask('что есть');
+
+    expect($reply->text)->toBe('Есть три модели в наличии.')
+        ->and(array_column($llm->seen, 'reasoning'))->toBe(['', 'off']);
 });
 
 it('выходит по max_iterations, если модель зациклилась на инструментах', function (): void {

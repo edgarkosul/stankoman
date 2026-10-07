@@ -4,6 +4,7 @@ namespace App\Services\Ai;
 
 use App\Livewire\Common\RequestCallback;
 use App\Services\Ai\Contracts\LlmClient;
+use App\Services\Ai\Contracts\ReasoningSwitch;
 use App\Services\Ai\Data\AssistantReply;
 use App\Services\Ai\Data\ToolCall;
 use App\Services\Ai\Exceptions\PiiBlockedException;
@@ -11,6 +12,8 @@ use App\Services\Ai\Support\OfferedLinkGuard;
 use App\Services\Ai\Support\PiiRedactor;
 use App\Services\Ai\Support\ProductLinkGuard;
 use App\Services\Ai\Support\ReplyFormatter;
+use App\Services\Ai\Support\ReplyTail;
+use App\Services\Ai\Support\ToolMarkup;
 use App\Services\Ai\Tools\AssistantTool;
 use App\Services\Ai\Tools\ToolContext;
 use Illuminate\Support\Facades\Log;
@@ -89,9 +92,13 @@ final class ShopAssistant
         // а случившийся на siteko инцидент.
         $model = '';
 
+        // Клиент хода: после пустого ответа — без рассуждений (ниже).
+        $llm = $this->llm;
+        $retried = false;
+
         for ($step = 0; $step < $this->maxIterations; $step++) {
             try {
-                $result = $this->llm->chat(
+                $result = $llm->chat(
                     system: $system,
                     messages: $this->redactor->withoutOrigin($messages),
                     tools: $definitions,
@@ -163,6 +170,32 @@ final class ShopAssistant
 
             $text = trim($result->content);
 
+            // Вызов инструмента текстом (ToolMarkup): посетителю — без тегов,
+            // вызова по нему не делаем. Срезаем до гардов и до истории:
+            // осталось пусто — это ветка «пустой ответ» ниже.
+            if (ToolMarkup::in($text)) {
+                Log::warning('Assistant wrote a tool call as text', [
+                    'model' => $this->llm->chatModel(),
+                    'snippet' => Str::limit($text, 200),
+                ]);
+
+                $text = ToolMarkup::strip($text);
+            }
+
+            // Ответ упёрся в потолок токенов — оборванный хвост посетителю
+            // не показываем (ReplyTail): короче, но целое.
+            if ($result->finishReason === 'length' && ! $this->isMeaningless($text)) {
+                $whole = ReplyTail::complete($text);
+
+                Log::info('Assistant reply hit the token ceiling', [
+                    'model' => $this->llm->chatModel(),
+                    'output_tokens' => $result->outputTokens,
+                    'cut_chars' => mb_strlen($text) - mb_strlen($whole),
+                ]);
+
+                $text = $whole;
+            }
+
             if ($text !== '') {
                 $messages[] = ['role' => 'assistant', 'content' => $text, PiiRedactor::ORIGIN => PiiRedactor::ORIGIN_BOT];
             }
@@ -171,6 +204,31 @@ final class ShopAssistant
             // в замерах на siteko примерно каждый пятый прогон заканчивался
             // так. Заглушку не выдумываем — решает вызывающий.
             if ($this->isMeaningless($text)) {
+                /*
+                 * Один повтор того же шага без рассуждений (ReasoningSwitch):
+                 * пустой ответ у deepseek — рассуждения, съевшие потолок
+                 * токенов, а посетитель без повтора получает «передал
+                 * менеджеру» и ложную эскалацию. Вызов дешевле, чем разговор,
+                 * ушедший человеку. Второй пустой — к менеджеру, как раньше.
+                 */
+                if (! $retried && $this->llm instanceof ReasoningSwitch) {
+                    Log::info('Assistant got an empty reply, retrying without reasoning', [
+                        'model' => $this->llm->chatModel(),
+                        'step' => $step,
+                        'output_tokens' => $result->outputTokens,
+                    ]);
+
+                    if ($text !== '') {
+                        array_pop($messages);
+                    }
+
+                    $llm = $this->llm->withoutReasoning();
+                    $retried = true;
+                    $step--;
+
+                    continue;
+                }
+
                 return $this->failure('empty', $messages, $context, $started,
                     $inputTokens, $outputTokens, $cachedTokens, $costRub, $model);
             }

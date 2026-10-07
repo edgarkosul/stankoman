@@ -2,6 +2,10 @@
 
 use App\Models\Page;
 use App\Models\User;
+use App\Services\Ai\Contracts\LlmClient;
+use App\Services\Ai\Data\ChatResult;
+use App\Services\Ai\Data\EmbeddingBatch;
+use App\Services\Ai\Providers\FakeLlmClient;
 use App\Shop\PageKbSource;
 use App\Shop\SettingsKbSource;
 use Illuminate\Support\Facades\DB;
@@ -104,5 +108,64 @@ it('доктор ловит настройку, в которой некому �
 
     $this->artisan('ai:kb-doctor')
         ->expectsOutputToContain('уведомления в админке уйдут в никуда')
+        ->assertFailed();
+});
+
+/**
+ * Шлюз для пробы доктора: отдаёт заданный ответ и помнит потолок max_tokens.
+ */
+function probeLlm(string $reply): LlmClient
+{
+    return new class(new FakeLlmClient(32), $reply) implements LlmClient
+    {
+        public ?int $maxTokens = null;
+
+        public function __construct(private readonly FakeLlmClient $inner, private readonly string $reply) {}
+
+        public function chat(string $system, array $messages, array $tools = [], ?int $maxTokens = null, ?string $sessionId = null, ?string $toolChoice = null): ChatResult
+        {
+            $this->maxTokens = $maxTokens;
+
+            return new ChatResult($this->reply, finishReason: $this->reply === '' ? 'length' : 'stop', outputTokens: 16);
+        }
+
+        public function embed(array $texts, string $mode = 'doc'): EmbeddingBatch
+        {
+            return $this->inner->embed($texts, $mode);
+        }
+
+        public function chatModel(): string
+        {
+            return $this->inner->chatModel();
+        }
+
+        public function embeddingModel(): string
+        {
+            return $this->inner->embeddingModel();
+        }
+
+        public function embeddingDimensions(): int
+        {
+            return $this->inner->embeddingDimensions();
+        }
+    };
+}
+
+it('проба доктора даёт рассуждающей модели потолок в сотни токенов', function (): void {
+    app()->instance(LlmClient::class, $llm = probeLlm('ок'));
+
+    $this->artisan('ai:kb-doctor', ['--probe' => true])
+        ->expectsOutputToContain('Диалог: «ок»');
+
+    // При 16 рассуждение съедало потолок целиком, и текста не оставалось.
+    expect($llm->maxTokens)->toBeGreaterThanOrEqual(256);
+});
+
+it('пустой ответ пробы — провал, а не успех', function (): void {
+    app()->instance(LlmClient::class, probeLlm(''));
+
+    $this->artisan('ai:kb-doctor', ['--probe' => true])
+        ->expectsOutputToContain('Диалог: модель вернула пустой ответ')
+        ->doesntExpectOutputToContain('Диалог: «»')
         ->assertFailed();
 });
