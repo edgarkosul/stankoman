@@ -29,6 +29,9 @@ use Illuminate\Support\Facades\Log;
  */
 class AiGatewayProbe extends Command
 {
+    /** Окно, в котором сбои адреса весят против него при выборе пина: шесть проб. */
+    private const FLAP_WINDOW_MINUTES = 30;
+
     protected $signature = 'ai:gateway-probe
         {--show : Показать журнал последних проб и выйти}';
 
@@ -71,7 +74,7 @@ class AiGatewayProbe extends Command
         $reserve = $pin->reserve($addresses);
         $current = $pin->current();
         $results = array_map(static fn (string $ip): array => $pin->probe($ip), [...$addresses, ...$reserve]);
-        $chosen = $pin->choose($results, $current, $reserve);
+        $chosen = $pin->choose($results, $current, $reserve, $this->recentFailures());
 
         foreach ($results as $result) {
             ProbeRow::create([
@@ -143,8 +146,15 @@ class AiGatewayProbe extends Command
             return;
         }
 
-        if (in_array($chosen, $reserve, true)) {
-            // Работаем, но на страховке: из DNS не отвечает ни один адрес.
+        /*
+         * Работаем, но на страховке: из DNS не отвечает ни один адрес.
+         * Только тогда: пин на ровном запасном при живом DNS — штатное
+         * состояние (GatewayAddressPin::choose), и строка на каждую пробу
+         * давала бы 288 ложных тревог в сутки.
+         */
+        $dnsAlive = array_filter($results, static fn (array $r): bool => $r['ok'] && ! in_array($r['ip'], $reserve, true));
+
+        if (in_array($chosen, $reserve, true) && $dnsAlive === []) {
             Log::warning('Aitunnel probe: пин на запасном адресе', [
                 'host' => $host,
                 'pin' => $chosen,
@@ -202,6 +212,28 @@ class AiGatewayProbe extends Command
         $this->line('Сейчас пин: '.($pin->current() ?? 'нет, идём по DNS'));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Сбои по адресам за последние полчаса — чтобы мигающий адрес
+     * не выиграл у ровного одной удачной пробой (см. GatewayAddressPin::choose).
+     *
+     * Окно — от now() приложения, а не NOW() базы: created_at пишет
+     * приложение в своём поясе, а у MySQL на проде пояс бывает другой
+     * (в bots запрос «за N минут» через NOW() вернул пустоту).
+     *
+     * @return array<string, int>
+     */
+    private function recentFailures(): array
+    {
+        return ProbeRow::query()
+            ->where('created_at', '>=', now()->subMinutes(self::FLAP_WINDOW_MINUTES))
+            ->where('ok', false)
+            ->selectRaw('ip, COUNT(*) n')
+            ->groupBy('ip')
+            ->pluck('n', 'ip')
+            ->map(static fn (mixed $n): int => (int) $n)
+            ->all();
     }
 
     /** Журнал не растёт бесконечно: он нужен на историю, а не навсегда. */

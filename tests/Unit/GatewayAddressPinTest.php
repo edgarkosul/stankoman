@@ -143,15 +143,44 @@ it('предпочитает адрес из DNS запасному, даже б
     expect($chosen)->toBe('8.47.69.0');
 });
 
-it('возвращается с запасного адреса, как только ожил адрес из DNS', function (): void {
-    // Запасной статичен и про переезд зоны не знает: держаться за него,
-    // когда DNS снова в порядке, незачем.
+it('не уходит с живого запасного адреса на оживший адрес из DNS', function (): void {
+    // Переезд ради переезда: запасной проверяется каждой пробой так же,
+    // как и адреса из DNS.
     $chosen = pin()->choose([
-        probeResult('8.47.69.0', ok: true, ms: 90),
-        probeResult('8.47.69.5', ok: true, ms: 40),
+        probeResult('8.47.69.0', ok: true, ms: 40),
+        probeResult('8.47.69.5', ok: true, ms: 90),
     ], current: '8.47.69.5', reserve: ['8.47.69.5']);
 
-    expect($chosen)->toBe('8.47.69.0');
+    expect($chosen)->toBe('8.47.69.5');
+});
+
+it('не берёт мигающий адрес из DNS, пока есть ровный запасной', function (): void {
+    // 07.10.2026: мёртвый 8.47.69.0 начал отвечать через раз. Одна удачная
+    // проба не должна перетянуть пин на адрес, который рвёт каждый третий вызов.
+    $chosen = pin()->choose([
+        probeResult('8.47.69.0', ok: true, ms: 40),
+        probeResult('8.6.112.5', ok: true, ms: 90),
+    ], current: null, reserve: ['8.6.112.5'], recentFailures: ['8.47.69.0' => 2]);
+
+    expect($chosen)->toBe('8.6.112.5');
+});
+
+it('уходит с пина, который сбоил, на ровный адрес', function (): void {
+    $chosen = pin()->choose([
+        probeResult('8.6.112.5', ok: true, ms: 40),
+        probeResult('104.26.10.202', ok: true, ms: 90),
+    ], current: '8.6.112.5', reserve: ['8.6.112.5', '104.26.10.202'], recentFailures: ['8.6.112.5' => 1]);
+
+    expect($chosen)->toBe('104.26.10.202');
+});
+
+it('когда мигают все, берёт тот, что сбоил реже', function (): void {
+    $chosen = pin()->choose([
+        probeResult('8.47.69.0', ok: true, ms: 40),
+        probeResult('8.6.112.5', ok: true, ms: 90),
+    ], current: '8.47.69.0', reserve: ['8.6.112.5'], recentFailures: ['8.47.69.0' => 3, '8.6.112.5' => 1]);
+
+    expect($chosen)->toBe('8.6.112.5');
 });
 
 it('держится за запасной адрес, пока DNS не ожил', function (): void {

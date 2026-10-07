@@ -41,9 +41,8 @@ use Illuminate\Support\Facades\Http;
  * лёг целиком. При этом
  * соседние адреса тех же сетей Cloudflare отдавали шлюз как ни в чём
  * не бывало: Cloudflare принимает зону на любом своём адресе и различает
- * её по SNI. Запасные адреса из настроек пробуются вместе с DNS-адресами,
- * но пинятся, только пока ни один адрес из DNS не отвечает. Так запас
- * остаётся страховкой и не подменяет зону, которая может переехать.
+ * её по SNI. Запасные адреса из настроек пробуются вместе с DNS-адресами;
+ * как из них выбирается пин — см. choose().
  */
 final class GatewayAddressPin
 {
@@ -259,33 +258,39 @@ final class GatewayAddressPin
      * подумать, что что-то сломалось. Меняем, только когда выбранный
      * адрес перестал отвечать.
      *
-     * Запасные адреса участвуют, только когда не отвечает ни один адрес
-     * из DNS. Ожил хоть один — пин возвращается на него, даже с живого
-     * запасного: запасной адрес статичен и про переезд зоны не знает.
+     * Но одна удачная проба — слабое свидетельство. 07.10.2026 мёртвый
+     * адрес из DNS начал оживать через раз (2 ответа из 3, bots), и правило
+     * «адрес из DNS важнее запасного» увело бы пин с ровного запасного
+     * на мигающий — бот снова терял бы часть вызовов, как 17.09. Поэтому
+     * первым идёт число сбоев за последние полчаса ($recentFailures, из
+     * журнала проб): мигающий адрес проигрывает ровному, даже если сейчас
+     * ответил. Дальше — текущий пин, потом адрес из DNS раньше запасного,
+     * потом скорость.
+     *
+     * С живого запасного пин сам на DNS не возвращается: запасной
+     * проверяется каждой пробой тем же SNI, и переезд зоны с Cloudflare
+     * проба заметит — Cloudflare ответит ошибкой, а не каталогом.
      *
      * @param  list<array{ip: string, ok: bool, http_status: int|null, latency_ms: int, error: string|null}>  $results
      * @param  list<string>  $reserve  запасные адреса среди $results (см. reserve())
+     * @param  array<string, int>  $recentFailures  сбои по адресам за последние полчаса
      */
-    public function choose(array $results, ?string $current, array $reserve = []): ?string
+    public function choose(array $results, ?string $current, array $reserve = [], array $recentFailures = []): ?string
     {
         $healthy = array_values(array_filter($results, static fn (array $r): bool => $r['ok']));
-        $fromDns = array_values(array_filter($healthy, static fn (array $r): bool => ! in_array($r['ip'], $reserve, true)));
-
-        if ($fromDns !== []) {
-            $healthy = $fromDns;
-        }
 
         if ($healthy === []) {
             return null;
         }
 
-        foreach ($healthy as $result) {
-            if ($result['ip'] === $current) {
-                return $current;
-            }
-        }
+        $rank = static fn (array $r): array => [
+            $recentFailures[$r['ip']] ?? 0,
+            $r['ip'] === $current ? 0 : 1,
+            in_array($r['ip'], $reserve, true) ? 1 : 0,
+            $r['latency_ms'],
+        ];
 
-        usort($healthy, static fn (array $a, array $b): int => $a['latency_ms'] <=> $b['latency_ms']);
+        usort($healthy, static fn (array $a, array $b): int => $rank($a) <=> $rank($b));
 
         return $healthy[0]['ip'];
     }
