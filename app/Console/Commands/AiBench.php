@@ -44,10 +44,13 @@ class AiBench extends Command
 
     protected $description = 'Сравнить модели и провайдеров бота на наборе вопросов магазина';
 
-    /** Шаг 7 выжимки bots: v4 против v4.1 одной волной. */
+    /**
+     * То, что надо перепроверять раз в одну-две недели: выбор провайдера
+     * у шлюза меняется без нас, а на проде с 07.10.2026 стоит latency.
+     */
     private const DEFAULT_VARIANTS = [
-        'deepseek-v4-flash',
         'deepseek-v4.1-flash',
+        'deepseek-v4.1-flash+latency',
     ];
 
     public function handle(): int
