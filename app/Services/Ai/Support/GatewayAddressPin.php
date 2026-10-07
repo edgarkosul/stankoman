@@ -35,18 +35,36 @@ use Illuminate\Support\Facades\Http;
  * пробы. Потерять хороший пин из-за случайного сбоя дёшево — это
  * возврат к прежнему поведению на несколько минут. Держаться за
  * мёртвый — дорого: тогда ретраи бьются в один и тот же адрес.
+ *
+ * ЗАПАСНЫЕ АДРЕСА. 07.10.2026 с прода bots, а следом и с нашего перестали
+ * отвечать оба адреса из DNS, и пину стало не из чего выбирать: бот bots
+ * лёг целиком. При этом
+ * соседние адреса тех же сетей Cloudflare отдавали шлюз как ни в чём
+ * не бывало: Cloudflare принимает зону на любом своём адресе и различает
+ * её по SNI. Запасные адреса из настроек пробуются вместе с DNS-адресами,
+ * но пинятся, только пока ни один адрес из DNS не отвечает. Так запас
+ * остаётся страховкой и не подменяет зону, которая может переехать.
  */
 final class GatewayAddressPin
 {
     private const KEY = 'ai:gateway:pin:';
 
+    /** @var list<string> */
+    private readonly array $reserve;
+
+    /**
+     * @param  array<int, mixed>  $reserve  запасные адреса (IPv4), см. выше
+     */
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $healthPath,
         private readonly int $timeout,
         private readonly int $ttl,
         private readonly bool $enabled,
-    ) {}
+        array $reserve = [],
+    ) {
+        $this->reserve = self::ipv4List($reserve);
+    }
 
     public function enabled(): bool
     {
@@ -183,19 +201,19 @@ final class GatewayAddressPin
             return [];
         }
 
-        $ips = [];
+        return self::ipv4List(array_column($records, 'ip'));
+    }
 
-        foreach ($records as $record) {
-            $ip = $record['ip'] ?? null;
-
-            if (is_string($ip) && filter_var($ip, FILTER_VALIDATE_IP) !== false) {
-                $ips[] = $ip;
-            }
-        }
-
-        sort($ips);
-
-        return array_values(array_unique($ips));
+    /**
+     * Запасные адреса, которых нет в DNS-ответе: их пробуют вслед
+     * за адресами из DNS.
+     *
+     * @param  list<string>  $dns
+     * @return list<string>
+     */
+    public function reserve(array $dns = []): array
+    {
+        return array_values(array_diff($this->reserve, $dns));
     }
 
     /**
@@ -241,11 +259,21 @@ final class GatewayAddressPin
      * подумать, что что-то сломалось. Меняем, только когда выбранный
      * адрес перестал отвечать.
      *
+     * Запасные адреса участвуют, только когда не отвечает ни один адрес
+     * из DNS. Ожил хоть один — пин возвращается на него, даже с живого
+     * запасного: запасной адрес статичен и про переезд зоны не знает.
+     *
      * @param  list<array{ip: string, ok: bool, http_status: int|null, latency_ms: int, error: string|null}>  $results
+     * @param  list<string>  $reserve  запасные адреса среди $results (см. reserve())
      */
-    public function choose(array $results, ?string $current): ?string
+    public function choose(array $results, ?string $current, array $reserve = []): ?string
     {
         $healthy = array_values(array_filter($results, static fn (array $r): bool => $r['ok']));
+        $fromDns = array_values(array_filter($healthy, static fn (array $r): bool => ! in_array($r['ip'], $reserve, true)));
+
+        if ($fromDns !== []) {
+            $healthy = $fromDns;
+        }
 
         if ($healthy === []) {
             return null;
@@ -282,6 +310,24 @@ final class GatewayAddressPin
     private function cacheKey(): string
     {
         return self::KEY.$this->host();
+    }
+
+    /**
+     * Только A-записи, по той же причине, что и в addresses().
+     *
+     * @param  array<int, mixed>  $values
+     * @return list<string>
+     */
+    private static function ipv4List(array $values): array
+    {
+        $ips = array_filter(
+            $values,
+            static fn (mixed $ip): bool => is_string($ip) && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false,
+        );
+
+        sort($ips);
+
+        return array_values(array_unique($ips));
     }
 
     private function elapsed(float $started): int

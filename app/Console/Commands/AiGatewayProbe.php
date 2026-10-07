@@ -67,9 +67,11 @@ class AiGatewayProbe extends Command
             return self::FAILURE;
         }
 
+        // Запасные — вслед за DNS: пинятся, только когда из DNS не ответил никто.
+        $reserve = $pin->reserve($addresses);
         $current = $pin->current();
-        $results = array_map(static fn (string $ip): array => $pin->probe($ip), $addresses);
-        $chosen = $pin->choose($results, $current);
+        $results = array_map(static fn (string $ip): array => $pin->probe($ip), [...$addresses, ...$reserve]);
+        $chosen = $pin->choose($results, $current, $reserve);
 
         foreach ($results as $result) {
             ProbeRow::create([
@@ -89,14 +91,14 @@ class AiGatewayProbe extends Command
             $pin->remember($chosen);
         }
 
-        $this->report($results, $current, $chosen, $pin->host());
+        $this->report($results, $current, $chosen, $pin->host(), $reserve);
         $this->prune();
 
         if (! $this->option('quiet')) {
             $this->table(
                 ['Адрес', 'Ответ', 'мс', 'Пин'],
                 array_map(static fn (array $r): array => [
-                    $r['ip'],
+                    in_array($r['ip'], $reserve, true) ? $r['ip'].' (запас)' : $r['ip'],
                     $r['ok'] ? 'ок '.$r['http_status'] : ($r['error'] ?? 'нет'),
                     $r['latency_ms'],
                     $r['ip'] === $chosen ? '←' : '',
@@ -113,8 +115,9 @@ class AiGatewayProbe extends Command
      * за сутки.
      *
      * @param  list<array{ip: string, ok: bool, http_status: int|null, latency_ms: int, error: string|null}>  $results
+     * @param  list<string>  $reserve
      */
-    private function report(array $results, ?string $current, ?string $chosen, string $host): void
+    private function report(array $results, ?string $current, ?string $chosen, string $host, array $reserve): void
     {
         $dead = array_values(array_filter($results, static fn (array $r): bool => ! $r['ok']));
 
@@ -133,6 +136,18 @@ class AiGatewayProbe extends Command
                 'host' => $host,
                 'from' => $current,
                 'to' => $chosen,
+                'reserve' => in_array($chosen, $reserve, true),
+                'dead' => array_column($dead, 'ip'),
+            ]);
+
+            return;
+        }
+
+        if (in_array($chosen, $reserve, true)) {
+            // Работаем, но на страховке: из DNS не отвечает ни один адрес.
+            Log::warning('Aitunnel probe: пин на запасном адресе', [
+                'host' => $host,
+                'pin' => $chosen,
                 'dead' => array_column($dead, 'ip'),
             ]);
 

@@ -143,6 +143,18 @@ return [
             'timeout' => max(1, (int) env('AI_GATEWAY_PIN_TIMEOUT', 6)),
             'ttl' => max(60, (int) env('AI_GATEWAY_PIN_TTL', 1800)),
 
+            /*
+             * Запасные адреса через запятую — их пробуют вместе с DNS-адресами.
+             * 07.10.2026 с прода перестали отвечать ОБА адреса из DNS
+             * (8.47.69.0 и 8.6.112.0), а соседние 8.47.69.5 и 8.6.112.5 из тех
+             * же сетей Cloudflare отдавали шлюз за 75 мс. Запасной адрес
+             * пинится, только пока не отвечает ни один адрес из DNS.
+             */
+            'reserve' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env('AI_GATEWAY_PIN_RESERVE', '')),
+            ))),
+
             /* Сколько дней держать журнал проб. Это и есть история доступности. */
             'keep_days' => max(1, (int) env('AI_GATEWAY_PIN_KEEP_DAYS', 30)),
         ],

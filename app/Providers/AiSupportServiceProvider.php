@@ -89,6 +89,7 @@ class AiSupportServiceProvider extends ServiceProvider
             timeout: (int) config('ai_support.gateway.pin.timeout'),
             ttl: (int) config('ai_support.gateway.pin.ttl'),
             enabled: (bool) config('ai_support.gateway.pin.enabled'),
+            reserve: (array) config('ai_support.gateway.pin.reserve', []),
         ));
 
         $this->app->singleton(LlmClient::class, function (): LlmClient {
