@@ -7,7 +7,6 @@ use App\Models\ChatMessage;
 use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Data\AssistantReply;
 use App\Services\Ai\ShopAssistant;
-use App\Services\Ai\Support\PiiRedactor;
 use App\Services\Ai\SystemPromptBuilder;
 use App\Services\Chat\AssistantQueueHealth;
 use App\Services\Chat\ChatAbuseGuard;
@@ -16,7 +15,6 @@ use App\Services\Chat\ChatConversationService;
 use App\Services\Chat\ChatEscalationService;
 use App\Services\Chat\OperatorPresence;
 use App\Services\Chat\PageContext;
-use App\Services\Kb\KbVectorStore;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -129,7 +127,7 @@ class GenerateChatReplyJob implements ShouldQueue
         /*
          * Повтор уже отвеченного вопроса — без вызова модели.
          *
-         * Что именно попадает в кэш и почему условий пять — в ChatAnswerCache;
+         * Что именно попадает в кэш и почему условий шесть — в ChatAnswerCache;
          * здесь важно, что кэш спрашивается ТОЛЬКО на первом ходе разговора.
          */
         $cache = app(ChatAnswerCache::class);
@@ -141,7 +139,7 @@ class GenerateChatReplyJob implements ShouldQueue
                 'conversation_id' => $conversation->getKey(),
             ]);
 
-            $chat->addAssistantMessage($conversation, $cached['text'], questionVector: $this->questionVector($question), reply: new AssistantReply(
+            $answer = $chat->addAssistantMessage($conversation, $cached['text'], reply: new AssistantReply(
                 text: $cached['text'],
                 // Видно в админке рядом с ответом: ход, который ничего
                 // не стоил, не должен выглядеть как обычный.
@@ -150,6 +148,7 @@ class GenerateChatReplyJob implements ShouldQueue
             ));
 
             $chat->clearPending($conversation);
+            $this->storeQuestionVector($answer, $question);
 
             return;
         }
@@ -227,12 +226,11 @@ class GenerateChatReplyJob implements ShouldQueue
             return;
         }
 
-        $chat->addAssistantMessage(
+        $answer = $chat->addAssistantMessage(
             $conversation,
             $reply->text,
             $reply,
             (float) config('ai_support.knowledge_base.min_score'),
-            questionVector: $this->questionVector($question),
         );
 
         if ($cache->isCacheable($reply, firstTurn: $history === [])) {
@@ -251,6 +249,7 @@ class GenerateChatReplyJob implements ShouldQueue
         }
 
         $chat->clearPending($conversation);
+        $this->storeQuestionVector($answer, $question);
     }
 
     /**
@@ -315,14 +314,11 @@ class GenerateChatReplyJob implements ShouldQueue
             return;
         }
 
-        $chat->addAssistantMessage(
+        $answer = $chat->addAssistantMessage(
             $conversation,
             $this->fallbackText($reason),
             $reply,
             stopReason: $reason,
-            // Провал — тоже сигнал для «Пробелов», и вопрос под рукой:
-            // выше проверено, что последняя реплика принадлежит покупателю.
-            questionVector: $this->questionVector($last),
         );
 
         $escalation->escalate(
@@ -332,47 +328,22 @@ class GenerateChatReplyJob implements ShouldQueue
         );
 
         $chat->clearPending($conversation);
+
+        // Провал — тоже сигнал для «Пробелов», и вопрос под рукой:
+        // выше проверено, что последняя реплика принадлежит покупателю.
+        $this->storeQuestionVector($answer, $last);
     }
 
     /**
-     * Вектор вопроса — от слов ПОКУПАТЕЛЯ и на каждый ответ.
+     * Вектор вопроса для «Пробелов» — своей джобой, не здесь
+     * (StoreQuestionVectorJob).
      *
-     * У донора вектор был побочным продуктом поиска по базе знаний, и это
-     * давало две дыры: у товарных вопросов его не было вовсе, а у остальных
-     * он описывал формулировку самого бота. На проде донора — 2 вектора
-     * на 46 сообщений, то есть «Пробелы» видели меньше десятой части потока.
-     *
-     * Стоит это десятки токенов на фоне десятков копеек за сам ответ и идёт
-     * ПОСЛЕ него: на точность не влияет ничего.
-     *
-     * Сбой шлюза здесь не должен стоить покупателю ответа: считать вектор
-     * мы пытаемся и тогда, когда шлюз, возможно, уже лежит (заглушка провала).
-     * Не получилось — пишем без вектора.
-     *
-     * @return list<float>|null
+     * Здесь он держал бы воркер ответов, пока думает шлюз эмбеддингов:
+     * до 30 с, и всё это время следующий вопрос в очереди ждал бы его.
      */
-    private function questionVector(?ChatMessage $question): ?array
+    private function storeQuestionVector(ChatMessage $answer, ChatMessage $question): void
     {
-        $text = trim((string) $question?->body);
-
-        if ($text === '') {
-            return null;
-        }
-
-        try {
-            $vector = app(KbVectorStore::class)->embedQuery(
-                app(PiiRedactor::class)->redact($text),
-            );
-        } catch (Throwable $e) {
-            Log::warning('Не смог посчитать вектор вопроса', [
-                'message_id' => $question?->getKey(),
-                'error' => $e->getMessage(),
-            ]);
-
-            return null;
-        }
-
-        return $vector === [] ? null : $vector;
+        StoreQuestionVectorJob::dispatch($answer->getKey(), $question->getKey());
     }
 
     /**

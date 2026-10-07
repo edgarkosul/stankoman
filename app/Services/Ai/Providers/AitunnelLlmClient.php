@@ -11,11 +11,18 @@ use App\Services\Ai\Exceptions\LlmException;
 use App\Services\Ai\Exceptions\PiiBlockedException;
 use App\Services\Ai\Support\GatewayAddressPin;
 use GuzzleHttp\Exception\ConnectException as GuzzleConnectException;
+use GuzzleHttp\Handler\CurlMultiHandler;
+use GuzzleHttp\Promise\Is;
+use GuzzleHttp\Promise\PromiseInterface;
+use GuzzleHttp\Promise\Utils;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Promises\LazyPromise;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Клиент шлюза aitunnel.ru — OpenAI-совместимые /chat/completions и /embeddings
@@ -27,6 +34,9 @@ use Illuminate\Support\Facades\Log;
  */
 final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
 {
+    /** Ключ паузы шлюза эмбеддингов после сбоя вектора вопроса. */
+    public const QUERY_PAUSE_KEY = 'ai:emb:query-pause';
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $apiKey,
@@ -45,6 +55,24 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
          * раньше, полагаясь на DNS и ретраи.
          */
         private readonly ?GatewayAddressPin $pin = null,
+        /**
+         * Вектор вопроса посетителя: свой таймаут и свои повторы
+         * (ai_support.embedding.query_timeout). Индексация документов идёт
+         * пачками и живёт по общим правилам.
+         */
+        private readonly int $queryEmbeddingTimeout = 15,
+        private readonly int $queryEmbeddingRetries = 1,
+        /**
+         * На сколько секунд перестать звать шлюз за вектором вопроса после
+         * сбоя (ai_support.embedding.query_pause). 0 — не переставать.
+         */
+        private readonly int $queryEmbeddingPause = 0,
+        /**
+         * Через сколько миллисекунд без ответа отправить второй такой же
+         * запрос вектора вопроса (ai_support.embedding.query_hedge_ms).
+         * 0 — не отправлять.
+         */
+        private readonly int $queryEmbeddingHedgeMs = 0,
         /** ai_support.agent.reasoning: '' | low | minimal | off. Не readonly — ради withoutReasoning(). */
         private string $reasoning = '',
         /**
@@ -197,12 +225,45 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
         $promptTokens = 0;
         $costRub = 0.0;
 
+        /*
+         * Пауза после сбоя. В bots 02.10.2026 /embeddings висел полчаса, и
+         * каждый поиск по базе ждал его заново — две попытки по 15 с. Модель
+         * за ход ищет и по три раза: посетитель ждал ответа 142 с, хотя поиск
+         * по словам без шлюза уже был. Посетителю нужен ответ, а не вектор:
+         * сбой — и следующие вопросы минуту-другую идут сразу мимо шлюза.
+         * Кэш векторов выше паузы: знакомые формулировки шлюз не трогают.
+         */
+        $paused = $mode === 'query' && $this->queryEmbeddingPause > 0;
+
+        if ($paused && $missing !== [] && Cache::has(self::QUERY_PAUSE_KEY)) {
+            throw new LlmException('Шлюз эмбеддингов недавно не ответил, вектор вопроса не запрашиваем.');
+        }
+
         foreach (array_chunk($missing, $this->embeddingBatchSize, preserve_keys: true) as $batch) {
-            $response = $this->post('/embeddings', [
-                'model' => $this->embeddingModel,
-                'input' => array_values($batch),
-                'dimensions' => $this->embeddingDimensions,
-            ]);
+            try {
+                $response = $this->post('/embeddings', [
+                    'model' => $this->embeddingModel,
+                    'input' => array_values($batch),
+                    'dimensions' => $this->embeddingDimensions,
+                ],
+                    timeout: $mode === 'query' ? $this->queryEmbeddingTimeout : null,
+                    retries: $mode === 'query' ? $this->queryEmbeddingRetries : null,
+                    hedgeAfterMs: $mode === 'query' ? $this->queryEmbeddingHedgeMs : 0,
+                );
+            } catch (LlmException $e) {
+                // Персональные данные — это про текст, а не про шлюз: другой
+                // вопрос пройдёт, и ставить всех на паузу из-за него нельзя.
+                if ($paused && ! $e instanceof PiiBlockedException) {
+                    Cache::put(self::QUERY_PAUSE_KEY, true, $this->queryEmbeddingPause);
+
+                    Log::warning('Aitunnel embeddings: пауза', [
+                        'seconds' => $this->queryEmbeddingPause,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
+                throw $e;
+            }
 
             $body = $response->json();
             $data = $body['data'] ?? [];
@@ -257,34 +318,40 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
 
     /**
      * @param  array<string, mixed>  $payload
+     * @param  int|null  $timeout  вместо общего таймаута
+     * @param  int|null  $retries  вместо max_retries — для вызовов, повтор
+     *                             которых ничего не стоит
+     * @param  int  $hedgeAfterMs  через сколько отправить второй такой же
+     *                             запрос (sendHedged); 0 — не отправлять.
+     *                             Только для вызовов, дубль которых ничего
+     *                             не стоит, — не для модели
      */
-    private function post(string $path, array $payload): Response
-    {
+    private function post(
+        string $path,
+        array $payload,
+        ?int $timeout = null,
+        ?int $retries = null,
+        int $hedgeAfterMs = 0,
+    ): Response {
         $attempt = 0;
+        $retries ??= $this->maxRetries;
 
         while (true) {
             $attempt++;
-
-            $request = Http::withToken($this->apiKey)
-                ->acceptJson()
-                ->asJson()
-                ->connectTimeout($this->connectTimeout)
-                ->timeout($this->timeout);
 
             // Заведомо живой адрес вместо жребия по DNS-ответу. Пин ставит
             // ai:gateway-probe; его отсутствие — это не ошибка, а обычный
             // режим «полагаемся на DNS».
             $resolve = $this->pin?->resolveEntry();
 
-            if ($resolve !== null) {
-                $request = $request->withOptions(['curl' => [CURLOPT_RESOLVE => [$resolve]]]);
-            }
+            $response = $hedgeAfterMs > 0
+                ? $this->sendHedged($path, $payload, $timeout ?? $this->timeout, $resolve, $hedgeAfterMs)
+                : $this->sendOnce($path, $payload, $timeout ?? $this->timeout, $resolve);
 
-            try {
-                $response = $request->post($this->baseUrl.$path, $payload);
-            } catch (ConnectionException $e) {
+            if ($response instanceof ConnectionException) {
+                $e = $response;
                 $sent = $this->requestLeftTheMachine($e);
-                $limit = $sent ? $this->maxRetries : $this->connectRetries;
+                $limit = $sent ? $retries : $this->connectRetries;
 
                 /*
                  * Пин привёл в никуда — снимаем его немедленно, не дожидаясь
@@ -347,9 +414,7 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
 
             // 429 и 5xx — временные. Остальные 4xx повторять незачем:
             // это наша ошибка в запросе, и она не рассосётся.
-            $retryable = $response->status() === 429 || $response->serverError();
-
-            if (! $retryable || $attempt > $this->maxRetries) {
+            if (! $this->retryable($response) || $attempt > $retries) {
                 throw new LlmException(sprintf(
                     'Шлюз ответил HTTP %d на %s: %s',
                     $response->status(),
@@ -366,6 +431,192 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
 
             $this->backoff($attempt);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function sendOnce(string $path, array $payload, int $timeout, ?string $resolve): Response|ConnectionException
+    {
+        try {
+            return $this->request($timeout, $resolve)->post($this->baseUrl.$path, $payload);
+        } catch (ConnectionException $e) {
+            return $e;
+        }
+    }
+
+    /**
+     * Запрос с дублем: первый не ответил за $hedgeAfterMs — рядом уходит
+     * второй такой же, ответ берётся у того, кто ответил первым, второй
+     * отменяется.
+     *
+     * Ради хвоста шлюза эмбеддингов: зависший запрос висит до таймаута,
+     * а такой же, отправленный рядом, отвечает за секунду-две (замер bots
+     * 07.10.2026, 30 пар запросов: один из пары завис в 12 парах, оба —
+     * ни разу; p50 поиска 6,9 → 3,2 с). Таймаут не лечит: в медленной
+     * полосе нормальный вектор идёт 5–10 с, и короткий таймаут обрывал бы
+     * и его. Дубль ничего не обрывает.
+     *
+     * Срок у попытки один на двоих: второй живёт до того же момента,
+     * что и первый, — потолок попытки не растёт.
+     *
+     * Первый упал до порога (не поднялось соединение, 5xx) — второго не ждём
+     * и отдаём сбой наверх как есть: им займутся обычные повторы post().
+     * Один из двух упал после порога — ждём другого. Упали оба — наверх
+     * уходит тот сбой, что пришёл последним.
+     *
+     * Цикл curl крутим сами, а не через wait(): ожидание промиса в Guzzle
+     * ждёт свою передачу целиком, а здесь нужен первый из двух.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function sendHedged(string $path, array $payload, int $timeout, ?string $resolve, int $hedgeAfterMs): Response|ConnectionException
+    {
+        $started = microtime(true);
+        $deadline = $started + $timeout;
+        $handler = new CurlMultiHandler(['select_timeout' => 0.05]);
+
+        $racers = [$this->launch($path, $payload, $timeout, $resolve, $handler)];
+        $last = null;
+
+        try {
+            while (true) {
+                foreach ($racers as $racer) {
+                    if ($racer->done || Is::pending($racer->promise)) {
+                        continue;
+                    }
+
+                    $racer->done = true;
+                    $result = $racer->promise->wait();
+
+                    if (! $result instanceof ConnectionException && ! $this->retryable($result)) {
+                        $this->logHedge($path, $racers, $racer, $started);
+
+                        // Посторонний сбой — не связь и не ответ шлюза: как
+                        // и без дубля, он уходит наверх исключением.
+                        if ($result instanceof Throwable) {
+                            throw $result;
+                        }
+
+                        return $result;
+                    }
+
+                    $last = $result;
+                }
+
+                $pending = array_filter($racers, static fn (object $racer): bool => ! $racer->done);
+                $now = microtime(true);
+
+                // Первый упал до порога, или упали оба.
+                if ($pending === [] && $last !== null) {
+                    if (count($racers) > 1) {
+                        $this->logHedge($path, $racers, null, $started);
+                    }
+
+                    return $last;
+                }
+
+                if (count($racers) === 1 && $now >= $started + $hedgeAfterMs / 1000) {
+                    $racers[] = $this->launch($path, $payload, max(1.0, $deadline - $now), $resolve, $handler);
+
+                    continue;
+                }
+
+                // Страховка: curl обрывает передачи по своему таймауту сам,
+                // но цикл не должен зависеть от этого.
+                if ($now > $deadline + 1) {
+                    $this->logHedge($path, $racers, null, $started);
+
+                    return new ConnectionException('Шлюз не ответил за '.$timeout.' с, ни первым запросом, ни вторым.');
+                }
+
+                $handler->tick();
+                Utils::queue()->run();
+
+                // Тик ждёт сеть не дольше select_timeout, но только когда
+                // передачи идут; без них цикл крутился бы вхолостую.
+                usleep(1_000);
+            }
+        } finally {
+            foreach ($racers as $racer) {
+                if (Is::pending($racer->promise)) {
+                    $racer->promise->cancel();
+                }
+            }
+
+            // close() у обработчика появился только в Guzzle 8; в седьмом
+            // множественный дескриптор curl закрывает деструктор.
+            unset($handler);
+        }
+    }
+
+    /**
+     * Запустить запрос на общем обработчике гонки: передача пойдёт, когда
+     * sendHedged() крутит цикл.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return object{promise: PromiseInterface, done: bool}
+     */
+    private function launch(string $path, array $payload, int|float $timeout, ?string $resolve, CurlMultiHandler $handler): object
+    {
+        $racer = (object) ['promise' => null, 'done' => false];
+
+        $promise = $this->request($timeout, $resolve)
+            ->setHandler($handler)
+            ->async()
+            ->post($this->baseUrl.$path, $payload);
+
+        // Ленивый промис Laravel не отправляет запрос, пока его не ждут.
+        $racer->promise = $promise instanceof LazyPromise ? $promise->buildPromise() : $promise;
+
+        return $racer;
+    }
+
+    /** Временный сбой шлюза: 429 и 5xx — как в post(). */
+    private function retryable(mixed $result): bool
+    {
+        return $result instanceof Response && ($result->status() === 429 || $result->serverError());
+    }
+
+    /**
+     * Дубль ушёл — строка в лог: по ним видно, окупается ли порог
+     * (ai_support.embedding.query_hedge_ms) и кто обычно побеждает.
+     *
+     * @param  list<object>  $racers
+     */
+    private function logHedge(string $path, array $racers, ?object $winner, float $started): void
+    {
+        if (count($racers) < 2) {
+            return;
+        }
+
+        Log::info('Aitunnel hedge', [
+            'path' => $path,
+            'winner' => match ($winner) {
+                null => null,
+                $racers[0] => 'first',
+                default => 'second',
+            },
+            'seconds' => round(microtime(true) - $started, 2),
+        ]);
+    }
+
+    /**
+     * Запрос к шлюзу со всем, что у него общего: ключ, таймауты, пин адреса.
+     */
+    private function request(int|float $timeout, ?string $resolve): PendingRequest
+    {
+        $request = Http::withToken($this->apiKey)
+            ->acceptJson()
+            ->asJson()
+            ->connectTimeout($this->connectTimeout)
+            ->timeout($timeout);
+
+        if ($resolve !== null) {
+            $request = $request->withOptions(['curl' => [CURLOPT_RESOLVE => [$resolve]]]);
+        }
+
+        return $request;
     }
 
     private function backoff(int $attempt): void

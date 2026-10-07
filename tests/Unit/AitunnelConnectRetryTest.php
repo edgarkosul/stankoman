@@ -4,6 +4,7 @@ use App\Services\Ai\Exceptions\LlmException;
 use App\Services\Ai\Providers\AitunnelLlmClient;
 use App\Services\Ai\Support\GatewayAddressPin;
 use GuzzleHttp\Exception\ConnectException as GuzzleConnectException;
+use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Psr7\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -37,8 +38,13 @@ function gatewayConnectException(float $appconnectTime): GuzzleConnectException
     );
 }
 
-function gatewayClient(int $maxRetries = 1, int $connectRetries = 3, ?GatewayAddressPin $pin = null): AitunnelLlmClient
-{
+function gatewayClient(
+    int $maxRetries = 1,
+    int $connectRetries = 3,
+    ?GatewayAddressPin $pin = null,
+    int $queryEmbeddingRetries = 1,
+    int $queryEmbeddingPause = 0,
+): AitunnelLlmClient {
     return new AitunnelLlmClient(
         baseUrl: 'https://api.example.test/v1',
         apiKey: 'test-key',
@@ -47,13 +53,24 @@ function gatewayClient(int $maxRetries = 1, int $connectRetries = 3, ?GatewayAdd
         embeddingDimensions: 4,
         embeddingBatchSize: 1,
         queryCacheTtl: 0,
-        timeout: 5,
+        timeout: 120,
         connectTimeout: 1,
         maxRetries: $maxRetries,
         connectRetries: $connectRetries,
         sessionAffinity: false,
         pin: $pin,
+        queryEmbeddingTimeout: 15,
+        queryEmbeddingRetries: $queryEmbeddingRetries,
+        queryEmbeddingPause: $queryEmbeddingPause,
     );
+}
+
+function gatewayEmbedding(): PromiseInterface
+{
+    return Http::response([
+        'data' => [['index' => 0, 'embedding' => [0.1, 0.2, 0.3, 0.4]]],
+        'usage' => ['prompt_tokens' => 3],
+    ]);
 }
 
 it('повторяет настойчиво, когда соединение не поднялось', function (): void {
@@ -178,4 +195,98 @@ it('идёт на адрес из пина и снимает пин, когда 
             is_string($value) ? putenv("{$name}={$value}") : putenv($name);
         }
     }
+});
+
+it('вектор вопроса ждёт недолго, а модель — сколько нужно', function (): void {
+    // Обычно шлюз отдаёт вектор за полсекунды, но бывает, что держит его
+    // полминуты, — всё это время посетитель смотрит на «печатает».
+    $timeouts = [];
+
+    Http::fake(function ($request, array $options) use (&$timeouts) {
+        $timeouts[basename($request->url())] = $options['timeout'] ?? null;
+
+        return str_ends_with($request->url(), '/embeddings')
+            ? gatewayEmbedding()
+            : Http::response(['choices' => [['message' => ['content' => 'ок'], 'finish_reason' => 'stop']]]);
+    });
+
+    $client = gatewayClient();
+    $client->embed(['как оплатить заказ'], mode: 'query');
+    $queryTimeout = $timeouts['embeddings'];
+
+    // Индексация идёт пачками — ей короткий таймаут не годится.
+    $client->embed(['статья о доставке'], mode: 'doc');
+    $client->chat('system', [['role' => 'user', 'content' => 'привет']]);
+
+    expect($queryTimeout)->toBe(15)
+        ->and($timeouts['embeddings'])->toBe(120)
+        ->and($timeouts['completions'])->toBe(120);
+});
+
+it('вектор вопроса после потерянного ответа повторяет по своим правилам', function (): void {
+    // Запрос ушёл, ответа нет. У модели повтор — риск двойной оплаты,
+    // у эмбеддинга — доли копейки и никакого дубля в ленте.
+    $attempts = 0;
+
+    Http::fake(function () use (&$attempts) {
+        $attempts++;
+
+        if ($attempts <= 2) {
+            throw gatewayConnectException(appconnectTime: 0.12);
+        }
+
+        return gatewayEmbedding();
+    });
+
+    $vector = gatewayClient(maxRetries: 0, queryEmbeddingRetries: 2)->embed(['как оплатить заказ'], mode: 'query')->first();
+
+    expect($vector)->toBe([0.1, 0.2, 0.3, 0.4])
+        ->and($attempts)->toBe(3);
+});
+
+it('индексация документов повторяет по общим правилам', function (): void {
+    $attempts = 0;
+
+    Http::fake(function () use (&$attempts): never {
+        $attempts++;
+
+        throw gatewayConnectException(appconnectTime: 0.12);
+    });
+
+    expect(fn () => gatewayClient(maxRetries: 1, queryEmbeddingRetries: 5)->embed(['статья о доставке'], mode: 'doc'))
+        ->toThrow(LlmException::class);
+
+    expect($attempts)->toBe(2);
+});
+
+it('после сбоя вектор вопроса не ждёт зависший шлюз снова', function (): void {
+    // bots, 02.10.2026: /embeddings висел полчаса, ход с тремя поисками шёл
+    // 142 с — каждый поиск заново ждал две попытки по 15 с.
+    Cache::flush();
+    $attempts = 0;
+
+    Http::fake(function () use (&$attempts) {
+        $attempts++;
+
+        if ($attempts <= 2) {
+            throw gatewayConnectException(appconnectTime: 0.12);
+        }
+
+        return gatewayEmbedding();
+    });
+
+    $client = gatewayClient(queryEmbeddingRetries: 1, queryEmbeddingPause: 120);
+
+    expect(fn () => $client->embed(['как оплатить заказ'], mode: 'query'))->toThrow(LlmException::class);
+    expect(fn () => $client->embed(['сроки доставки'], mode: 'query'))->toThrow(LlmException::class, 'недавно не ответил');
+
+    // Второй вопрос на шлюз не ходил; индексация паузы не знает.
+    expect($attempts)->toBe(2)
+        ->and($client->embed(['статья о доставке'], mode: 'doc')->first())->toBe([0.1, 0.2, 0.3, 0.4])
+        ->and($attempts)->toBe(3);
+
+    // Пауза истекла — шлюз зовём снова.
+    Cache::forget(AitunnelLlmClient::QUERY_PAUSE_KEY);
+
+    expect($client->embed(['сроки доставки'], mode: 'query')->first())->toBe([0.1, 0.2, 0.3, 0.4]);
 });

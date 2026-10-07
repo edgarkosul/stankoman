@@ -137,9 +137,6 @@ final class ChatConversationService
      * Ответ бота вместе с телеметрией: без stop_reason и списка вызовов
      * в админке видна только конечная фраза, и «модель зациклилась»
      * не отличить от «шлюз залип».
-     *
-     * @param  list<float>|null  $questionVector  вектор РЕПЛИКИ ПОКУПАТЕЛЯ,
-     *                                            посчитанный снаружи
      */
     public function addAssistantMessage(
         ChatConversation $conversation,
@@ -147,7 +144,6 @@ final class ChatConversationService
         ?AssistantReply $reply = null,
         float $minScore = 0.0,
         ?string $stopReason = null,
-        ?array $questionVector = null,
     ): ChatMessage {
         $message = $conversation->messages()->create([
             'role' => ChatMessage::ROLE_ASSISTANT,
@@ -173,21 +169,15 @@ final class ChatConversationService
              * покупателя, по той же причине, что и kb_miss: все сигналы
              * одного хода должны читаться одной строкой.
              *
-             * Считается снаружи, от слов ПОКУПАТЕЛЯ. У донора сюда сначала
-             * клался вектор, посчитанный поиском по базе знаний, — «ни одного
-             * лишнего вызова шлюза», — и это оказалось дырой в два слоя:
-             * у товарных вопросов вектора не было вовсе (бот идёт в каталог),
-             * а у остальных он описывал поисковый запрос бота, а не вопрос.
-             * Замер на проде донора: вектор у 2 сообщений из 46.
-             *
-             * Вектор из ответа остался запасным: у путей, где вопрос под рукой
-             * не оказался, лучше неточный вектор, чем никакого.
+             * Настоящий — от слов ПОКУПАТЕЛЯ — дописывает потом
+             * storeQuestionVector() из своей джобы: ждать его здесь значило
+             * держать готовый ответ вне ленты, пока думает шлюз эмбеддингов.
+             * Вектор из поиска по базе знаний — запасной, на случай, когда
+             * та джоба вектора не получит: лучше неточный, чем никакого.
              */
-            'embedding' => match (true) {
-                $questionVector !== null && $questionVector !== [] => KbVectorStore::packVector($questionVector),
-                (bool) $reply?->questionEmbedding => KbVectorStore::packVector($reply->questionEmbedding),
-                default => null,
-            },
+            'embedding' => $reply?->questionEmbedding
+                ? KbVectorStore::packVector($reply->questionEmbedding)
+                : null,
             'meta' => array_filter([
                 'callback_requested' => (bool) $reply?->callbackRequested,
                 'escalated' => (bool) $reply?->escalated,
@@ -225,6 +215,21 @@ final class ChatConversationService
         ])->save();
 
         return $message;
+    }
+
+    /**
+     * Вектор вопроса покупателя — к уже записанному ответу
+     * (StoreQuestionVectorJob). Пустой не затирает запасной.
+     *
+     * @param  list<float>|null  $vector
+     */
+    public function storeQuestionVector(ChatMessage $answer, ?array $vector): void
+    {
+        if ($vector === null || $vector === []) {
+            return;
+        }
+
+        $answer->forceFill(['embedding' => KbVectorStore::packVector($vector)])->save();
     }
 
     /**

@@ -3,7 +3,9 @@
 namespace App\Services\Ai\Tools;
 
 use App\Services\Ai\Support\PiiRedactor;
+use App\Services\Kb\Data\KbHit;
 use App\Services\Kb\KbVectorStore;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -89,9 +91,7 @@ final class SearchKnowledgeBaseTool implements AssistantTool
             $vector = $this->store->embedQuery($this->redactor->redact($query));
             $hits = $vector === [] ? [] : $this->store->searchByVector($vector, topK: $this->topK);
         } catch (Throwable $e) {
-            // Модели — коротко и без внутренностей: она не должна пересказывать
-            // посетителю, что у нас отвалился шлюз эмбеддингов.
-            return 'Поиск временно недоступен. Предложи связаться с менеджером.';
+            return $this->searchByWords($query, $context, $e);
         }
 
         if ($vector !== [] && $context->questionEmbedding === null) {
@@ -117,9 +117,57 @@ final class SearchKnowledgeBaseTool implements AssistantTool
             return 'В базе знаний магазина нет ответа на этот вопрос.';
         }
 
+        return $this->present($relevant, $context);
+    }
+
+    /**
+     * Шлюз эмбеддингов не ответил — ищем по словам.
+     *
+     * Раньше здесь было «Поиск временно недоступен. Предложи связаться
+     * с менеджером», и модель исполняла это буквально: в bots 02.10.2026
+     * бот ответил на вопрос, ответ на который лежал в базе, отказом и
+     * формой контактов.
+     *
+     * kb_miss по такому поиску не считаем (bestScore не трогаем): оценка
+     * здесь — доля слов, а не близость по смыслу, и в «Пробелы» сбой
+     * шлюза попасть не должен.
+     */
+    private function searchByWords(string $query, ToolContext $context, Throwable $failure): string
+    {
+        $context->kbDegraded = true;
+
+        Log::warning('KB search: эмбеддинг не получен, ищу по словам', [
+            'error' => $failure->getMessage(),
+        ]);
+
+        try {
+            $hits = $this->store->searchByWords($query, topK: $this->topK);
+        } catch (Throwable $e) {
+            report($e);
+            $hits = [];
+        }
+
+        if ($hits === []) {
+            // Модели — коротко и без внутренностей: она не должна пересказывать
+            // посетителю, что у нас отвалился шлюз эмбеддингов.
+            return 'Поиск по базе знаний сейчас не сработал. Не выдумывай ответ: скажи, что сейчас '
+                .'не получается проверить, и предложи повторить вопрос через минуту или оставить контакты.';
+        }
+
+        return "Найдено по совпадению слов, а не по смыслу: опирайся только на то, что действительно отвечает на вопрос.\n\n"
+            .$this->present($hits, $context);
+    }
+
+    /**
+     * Фрагменты — модели, ссылки на них — в цитаты хода.
+     *
+     * @param  list<KbHit>  $hits
+     */
+    private function present(array $hits, ToolContext $context): string
+    {
         $blocks = [];
 
-        foreach ($relevant as $hit) {
+        foreach ($hits as $hit) {
             $context->citations[] = [
                 'chunk_id' => $hit->chunkId,
                 'score' => $hit->score,

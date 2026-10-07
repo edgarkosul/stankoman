@@ -93,3 +93,17 @@ it('не кэширует ответы с живыми данными о тов�
 it('не кэширует промах по базе знаний — это сырьё «Пробелов»', function (): void {
     expect(chatAnswerCache()->isCacheable(chatCachedReply(bestScore: 0.21), firstTurn: true))->toBeFalse();
 });
+
+it('не кэширует ответ, собранный, пока шлюз эмбеддингов лежал', function (): void {
+    // bestScore у такого хода пустой — промахом он не выглядит, и без
+    // отдельного флага «не получается проверить» неделю отвечал бы всем,
+    // кто спросит то же самое первым.
+    $degraded = new AssistantReply(
+        text: 'Извините, сейчас не получается проверить.',
+        stopReason: 'stop',
+        toolCalls: [['name' => 'search_knowledge_base', 'arguments' => [], 'ms' => 30266]],
+        kbDegraded: true,
+    );
+
+    expect(chatAnswerCache()->isCacheable($degraded, firstTurn: true))->toBeFalse();
+});

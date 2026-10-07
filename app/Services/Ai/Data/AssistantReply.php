@@ -34,6 +34,8 @@ final readonly class AssistantReply
         /** Тема обратного звонка — идёт в комментарий заявки. */
         public ?string $callbackTopic = null,
         public ?float $bestScore = null,
+        /** Поиск по базе знаний шёл в обход шлюза эмбеддингов — см. ToolContext::$kbDegraded. */
+        public bool $kbDegraded = false,
         /**
          * Вектор вопроса, посчитанный поиском по базе знаний. Уезжает
          * в `chat_messages.embedding` — по нему экран «Пробелы» группирует

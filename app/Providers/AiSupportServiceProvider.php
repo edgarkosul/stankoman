@@ -122,6 +122,10 @@ class AiSupportServiceProvider extends ServiceProvider
                 connectRetries: (int) config('ai_support.gateway.connect_retries'),
                 sessionAffinity: (bool) config('ai_support.agent.session_affinity'),
                 pin: $this->app->make(GatewayAddressPin::class),
+                queryEmbeddingTimeout: (int) config('ai_support.embedding.query_timeout'),
+                queryEmbeddingRetries: (int) config('ai_support.embedding.query_retries'),
+                queryEmbeddingPause: (int) config('ai_support.embedding.query_pause'),
+                queryEmbeddingHedgeMs: (int) config('ai_support.embedding.query_hedge_ms'),
                 reasoning: (string) config('ai_support.agent.reasoning'),
                 providerSort: (string) config('ai_support.gateway.provider_sort'),
             );
