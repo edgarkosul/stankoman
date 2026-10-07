@@ -1,6 +1,6 @@
 <?php
 
-$company = require __DIR__ . '/company.php';
+$company = require __DIR__.'/company.php';
 
 return [
     'general' => [
@@ -21,6 +21,8 @@ return [
         'public_email' => (string) ($company['public_email'] ?? ''),
         'legal_addr' => (string) ($company['legal_addr'] ?? ''),
         'correspondence_addr' => (string) ($company['correspondence_addr'] ?? ''),
+        'max_url' => (string) ($company['max_url'] ?? ''),
+        'telegram_url' => (string) ($company['telegram_url'] ?? ''),
         'bank' => [
             'name' => (string) ($company['bank']['name'] ?? ''),
             'bik' => (string) ($company['bank']['bik'] ?? ''),

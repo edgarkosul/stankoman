@@ -20,6 +20,8 @@ class SettingsTable
         'mail.from.address',
         'company.public_email',
         'company.phone',
+        'company.max_url',
+        'company.telegram_url',
         'company.work_schedule',
         'company.site_url',
         'company.site_host',

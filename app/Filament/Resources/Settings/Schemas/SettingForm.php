@@ -36,6 +36,11 @@ class SettingForm
         'company.site_url',
     ];
 
+    private const MESSENGER_URL_KEYS = [
+        'company.max_url',
+        'company.telegram_url',
+    ];
+
     private const TEXT_VALUE_KEYS = [
         'company.legal_name',
         'company.brand_line',
@@ -82,6 +87,7 @@ class SettingForm
                         ...self::EMAIL_VALUE_KEYS,
                         ...self::PHONE_VALUE_KEYS,
                         ...self::URL_VALUE_KEYS,
+                        ...self::MESSENGER_URL_KEYS,
                         ...self::TEXT_VALUE_KEYS,
                         ...self::TEXTAREA_VALUE_KEYS,
                         ...self::BOOL_VALUE_KEYS,
@@ -92,6 +98,7 @@ class SettingForm
                         ...self::EMAIL_VALUE_KEYS,
                         ...self::PHONE_VALUE_KEYS,
                         ...self::URL_VALUE_KEYS,
+                        ...self::MESSENGER_URL_KEYS,
                         ...self::TEXT_VALUE_KEYS,
                         ...self::TEXTAREA_VALUE_KEYS,
                         ...self::BOOL_VALUE_KEYS,
@@ -127,6 +134,31 @@ class SettingForm
                     ->required()
                     ->visible(fn (Get $get): bool => in_array($get('key'), self::PHONE_VALUE_KEYS, true))
                     ->dehydrated(fn (Get $get): bool => in_array($get('key'), self::PHONE_VALUE_KEYS, true))
+                    ->columnSpanFull(),
+
+                // Проверка адреса — не формальность: зашитый `https://max.ru/` открывал
+                // главную мессенджера с предложением скачать приложение, а не чат.
+                TextInput::make('max_url_value')
+                    ->label('Ссылка на профиль в MAX')
+                    ->helperText('Вида https://max.ru/u/… — по ней MAX сразу открывает чат. Пусто — значка MAX на сайте нет.')
+                    // Ссылку вставляют копированием, а хвостовой пробел провалил бы проверку адреса.
+                    ->trim()
+                    ->url()
+                    ->regex('#^https://max\.ru/.+#')
+                    ->validationMessages(['regex' => 'Нужна ссылка на профиль вида https://max.ru/u/…, а не на главную MAX.'])
+                    ->visible(fn (Get $get): bool => $get('key') === 'company.max_url')
+                    ->dehydrated(fn (Get $get): bool => $get('key') === 'company.max_url')
+                    ->columnSpanFull(),
+
+                TextInput::make('telegram_url_value')
+                    ->label('Ссылка на Telegram')
+                    ->helperText('Вида https://t.me/имя. Пусто — значок ведёт в Telegram по номеру телефона компании; так чат откроется, только если номер разрешено находить в настройках Telegram.')
+                    ->trim()
+                    ->url()
+                    ->regex('#^https://t\.me/.+#')
+                    ->validationMessages(['regex' => 'Нужна ссылка вида https://t.me/имя.'])
+                    ->visible(fn (Get $get): bool => $get('key') === 'company.telegram_url')
+                    ->dehydrated(fn (Get $get): bool => $get('key') === 'company.telegram_url')
                     ->columnSpanFull(),
 
                 TextInput::make('site_url_value')

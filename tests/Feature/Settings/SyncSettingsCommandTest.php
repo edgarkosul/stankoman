@@ -5,10 +5,11 @@ use App\Models\Setting;
 use App\Providers\SettingsServiceProvider;
 
 it('syncs settings from config into database', function (): void {
-    // Миграции заводят ровно две строки — переключатель кнопки звонка и режим работы:
-    // хук деплоя settings:sync не зовёт, и без миграций их не было бы в админке.
+    // Миграции заводят ровно четыре строки — ссылки на мессенджеры, режим работы и
+    // переключатель кнопки звонка: хук деплоя settings:sync не зовёт, и без миграций
+    // их не было бы в админке.
     expect(Setting::query()->orderBy('key')->pluck('key')->all())
-        ->toBe(['company.work_schedule', 'product.show_callback_button']);
+        ->toBe(['company.max_url', 'company.telegram_url', 'company.work_schedule', 'product.show_callback_button']);
 
     $this->artisan('settings:sync')
         ->assertSuccessful();

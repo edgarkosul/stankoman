@@ -228,3 +228,70 @@ test('edit setting page saves string settings into value column', function (stri
     'company bank rs' => ['company.bank.rs', 'bank_rs_value', '40802810999999999999'],
     'company bank ks' => ['company.bank.ks', 'bank_ks_value', '30101810999999999999'],
 ]);
+
+test('edit setting page saves a messenger link or clears it', function (string $key, string $field, string $link): void {
+    config([
+        'settings.general.filament_admin_emails' => ['admin@example.com'],
+    ]);
+
+    $admin = User::factory()->create([
+        'email' => 'admin@example.com',
+    ]);
+
+    // Строку заводит миграция, фабрика здесь упёрлась бы в уникальный ключ.
+    $setting = Setting::query()->where('key', $key)->sole();
+
+    $this->actingAs($admin);
+
+    Livewire::test(EditSetting::class, [
+        'record' => $setting->getRouteKey(),
+    ])
+        ->assertFormFieldIsHidden('value')
+        ->set("data.{$field}", "  {$link} ")
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($setting->refresh()->value)->toBe($link)
+        ->and($setting->type)->toBe(SettingType::String);
+
+    // Пустое поле — законное значение: значок MAX пропадает, Telegram уходит на номер.
+    Livewire::test(EditSetting::class, [
+        'record' => $setting->getRouteKey(),
+    ])
+        ->set("data.{$field}", '')
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($setting->refresh()->value)->toBe('');
+})->with([
+    'max' => ['company.max_url', 'max_url_value', 'https://max.ru/u/f9LHodD0cOL0WC1mjP1LLpDoSq2Lbq'],
+    'telegram' => ['company.telegram_url', 'telegram_url_value', 'https://t.me/intertooler'],
+]);
+
+test('edit setting page refuses a messenger link that does not open a chat', function (string $key, string $field, string $link): void {
+    config([
+        'settings.general.filament_admin_emails' => ['admin@example.com'],
+    ]);
+
+    $admin = User::factory()->create([
+        'email' => 'admin@example.com',
+    ]);
+
+    $setting = Setting::query()->where('key', $key)->sole();
+
+    $this->actingAs($admin);
+
+    Livewire::test(EditSetting::class, [
+        'record' => $setting->getRouteKey(),
+    ])
+        ->set("data.{$field}", $link)
+        ->call('save')
+        ->assertHasFormErrors([$field]);
+
+    expect($setting->refresh()->value)->toBe('');
+})->with([
+    // Ровно та ссылка, что стояла в шаблоне: главная MAX предлагает скачать приложение.
+    'max home page' => ['company.max_url', 'max_url_value', 'https://max.ru/'],
+    'max other site' => ['company.max_url', 'max_url_value', 'https://t.me/intertooler'],
+    'telegram other site' => ['company.telegram_url', 'telegram_url_value', 'https://max.ru/u/abc'],
+]);

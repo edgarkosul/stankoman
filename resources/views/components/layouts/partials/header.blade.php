@@ -1,6 +1,7 @@
 @php
     $companyPhone = trim((string) config('company.phone'));
     $companyPhoneHref = preg_replace('/\D+/', '', $companyPhone) ?? '';
+    $messengerLinks = App\Support\MessengerLinks::fromConfig();
     $companyPublicEmail = trim((string) config('company.public_email', config('mail.from.address')));
 @endphp
 
@@ -28,12 +29,16 @@
             <div class="flex gap-3">
                 <div class="flex flex-col gap-8">
                     <div class="flex items-center gap-3 text-sm">
-                        <a href="https://max.ru/" target="_blank">
-                            <x-icon name="max" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
-                        </a>
-                        <a href="tg://resolve?phone={{ $companyPhoneHref }}">
-                            <x-icon name="telegram" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
-                        </a>
+                        @if ($messengerLinks->max)
+                            <a href="{{ $messengerLinks->max }}" target="_blank">
+                                <x-icon name="max" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
+                            </a>
+                        @endif
+                        @if ($messengerLinks->telegram)
+                            <a href="{{ $messengerLinks->telegram }}" @if ($messengerLinks->telegramOpensInNewTab()) target="_blank" @endif>
+                                <x-icon name="telegram" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
+                            </a>
+                        @endif
                         <a href="tel:+{{ $companyPhoneHref }}" class="flex gap-2">
                             <x-icon name="phone" class="w-5 h-5 [&_.icon-base]:text-zinc-700 [&_.icon-accent]:text-brand-red" />
                             <span class="whitespace-nowrap hidden xs:block">{{ $companyPhone }}</span>

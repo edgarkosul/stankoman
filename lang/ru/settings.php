@@ -13,6 +13,8 @@ return [
     'company.phone' => 'Телефон компании',
     'company.site_url' => 'URL сайта компании',
     'company.public_email' => 'Публичный email',
+    'company.max_url' => 'Ссылка на MAX',
+    'company.telegram_url' => 'Ссылка на Telegram',
     'company.work_schedule' => 'Режим работы',
     'company.legal_addr' => 'Юридический адрес',
     'company.correspondence_addr' => 'Адрес для корреспонденции',

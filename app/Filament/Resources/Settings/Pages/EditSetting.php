@@ -29,6 +29,8 @@ class EditSetting extends EditRecord
         'company.ogrnip' => 'ogrnip_value',
         'company.phone' => 'phone_value',
         'company.site_url' => 'site_url_value',
+        'company.max_url' => 'max_url_value',
+        'company.telegram_url' => 'telegram_url_value',
         'company.legal_addr' => 'legal_addr_value',
         'company.correspondence_addr' => 'correspondence_addr_value',
         'company.bank.name' => 'bank_name_value',
