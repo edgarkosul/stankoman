@@ -290,6 +290,13 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
   `AiServicesSeamTest`): страницу и цену на ней отдаёт `App\Shop\ShopPageContext` через
   `ProductLookup`, форму контактов — `App\Shop\CallbackLeadIntake` (заявка «перезвоните»
   с `source=chat`). Своей формулы цены для контекста страницы не заводить.
+- **Вид кнопки** — «ИИ бот» → «Вид чата» (`ChatAppearanceSettings`, перенесено из bots через
+  kratonshop 08.10.2026): робот / значок / аватар / своя картинка, кружок или пилюля с именем,
+  эффект, точка, угол, перетаскивание. Модель — `App\Services\Chat\ChatLauncher` (белые списки,
+  классы `cl-*` в app.css), чтение — `ChatAppearance`, пишет страница. Умолчание — прежний
+  робот. Старый выключатель `assistant.mascot` читается, только пока `assistant.launcher`
+  нет, и удаляется первым сохранением «Вида чата». Аватары — диск `public`, `chat-avatars/`:
+  на деве без `php artisan storage:link` они отдают 404 (на проде ссылку ставит хук).
 - **Предпросмотр** — `AI_CHAT_PREVIEW=true` + `AI_CHAT_PREVIEW_KEY`: виджет видят
   сотрудники (`isFilamentAdmin()`) и те, кто открыл сайт с `?bot=<ключ>`. Пустой ключ
   при включённом предпросмотре — «никому», а не «всем».

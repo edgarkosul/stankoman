@@ -36,14 +36,11 @@
         @endphp
 
         {{--
-            Лицо собеседника.
+            Лицо собеседника — то же, что у кнопки и в подсказке
+            (`ChatAppearance::face()`): робот, аватар или значок. Робот
+            живёт под `wire:ignore` (см. x-support.chat-face).
 
-            `wire:ignore` обязателен: маскот вставляет сюда SVG скриптом,
-            а Livewire на каждом опросе сверяет дерево с серверным и всё
-            лишнее вычищает — робот исчезал бы через несколько секунд
-            после открытия чата, без единой ошибки в консоли.
-
-            Робота показываем, только когда отвечает бот: лицо робота над
+            Лицо бота показываем, только когда отвечает бот: лицо бота над
             словом «Менеджер» было бы подлогом.
         --}}
         <span class="relative block h-10 w-10 shrink-0">
@@ -55,11 +52,8 @@
                         <circle cx="12" cy="7" r="4" />
                     </svg>
                 </span>
-            @elseif ($mascot)
-                <span wire:ignore x-data="chatAvatar(40)" class="chat-mascot-slot--sm relative block h-10 w-10"></span>
             @else
-                {{-- Робот выключен в настройках: то же лицо, что и в подсказке у кнопки. --}}
-                <x-support.bot-face variant="header" />
+                <x-support.chat-face :face="$face" :avatar="$avatarUrl" :icon="$faceIcon" variant="header" />
             @endif
 
             <span aria-hidden="true"

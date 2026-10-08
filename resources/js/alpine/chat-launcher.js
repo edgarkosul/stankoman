@@ -1,6 +1,6 @@
 /**
- * Кнопка чата: раскрытие панели, сторож ответа при свёрнутой панели
- * и ленивая подгрузка маскота.
+ * Кнопка чата: раскрытие панели, сторож ответа при свёрнутой панели,
+ * ленивая подгрузка маскота, угол кнопки и её перетаскивание.
  *
  * Живёт здесь, а не в атрибуте x-data, ровно по той же причине, по какой
  * панель грузится лениво: лаунчер стоит на каждой странице витрины, и полсотни
@@ -13,8 +13,16 @@
  * отрисовке. Теперь его считает и этот опрос — но лишь тогда, когда
  * сервер сказал, что есть чего ждать.
  *
+ * Вид кнопки — из «Вида чата» в админке (`ChatLauncher`): классы обёртки
+ * рисует сервер, здесь — только то, что зависит от экрана и посетителя:
+ * пилюля на телефоне (`cl-narrow`), затихшие эффекты (`cl-calm`), угол
+ * и высота перетащенной кнопки (`cl-left`, `cl-high`). Перенесено из
+ * bots (`resources/widget/widget.js`, 06.10.2026).
+ *
  * @param {{open: boolean, unread: number, pollSeconds: number|null, url: string,
- *          stopsAfter: number, invite: string, mascot: boolean}} config
+ *          stopsAfter: number, invite: string, robot: boolean, robotSize: number|null,
+ *          face: string, pill: boolean, side: string, x: number, y: number,
+ *          height: number, drag: boolean}} config
  */
 export default (config) => {
     /*
@@ -41,6 +49,30 @@ export default (config) => {
     /* Сессия помнит «уже звали», браузер — «просили не звать». */
     const GREETED_KEY = 'intertooler.chat.greeted';
     const DISMISSED_KEY = 'intertooler.chat.invite-dismissed';
+
+    /* Чат открывали в этом визите — эффекты кнопки больше не зовут. */
+    const OPENED_KEY = 'intertooler.chat.opened';
+
+    /* Куда посетитель перетащил кнопку: `{side, y}`. */
+    const POSITION_KEY = 'intertooler.chat.pos';
+
+    /* Уже́ этого — телефон: пилюля стала бы шириной в полэкрана. */
+    const NARROW = '(max-width: 520px)';
+
+    /*
+     * Сдвиг меньше этого — нажатие, а не перетаскивание: палец и мышь
+     * всегда чуть дрожат, и чат должен открываться, а не ёрзать.
+     */
+    const DRAG_THRESHOLD = 5;
+
+    /*
+     * Высота, на которую просили встать, — отдельно от показанной: окно
+     * сузили и вернули, и кнопка вернулась туда же.
+     */
+    let wantedY = config.y;
+
+    /* Отпущенная после перетаскивания кнопка не должна заодно открыть чат. */
+    let swallowClick = false;
 
     /* Отказ уважаем месяц: закрывший подсказку не хочет её и завтра. */
     const DISMISSED_DAYS = 30;
@@ -85,6 +117,9 @@ export default (config) => {
         invite: false,
         inviteReason: null,
 
+        /* Край, у которого стоит кнопка, — по нему встаёт и панель. */
+        side: config.side,
+
         init() {
             this.$watch('open', (open) => (open ? this.stopWatching() : this.resume()));
             this.$watch('unread', (unread) => this.onUnread(unread));
@@ -97,9 +132,10 @@ export default (config) => {
              */
             this.$watch('invite', (invite) => {
                 this.$dispatch('chat-invite', invite);
-                if (invite) this.mountBubbleMascot();
+                if (invite && config.face === 'robot') this.mountBubbleMascot();
             });
             this.startWatching();
+            this.dress();
             this.loadMascot();
 
             /*
@@ -238,17 +274,33 @@ export default (config) => {
          * качают все — в том числе те, кому виджет чата вовсе не показан.
          */
         async loadMascot() {
-            /*
-             * Робота выключили в админке — и дальше идти незачем: проверка
-             * стоит ДО динамического import, поэтому ни артворк (70 КБ),
-             * ни движок (25 КБ) браузер не запрашивает вовсе. На кнопке
-             * остаётся облачко-плейсхолдер, которое и так нарисовано.
-             */
-            if (config.mascot === false) return;
+            // Робота на кнопке нет — 70 КБ артворка и 25 КБ движка браузер
+            // не запрашивает вовсе: проверка стоит до import().
+            if (!config.robot || !this.$refs.mascot) return;
 
-            const { shouldLoadMascot, attachMascot } = await import('../mascot/mascot-loader.js');
+            const { shouldLoadMascot, attachMascot, attachCalmMascot } = await import('../mascot/mascot-loader.js');
 
             if (!shouldLoadMascot()) return;
+
+            /*
+             * Робот в пилюле — в кружке рядом с именем, спокойный, как
+             * в подсказке: рядом текст, который надо прочитать.
+             */
+            if (config.robotSize) {
+                const startCalm = () =>
+                    attachCalmMascot(this.$refs.mascot, config.robotSize).then((controller) => {
+                        mascot = controller;
+                        if (this.unread > 0) mascot?.setAlert(true);
+                    });
+
+                if (typeof requestIdleCallback === 'function') {
+                    requestIdleCallback(startCalm, { timeout: 4000 });
+                } else {
+                    setTimeout(startCalm, 2000);
+                }
+
+                return;
+            }
 
             const start = () => {
                 attachMascot(this.$refs.mascot, {
@@ -312,7 +364,6 @@ export default (config) => {
          * ни реакции на курсор, вдвое медленнее и вчетверо тише.
          */
         mountBubbleMascot() {
-            if (config.mascot === false) return;
             if (bubbleMascot || !this.$refs.bubbleMascot) return;
             bubbleMascot = true; // занимаем место, пока идёт загрузка
 
@@ -348,9 +399,163 @@ export default (config) => {
             this.clearInviteTimers();
             this.invite = false;
             store('sessionStorage', GREETED_KEY, '1');
+            store('sessionStorage', OPENED_KEY, '1');
+            this.$refs.corner?.classList.add('cl-calm');
 
             this.$dispatch('chat-opened');
             this.open = true;
+        },
+
+        /** Нажатие на кнопку — если это было нажатие, а не перетаскивание. */
+        press() {
+            if (swallowClick) return;
+            this.show();
+        },
+
+        /*
+         * Всё, что зависит от экрана и посетителя, а не от настроек:
+         * классы, которых сервер знать не может, и угол кнопки.
+         */
+        dress() {
+            const corner = this.$refs.corner;
+            if (!corner) return;
+
+            if (read('sessionStorage', OPENED_KEY) === '1') corner.classList.add('cl-calm');
+
+            // Пилюля — только на широком экране; на телефоне тот же кружок.
+            if (config.pill && typeof window.matchMedia === 'function') {
+                const narrow = window.matchMedia(NARROW);
+                const fit = () => corner.classList.toggle('cl-narrow', narrow.matches);
+                fit();
+                narrow.addEventListener?.('change', fit);
+            }
+
+            const saved = config.drag ? this.savedCorner() : null;
+            this.place(saved?.side ?? config.side, saved?.y ?? config.y);
+            window.addEventListener('resize', () => this.place(this.side, wantedY));
+
+            if (config.drag) this.enableDrag();
+        },
+
+        /* Кнопка целиком в окне. Окно ниже самой кнопки — не трогаем. */
+        clampY(y) {
+            const max = window.innerHeight - config.height;
+
+            return max > 0 ? Math.max(0, Math.min(max, y)) : y;
+        },
+
+        /**
+         * Угол кнопки: край — владельца или перетащенный, отступ от края —
+         * всегда владельца. Одна функция на монтирование, перетаскивание
+         * и resize, чтобы три пути не разошлись.
+         */
+        place(side, y) {
+            const corner = this.$refs.corner;
+            wantedY = y;
+            const shown = this.clampY(y);
+
+            this.side = side;
+            corner.style.left = side === 'left' ? `${config.x}px` : '';
+            corner.style.right = side === 'left' ? '' : `${config.x}px`;
+            corner.style.bottom = `${shown}px`;
+            corner.classList.toggle('cl-left', side === 'left');
+            // Кнопка выше середины окна — подсказка раскрывается вниз.
+            corner.classList.toggle('cl-high', shown + config.height / 2 > window.innerHeight / 2);
+        },
+
+        savedCorner() {
+            try {
+                const saved = JSON.parse(read('localStorage', POSITION_KEY) ?? 'null');
+                if (saved && ['left', 'right'].includes(saved.side) && Number.isInteger(saved.y)) return saved;
+            } catch (e) {
+                // Испорченная запись — как будто её нет.
+            }
+
+            return null;
+        },
+
+        /*
+         * Перетаскивание кнопки посетителем — владелец включает его в «Виде
+         * чата». Пока тащат, обёртка едет `transform`-ом; отпустили — кнопка
+         * встаёт к ближайшему краю на той же высоте и доезжает туда плавно.
+         * Открытый чат не тащится: кнопки тогда не видно.
+         */
+        enableDrag() {
+            const corner = this.$refs.corner;
+            const button = this.$refs.button;
+            let start = null;
+            let moved = false;
+
+            corner.classList.add('cl-drag');
+
+            const glide = (from) => {
+                if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+                const to = button.getBoundingClientRect();
+                corner.style.transition = 'none';
+                corner.style.transform = `translate(${from.left - to.left}px, ${from.top - to.top}px)`;
+                corner.getBoundingClientRect();
+                corner.style.transition = 'transform .25s ease-out';
+                corner.style.transform = '';
+                setTimeout(() => {
+                    corner.style.transition = '';
+                }, 300);
+            };
+
+            button.addEventListener('pointerdown', (event) => {
+                if (this.open || (event.pointerType === 'mouse' && event.button !== 0)) return;
+                start = { x: event.clientX, y: event.clientY, id: event.pointerId };
+                moved = false;
+                try {
+                    button.setPointerCapture(event.pointerId);
+                } catch (e) {
+                    // Без захвата тоже работает, пока указатель над кнопкой.
+                }
+            });
+
+            button.addEventListener('pointermove', (event) => {
+                if (!start || event.pointerId !== start.id) return;
+                const dx = event.clientX - start.x;
+                const dy = event.clientY - start.y;
+
+                if (!moved) {
+                    if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+                    moved = true;
+                    corner.classList.add('cl-dragging');
+                    this.clearInviteTimers();
+                    if (this.inviteReason !== 'unread') this.invite = false;
+                }
+
+                corner.style.transform = `translate(${dx}px, ${dy}px)`;
+            });
+
+            const finish = (event, cancelled) => {
+                if (!start || event.pointerId !== start.id) return;
+                start = null;
+                if (!moved) return;
+
+                corner.classList.remove('cl-dragging');
+                const from = button.getBoundingClientRect();
+                corner.style.transform = '';
+
+                if (cancelled) return;
+
+                // Клик, если он будет, придёт следом в этой же задаче; на
+                // телефоне после перетаскивания его нет вовсе — флаг снимается
+                // сам и не съест следующее нажатие.
+                swallowClick = true;
+                setTimeout(() => {
+                    swallowClick = false;
+                }, 0);
+
+                const side = from.left + from.width / 2 < window.innerWidth / 2 ? 'left' : 'right';
+                const y = this.clampY(Math.round(window.innerHeight - from.bottom));
+                this.place(side, y);
+                store('localStorage', POSITION_KEY, JSON.stringify({ side, y }));
+                glide(from);
+            };
+
+            button.addEventListener('pointerup', (event) => finish(event, false));
+            button.addEventListener('pointercancel', (event) => finish(event, true));
         },
 
         startWatching() {

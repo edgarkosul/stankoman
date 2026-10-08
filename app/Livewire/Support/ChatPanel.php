@@ -10,6 +10,7 @@ use App\Services\Ai\AssistantConfig;
 use App\Services\Captcha\CaptchaManager;
 use App\Services\Chat\AssistantQueueHealth;
 use App\Services\Chat\ChatAbuseGuard;
+use App\Services\Chat\ChatAppearance;
 use App\Services\Chat\ChatContactCard;
 use App\Services\Chat\ChatConversationService;
 use App\Services\Chat\ChatEscalationService;
@@ -235,11 +236,11 @@ class ChatPanel extends Component
              */
             'botName' => $assistant->botName(),
             /*
-             * Лицо в шапке: анимированный робот или статичный значок.
-             * Флаг тот же, что у кнопки чата, — иначе на кнопке был бы
-             * робот, а в шапке значок, и это читалось бы как поломка.
+             * Лицо в шапке — то же, что на кнопке и в подсказке: «Вид чата»
+             * в админке. Иначе на кнопке был бы робот, а в шапке значок,
+             * и это читалось бы как поломка.
              */
-            'mascot' => $assistant->mascotEnabled(),
+            ...$this->face(),
             'managerTitle' => trim('Менеджер '.config('settings.general.shop_name')),
             'workingHours' => $presence->scheduleSummary(),
             /*
@@ -777,6 +778,23 @@ class ChatPanel extends Component
      * зависит кнопка «Позвать менеджера», и смена должна доезжать
      * до открытой панели, а не ждать, пока посетитель что-нибудь напишет.
      */
+    /**
+     * Лицо бота в шапке: что рисовать, аватар и значок кнопки.
+     *
+     * @return array{face: string, avatarUrl: ?string, faceIcon: string}
+     */
+    private function face(): array
+    {
+        $appearance = app(ChatAppearance::class);
+        $launcher = $appearance->launcher();
+
+        return [
+            'face' => $appearance->face($launcher),
+            'avatarUrl' => $appearance->avatarUrl(),
+            'faceIcon' => $launcher->iconPath(),
+        ];
+    }
+
     private function currentSignature(
         ?ChatConversation $conversation,
         ChatConversationService $chat,

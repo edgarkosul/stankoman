@@ -1,8 +1,10 @@
 <?php
 
+use App\Enums\SettingType;
 use App\Events\CallbackRequests\CallbackRequestSubmitted;
 use App\Filament\Pages\AssistantSandbox;
 use App\Filament\Pages\AssistantSettings;
+use App\Filament\Pages\ChatAppearanceSettings;
 use App\Filament\Pages\KbGaps;
 use App\Filament\Resources\ChatConversations\ChatConversationResource;
 use App\Filament\Resources\ChatConversations\Pages\ViewChatConversation;
@@ -19,6 +21,7 @@ use App\Models\User;
 use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Data\AssistantReply;
 use App\Services\Chat\ChatAbuseGuard;
+use App\Services\Chat\ChatAppearance;
 use App\Services\Chat\ChatConversationService;
 use App\Services\Chat\OperatorPresence;
 use App\Services\Kb\Data\KbGapQuestion;
@@ -26,6 +29,7 @@ use App\Services\Kb\KbGapAnalyzer;
 use App\Services\Kb\KbVectorStore;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 /*
@@ -249,7 +253,6 @@ it('сохраняет настройки бота в таблицу и прим
 
     Livewire::test(AssistantSettings::class)
         ->set('data.enabled', false)
-        ->set('data.mascot', false)
         ->set('data.about', 'Продаём станки и оснастку организациям.')
         ->set('data.forbidden_topics', ['торг'])
         ->call('save')
@@ -260,13 +263,56 @@ it('сохраняет настройки бота в таблицу и прим
     expect(Setting::query()->where('key', 'assistant.enabled')->value('value'))->toBe('0')
         ->and($config->enabled())->toBeFalse()
         ->and($config->disabledByAdmin())->toBeTrue()
-        // Робот выключается тем же сохранением и тем же способом: строкой
-        // в настройках, а не правкой шаблона.
-        ->and($config->mascotEnabled())->toBeFalse()
         ->and($config->promptSettings())->toMatchArray([
             'about' => 'Продаём станки и оснастку организациям.',
             'forbidden_topics' => '- торг',
         ]);
+});
+
+it('сохраняет вид чата: только отличия от умолчания и без старого выключателя робота', function (): void {
+    Storage::fake('public');
+    $this->actingAs($this->admin);
+
+    // Робота выключали ещё старым выключателем «Лицо бота».
+    Setting::query()->create(['key' => 'assistant.mascot', 'value' => '0', 'type' => SettingType::Bool, 'autoload' => true]);
+    config(['settings.assistant.mascot' => false]);
+
+    Livewire::test(ChatAppearanceSettings::class)
+        // Форма начинается с того, что видно на витрине, — значка.
+        ->assertSet('data.launcher_image', 'icon')
+        ->set('data.launcher_style', 'pill')
+        ->set('data.launcher_image', 'robot')
+        ->set('data.launcher_status', 'Отвечу за минуту')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(json_decode((string) Setting::query()->where('key', 'assistant.launcher')->value('value'), true))
+        ->toBe(['style' => 'pill', 'status' => 'Отвечу за минуту'])
+        ->and(Setting::query()->where('key', 'assistant.mascot')->exists())->toBeFalse()
+        ->and(app(ChatAppearance::class)->launcher()->image)->toBe('robot');
+
+    // Вернули прежнюю кнопку — строки нет вовсе: умолчание живёт в коде.
+    Livewire::test(ChatAppearanceSettings::class)
+        ->set('data.launcher_style', 'circle')
+        ->set('data.launcher_status', null)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(Setting::query()->where('key', 'assistant.launcher')->exists())->toBeFalse()
+        ->and(app(ChatAppearance::class)->launcher()->isDefault())->toBeTrue();
+});
+
+it('предпросмотр вида чата ничего не пишет', function (): void {
+    $this->actingAs($this->admin);
+
+    $html = Livewire::test(ChatAppearanceSettings::class)
+        ->set('data.launcher_image', 'icon')
+        ->set('data.launcher_effect', 'shine')
+        ->instance()
+        ->previewDocument();
+
+    expect($html)->toContain('chat-launcher cl-fx-shine')
+        ->and(Setting::query()->where('key', 'like', 'assistant.launcher%')->exists())->toBeFalse();
 });
 
 it('показывает промпт по несохранённой форме', function (): void {

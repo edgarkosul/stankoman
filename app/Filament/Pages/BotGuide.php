@@ -95,6 +95,7 @@ class BotGuide extends Page
             'articlesUrl' => KbArticleResource::getUrl('index'),
             'gapsUrl' => KbGaps::getUrl(),
             'settingsUrl' => AssistantSettings::getUrl(),
+            'appearanceUrl' => ChatAppearanceSettings::getUrl(),
         ];
     }
 

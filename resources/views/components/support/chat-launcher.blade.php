@@ -44,11 +44,19 @@
     // экран не выполняет.
     $botOnline = $assistant->enabled();
 
-    // Анимированный робот — настройка владельца («Настройки бота» → «Лицо бота»).
-    // Выключенный означает, что в браузер не поедут ни артворк, ни движок:
-    // их подключает динамический import из chatLauncher, и без флага он
-    // не случается вовсе.
-    $mascot = $assistant->mascotEnabled();
+    /*
+     * Вид кнопки — из «Вида чата» в админке. Тоже конфиг, а не база; картинка
+     * проверяется на диске одним stat, без запроса. Робот грузится, только
+     * когда он на кнопке: иначе динамический import артворка и движка
+     * в chatLauncher не случается вовсе.
+     */
+    $appearance = app(\App\Services\Chat\ChatAppearance::class);
+    $launcher = $appearance->launcher();
+    $picture = $appearance->pictureUrl($launcher);
+    $face = $appearance->face($launcher);
+    $avatarUrl = $appearance->avatarUrl();
+    $robot = $launcher->image === \App\Services\Chat\ChatLauncher::IMAGE_ROBOT;
+    $corner = ($launcher->side === 'left' ? 'left' : 'right').': '.$launcher->x.'px; bottom: '.$launcher->y.'px';
 @endphp
 
 <div x-data="chatLauncher(@js([
@@ -58,7 +66,15 @@
         'url' => route('chat.unread'),
         'stopsAfter' => \App\Services\Chat\ChatPollingCadence::LAUNCHER_STOPS_AFTER_SECONDS,
         'invite' => $botInvite,
-        'mascot' => $mascot,
+        'robot' => $robot,
+        'robotSize' => $launcher->floatingRobot() ? null : $launcher->heightPx() - 8,
+        'face' => $face,
+        'pill' => $launcher->style === \App\Services\Chat\ChatLauncher::STYLE_PILL,
+        'side' => $launcher->side,
+        'x' => $launcher->x,
+        'y' => $launcher->y,
+        'height' => $launcher->heightPx(),
+        'drag' => $launcher->drag,
      ]))"
      @chat-close.window="open = false"
      {{--
@@ -69,45 +85,40 @@
      class="print:hidden">
 
     {{--
-        Кнопка: робот парит сам по себе, без диска и обводки — отделяет его
-        от страницы свечение (см. `.chat-mascot` в app.css). `fixed` висит
-        на обёртке, а не на кнопке: от неё позиционируются бейдж и подсказка.
+        Кнопка. Вид — из «Вида чата» в админке: классы обёртки собирает
+        `ChatLauncher::classes()`, правила — `.chat-launcher` в app.css.
+        Умолчание — прежний робот без диска: он парит сам по себе, отделяет
+        его от страницы свечение (`.chat-mascot`).
+
+        `fixed` висит на обёртке, а не на кнопке: от неё позиционируются
+        бейдж и подсказка. Угол и отступы — инлайном: их двигает и
+        перетаскивание (`place()` в chat-launcher.js).
+
+        Пилюля на телефоне — кружок, и решает это скрипт (`cl-narrow`), а не
+        медиазапрос: предпросмотр в админке уже 520 px и свернул бы её всегда.
+        Чтобы на телефоне пилюля не мелькнула до скрипта, её обёртка ждёт
+        Alpine под x-cloak.
 
         Наведение слушает ОБЁРТКА, а не кнопка: подсказка лежит внутри неё,
-        и переход курсора с робота на текст не должен считаться уходом.
+        и переход курсора с кнопки на текст не должен считаться уходом.
     --}}
     <div x-show="!open"
+         x-ref="corner"
+         @if ($launcher->style === \App\Services\Chat\ChatLauncher::STYLE_PILL) x-cloak @endif
          x-transition.opacity.duration.150ms
          @mouseenter="hoverInvite(true)"
          @mouseleave="hoverInvite(false)"
-         class="fixed bottom-4 right-4 z-50">
+         class="{{ $launcher->classes($picture !== null || $robot) }}"
+         style="{{ $corner }}">
 
         <button type="button"
-            @click="show()"
+            x-ref="button"
+            @click="press()"
             x-bind:aria-label="unread > 0 ? 'Вам ответили в чате' : 'Задать вопрос — {{ $botName }}'"
             aria-label="Задать вопрос — {{ $botName }}"
             title="Задать вопрос"
-            class="block h-18 w-18 cursor-pointer rounded-full focus:outline-none
-                   focus-visible:ring-2 focus-visible:ring-brand-green focus-visible:ring-offset-2">
-            {{--
-                Слот фиксированного размера: что бы ни приехало, коробка та же,
-                и подмена облачка на робота не двигает макет. Без `overflow-hidden`:
-                робот парит и должен выходить за её края.
-            --}}
-            <span x-ref="mascot" class="relative block h-full w-full">
-                {{--
-                    Плейсхолдер до приезда робота. Он один остаётся без подложки,
-                    поэтому в цвете сайта и с белой обводкой — иначе на тёмном
-                    подвале его не видно.
-                --}}
-                <svg data-mascot-placeholder
-                     class="absolute inset-0 m-auto h-10 w-10 rounded-full bg-brand-green p-2
-                            text-white shadow-lg ring-2 ring-white/90 transition-opacity duration-200"
-                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                </svg>
-            </span>
+            class="cl-button">
+            <x-support.chat-button-face :launcher="$launcher" :picture="$picture" :name="$botName" />
         </button>
 
         {{-- Бейдж рисует Alpine, а не сервер: ответ может прийти на уже
@@ -120,9 +131,11 @@
               x-text="Math.min(unread, 9)"></span>
 
         {{--
-            Подсказка-приглашение над роботом, хвостиком вниз. Молчаливая кнопка
+            Подсказка-приглашение над кнопкой, хвостиком вниз. Молчаливая кнопка
             требует догадаться, что она вообще про разговор; строка с именем
-            этого не требует. Ширина считается от экрана: на телефоне подсказка
+            этого не требует. Место — `.cl-bubble` в app.css: у робота прежнее,
+            у кружка хвостик в его середину, у левого угла зеркально, у поднятой
+            кнопки — вниз. Ширина считается от экрана: на телефоне подсказка
             тянется почти во всю ширину.
         --}}
         <div x-show="invite" x-cloak style="display: none"
@@ -132,43 +145,9 @@
              x-transition:leave="transition duration-150 ease-in motion-reduce:transition-none"
              x-transition:leave-start="opacity-100 scale-100"
              x-transition:leave-end="opacity-0 scale-95"
-             class="absolute bottom-[4.75rem] right-6 w-[min(19rem,calc(100vw-3.5rem))] origin-bottom-right">
+             class="cl-bubble w-[min(19rem,calc(100vw-3.5rem))]">
 
-            <button type="button" @click="show()"
-                class="relative flex w-full cursor-pointer items-start gap-3 rounded-2xl bg-white
-                       py-3 pl-3 pr-9 text-left shadow-xl ring-1 ring-zinc-200 transition
-                       hover:ring-zinc-300 focus:outline-none focus-visible:ring-2
-                       focus-visible:ring-brand-green">
-                {{-- Тот же робот, но мелкий и спокойный: рядом с текстом второй
-                     пляшущий объект только мешает. --}}
-                <span class="relative block h-10 w-10 shrink-0">
-                    @if ($mascot)
-                        <span x-ref="bubbleMascot" class="chat-mascot-slot--sm relative block h-full w-full"></span>
-                    @else
-                        <x-support.bot-face />
-                    @endif
-                    @if ($botOnline)
-                        <span aria-hidden="true"
-                              class="absolute -bottom-0.5 -right-0.5 block h-3 w-3 rounded-full
-                                     bg-emerald-500 ring-2 ring-white"></span>
-                    @endif
-                </span>
-
-                <span class="min-w-0 flex-1">
-                    <span class="block text-sm font-semibold leading-tight text-zinc-900">{{ $botName }}</span>
-                    <span class="mt-1 block text-sm leading-snug text-zinc-600"
-                          x-text="inviteText">{{ $botInvite }}</span>
-                </span>
-            </button>
-
-            {{--
-                Хвостик рисуется ПОВЕРХ пузыря, и у него закрашены только две
-                внешние грани: иначе по его основанию проходит линия рамки пузыря,
-                и ромбик читается отдельной фигурой, а не отростком.
-            --}}
-            <span aria-hidden="true"
-                  class="absolute -bottom-1.5 right-5 z-20 h-3 w-3 rotate-45 border-b border-r
-                         border-zinc-200 bg-white"></span>
+            @include('components.support.chat-invite-card', ['clickable' => true])
 
             {{-- Крестик — своя кнопка со своим стопом: «не надо», а не «открой чат». --}}
             <button type="button" @click.stop="dismissInvite()"
@@ -190,9 +169,10 @@
         Открыли — непрочитанного больше нет: панель при показе отмечает
         переписку прочитанной, и ждать её ответа, чтобы убрать бейдж, незачем.
 
-        Разворачивается из угла, где стоит кнопка, а на телефоне выезжает
-        снизу листом. Закрытие быстрее открытия: человек уже принял решение
-        и ждёт страницу под панелью.
+        Разворачивается из угла, где стоит кнопка (в том числе перетащенная:
+        `side` ведёт скрипт), а на телефоне выезжает снизу листом. Угол — только
+        привязкой: до Alpine панель всё равно скрыта. Закрытие быстрее открытия:
+        человек уже принял решение и ждёт страницу под панелью.
     --}}
     <div x-show="open"
          x-effect="if (open) unread = 0"
@@ -204,8 +184,8 @@
          x-transition:leave="transition duration-150 ease-in motion-reduce:transition-none"
          x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
          x-transition:leave-end="opacity-0 translate-y-6 sm:translate-y-2 sm:scale-95"
-         class="fixed inset-x-0 bottom-0 z-50 origin-bottom sm:inset-x-auto sm:bottom-4 sm:right-4
-                sm:origin-bottom-right">
+         x-bind:class="side === 'left' ? 'sm:left-4 sm:origin-bottom-left' : 'sm:right-4 sm:origin-bottom-right'"
+         class="fixed inset-x-0 bottom-0 z-50 origin-bottom sm:inset-x-auto sm:bottom-4">
         <livewire:support.chat-panel :page="$pageLocator" lazy />
     </div>
 </div>

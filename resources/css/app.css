@@ -819,6 +819,342 @@ select:focus[data-flux-control] {
 }
 
 /*
+ * Кнопка чата — вид из «Вида чата» в админке (`App\Services\Chat\ChatLauncher`).
+ *
+ * Перенесено из bots (`resources/widget/launcher.css`, 06.10.2026) через
+ * kratonshop. Свои
+ * классы, а не утилиты Tailwind: их собирает PHP (`ChatLauncher::classes()`),
+ * а сканер Tailwind смотрит только в `resources/views`. Тот же набор правил
+ * рисует предпросмотр в админке — там это iframe с этим же файлом.
+ *
+ * Классы обёртки: `cl-robot` (прежний робот без диска), `cl-pill`,
+ * `cl-picture`, `cl-size-s|l`, `cl-left`, `cl-fx-rings|shine|nudge`,
+ * `cl-no-dot`, `cl-dot-pulse`. Только у скрипта: `cl-narrow` — пилюля на
+ * телефоне становится кружком, `cl-calm` — посетитель уже открывал чат
+ * в этом визите, `cl-high` — кнопка выше середины окна, `cl-drag` /
+ * `cl-dragging` — её можно тащить / тащат.
+ */
+.chat-launcher {
+    --cl-size: 56px;
+    --cl-brand: var(--color-brand-green);
+    --cl-brand-hover: color-mix(in oklab, var(--color-brand-green) 85%, black);
+    --cl-online: var(--color-emerald-500);
+    position: fixed;
+    z-index: 50;
+}
+
+.cl-size-s { --cl-size: 48px; }
+.cl-size-l { --cl-size: 64px; }
+
+/* Прежний робот: коробка 72 px (`h-18`), ни диска, ни тени — он парит сам. */
+.cl-robot { --cl-size: 72px; }
+
+.cl-button {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    box-sizing: border-box;
+    width: var(--cl-size);
+    height: var(--cl-size);
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--cl-brand);
+    color: #fff;
+    box-shadow: 0 6px 20px rgb(15 23 42 / 0.25);
+    cursor: pointer;
+    transition: background-color 0.15s, transform 0.15s;
+}
+
+.cl-button:hover { background: var(--cl-brand-hover); }
+.cl-button:focus { outline: none; }
+.cl-button:focus-visible { outline: 2px solid var(--color-brand-green); outline-offset: 2px; }
+
+.cl-robot .cl-button,
+.cl-robot .cl-button:hover {
+    background: transparent;
+    box-shadow: none;
+}
+
+.cl-icon {
+    width: calc(var(--cl-size) * 0.46);
+    height: calc(var(--cl-size) * 0.46);
+    flex-shrink: 0;
+}
+
+/* Лицо кнопки — значок, картинка или робот; у картинки и пилюли — точка «на связи». */
+.cl-face {
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+}
+
+/* Картинка во всю кнопку, по краю — тонкое кольцо цвета бренда. */
+.cl-face > img {
+    display: block;
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+    border-radius: 50%;
+    object-fit: cover;
+    background: #fff;
+}
+
+/* Коробка робота. Без обрезки: робот парит и выходит за её края. */
+.cl-robot-slot {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/*
+ * Робот в пилюле — в белом кружке, спокойный: рядом имя, которое надо
+ * прочитать. Здесь обрезка нужна — иначе он вылезал бы на текст.
+ */
+.chat-launcher:not(.cl-robot) .cl-robot-slot {
+    width: calc(100% - 4px);
+    height: calc(100% - 4px);
+    overflow: hidden;
+    border-radius: 50%;
+    background: #fff;
+}
+
+/*
+ * Облачко до приезда робота. На кружке оно одно остаётся без подложки,
+ * поэтому в цвете сайта и с белой обводкой — иначе на тёмном подвале
+ * его не видно.
+ */
+.cl-robot-placeholder {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+    border-radius: 50%;
+    background: var(--cl-brand);
+    color: #fff;
+    box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9), 0 10px 15px -3px rgb(0 0 0 / 0.1);
+    transition: opacity 0.2s;
+}
+
+.chat-launcher:not(.cl-robot) .cl-robot-placeholder {
+    width: 100%;
+    height: 100%;
+    padding: 22%;
+    box-shadow: none;
+}
+
+.cl-dot {
+    position: absolute;
+    display: none;
+    right: 2px;
+    bottom: 2px;
+    width: calc(var(--cl-size) * 0.2);
+    height: calc(var(--cl-size) * 0.2);
+    border-radius: 50%;
+    background: var(--cl-online);
+    box-shadow: 0 0 0 2.5px var(--cl-brand);
+}
+
+.cl-picture .cl-dot,
+.cl-pill:not(.cl-narrow) .cl-dot { display: block; }
+.cl-no-dot .cl-dot { display: none; }
+
+/* Имя и строка под ним — только у пилюли. */
+.cl-text { display: none; }
+
+/*
+ * Пилюля: картинка, имя бота и строка под ним, как у живого консультанта.
+ * На телефоне скрипт ставит `cl-narrow` — там она была бы шириной
+ * в полэкрана и закрывала страницу, кнопка остаётся кружком.
+ */
+.cl-pill:not(.cl-narrow) .cl-button {
+    width: auto;
+    max-width: 280px;
+    padding: 4px 22px 4px 4px;
+    justify-content: flex-start;
+}
+
+.cl-pill:not(.cl-narrow) .cl-face {
+    width: calc(var(--cl-size) - 8px);
+    height: calc(var(--cl-size) - 8px);
+    box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.35);
+}
+
+.cl-pill:not(.cl-narrow) .cl-face > img {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    border: 2px solid #fff;
+}
+
+.cl-pill:not(.cl-narrow) .cl-dot { right: 0; bottom: 0; }
+
+.cl-pill:not(.cl-narrow) .cl-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+    line-height: 1.25;
+    text-align: left;
+}
+
+.cl-name {
+    max-width: 200px;
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.cl-status { font-size: 13px; opacity: 0.9; white-space: nowrap; }
+
+/*
+ * Подсказка — реплика бота над кнопкой, хвостиком к ней. У робота — на
+ * прежнем месте, чуть левее него; у кружка — хвостиком в его середину.
+ */
+.cl-bubble {
+    position: absolute;
+    right: 0;
+    bottom: calc(var(--cl-size) + 14px);
+    transform-origin: bottom right;
+}
+
+.cl-robot .cl-bubble { right: 1.5rem; bottom: 4.75rem; }
+
+/*
+ * Хвостик поверх пузыря, закрашены только две внешние грани: иначе по его
+ * основанию проходит линия рамки, и ромбик читается отдельной фигурой.
+ */
+.cl-tail {
+    position: absolute;
+    z-index: 20;
+    right: calc(var(--cl-size) / 2 - 6px);
+    bottom: -6px;
+    width: 12px;
+    height: 12px;
+    border: solid var(--color-zinc-200);
+    border-width: 0 1px 1px 0;
+    background: #fff;
+    transform: rotate(45deg);
+}
+
+.cl-robot .cl-tail { right: 1.25rem; }
+
+/* Над пилюлей — только слова: лицо и имя уже на кнопке под ними. */
+.cl-pill:not(.cl-narrow) .cl-bubble-face,
+.cl-pill:not(.cl-narrow) .cl-bubble-name { display: none; }
+.cl-pill:not(.cl-narrow) .cl-bubble-line { margin-top: 0; }
+
+/* Левый угол — зеркало правого. */
+.cl-left .cl-bubble { right: auto; left: 0; transform-origin: bottom left; }
+.cl-left.cl-robot .cl-bubble { left: 1.5rem; }
+.cl-left .cl-tail { right: auto; left: calc(var(--cl-size) / 2 - 6px); }
+.cl-left.cl-robot .cl-tail { left: 1.25rem; }
+
+/*
+ * Кнопка выше середины окна (её туда перетащили или подняли отступом):
+ * над ней мало места, и подсказка раскрывается вниз.
+ */
+.cl-high .cl-bubble { bottom: auto; top: calc(var(--cl-size) + 14px); transform-origin: top right; }
+.cl-high.cl-left .cl-bubble { transform-origin: top left; }
+.cl-high .cl-tail { bottom: auto; top: -6px; border-width: 1px 0 0 1px; }
+
+/* Палец на кнопке, которую можно тащить, двигает кнопку, а не страницу. */
+.cl-drag .cl-button { touch-action: none; }
+.cl-dragging .cl-button { cursor: grabbing; transition: none; }
+
+/*
+ * Движение — только тем, у кого оно не выключено в системе. Эффекты зовут
+ * открыть чат, поэтому молчат после того, как посетитель его уже открывал
+ * (`cl-calm`), и пока кнопку тащат.
+ *
+ * Эффекты взаимоисключающие и делят `::before`/`::after` кнопки:
+ *   - кольца — волны `box-shadow` от края: одинаково ровные вокруг кружка
+ *     и пилюли и не требуют `overflow: hidden`;
+ *   - блик — полоса градиента, которая едет `background-position`;
+ *   - покачивание — свойство `rotate`, а не `transform`: наведение со своим
+ *     `scale` его не сбивает.
+ * У робота эффектов нет: он движется сам.
+ */
+@media (prefers-reduced-motion: no-preference) {
+    .chat-launcher:not(.cl-robot) .cl-button:hover { transform: scale(1.05); }
+
+    .cl-fx-rings .cl-button::before,
+    .cl-fx-rings .cl-button::after,
+    .cl-fx-shine .cl-button::after,
+    .cl-dot-pulse .cl-dot::after,
+    .cl-dot-pulse .cl-bubble-dot::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+    }
+
+    .cl-fx-rings .cl-button::before,
+    .cl-fx-rings .cl-button::after { animation: cl-ring 3.5s ease-out infinite; }
+    .cl-fx-rings .cl-button::after { animation-delay: 0.5s; }
+
+    .cl-fx-shine .cl-button::after {
+        background: linear-gradient(110deg, transparent 35%, rgb(255 255 255 / 0.12) 44%, rgb(255 255 255 / 0.32) 50%, rgb(255 255 255 / 0.12) 56%, transparent 65%) no-repeat;
+        background-size: 300% 100%;
+        animation: cl-shine 4s ease-in-out infinite;
+    }
+
+    .cl-fx-nudge .cl-button { animation: cl-nudge 8s ease-in-out 2s infinite; }
+    .cl-pill:not(.cl-narrow).cl-fx-nudge .cl-button { animation-name: cl-nudge-soft; }
+
+    .cl-dot-pulse .cl-dot::after,
+    .cl-dot-pulse .cl-bubble-dot::after { animation: cl-dot-pulse 2s ease-out infinite; }
+
+    .cl-calm .cl-button, .cl-calm .cl-button::before, .cl-calm .cl-button::after,
+    .cl-dragging .cl-button, .cl-dragging .cl-button::before, .cl-dragging .cl-button::after { animation: none; }
+    .cl-dragging .cl-button:hover { transform: none; }
+}
+
+@keyframes cl-ring {
+    0% { box-shadow: 0 0 0 0 var(--cl-brand); opacity: 0.55; }
+    50%, 100% { box-shadow: 0 0 0 calc(var(--cl-size) * 0.3) var(--cl-brand); opacity: 0; }
+}
+
+@keyframes cl-shine {
+    0%, 20% { background-position: 100% 0; }
+    60%, 100% { background-position: 0 0; }
+}
+
+@keyframes cl-nudge {
+    0%, 12%, 100% { rotate: 0deg; }
+    2% { rotate: -12deg; }
+    4% { rotate: 10deg; }
+    6% { rotate: -7deg; }
+    8% { rotate: 4deg; }
+    10% { rotate: -2deg; }
+}
+
+@keyframes cl-nudge-soft {
+    0%, 12%, 100% { rotate: 0deg; }
+    2% { rotate: -4deg; }
+    4% { rotate: 3.5deg; }
+    6% { rotate: -2.5deg; }
+    8% { rotate: 1.5deg; }
+    10% { rotate: -0.5deg; }
+}
+
+@keyframes cl-dot-pulse {
+    0% { box-shadow: 0 0 0 0 var(--cl-online); opacity: 0.7; }
+    70%, 100% { box-shadow: 0 0 0 calc(var(--cl-size) * 0.14) var(--cl-online); opacity: 0; }
+}
+
+/*
  * Три бегущие точки — общепринятый знак того, что ответ набирают. Сдвиг
  * на два пикселя вместе с прозрачностью: одной прозрачности на полутора-
  * пиксельной точке почти не видно.
