@@ -85,7 +85,7 @@ final class BrowseCategoriesTool implements AssistantTool
 
         return 'Разделы каталога по запросу «'.$query."»:\n\n".implode("\n\n", $blocks)
             ."\n\nЭто разделы магазина, а не подбор. Покажи их покупателю ссылками, "
-            .'спроси, какой ближе к его задаче, и сузь поиск через search_products '
+            .'спроси, какой ближе к его задаче, и ищи дальше через search_products '
             .'с category_id. Не выбирай за него.';
     }
 }
