@@ -10,6 +10,7 @@ use App\Services\Ai\SystemPromptBuilder;
 use App\Services\Chat\OperatorPresence;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -85,6 +86,7 @@ class AssistantSettings extends Page implements HasForms
              * а владелец решит, что значение уже задано им.
              */
             'bot_name' => $config->text('bot_name'),
+            'bot_gender' => $config->botGender() ?: null,
             'invite' => $config->text('invite'),
             'greeting' => $config->greeting(),
             'refusal' => $config->text('refusal'),
@@ -180,6 +182,12 @@ class AssistantSettings extends Page implements HasForms
                             ->placeholder($config->defaultBotName())
                             ->helperText('Имя выходит сразу в четыре места: подсказку у кнопки чата, шапку панели, подпись ответов и ответ самого бота на вопрос «кто ты». Пусто — везде «'.$config->defaultBotName().'». На кнопке чата нарисован робот, так что человеческое имя не выдаёт бота за человека.'),
 
+                        Select::make('bot_gender')
+                            ->label('В каком роде бот говорит о себе')
+                            ->options(self::GENDERS)
+                            ->placeholder('Не задан')
+                            ->helperText('Задайте вместе с именем: иначе бот с женским именем может написать «я понял». Не задан — бот выбирает сам.'),
+
                         TextInput::make('invite')
                             ->label('Подсказка у кнопки чата')
                             ->maxLength(120)
@@ -248,6 +256,7 @@ class AssistantSettings extends Page implements HasForms
             'rules' => $this->rulesFromForm($state['rules'] ?? []),
             'forbidden_topics' => $this->topicsFromForm($state['forbidden_topics'] ?? []),
             'bot_name' => trim((string) ($state['bot_name'] ?? '')),
+            'bot_gender' => $this->genderFromForm($state['bot_gender'] ?? null),
             'invite' => trim((string) ($state['invite'] ?? '')),
             'greeting' => trim((string) ($state['greeting'] ?? '')),
             'refusal' => trim((string) ($state['refusal'] ?? '')),
@@ -322,6 +331,7 @@ class AssistantSettings extends Page implements HasForms
                 // Имя правит замок идентичности, поэтому обязано попадать
                 // в предпросмотр: иначе владелец увидит не тот промпт, что уйдёт.
                 'bot_name' => trim((string) ($state['bot_name'] ?? '')),
+                'bot_gender' => $this->genderFromForm($state['bot_gender'] ?? null),
                 'about' => trim((string) ($state['about'] ?? '')),
                 'rules' => $this->bullets($this->rulesFromForm($state['rules'] ?? [])),
                 'forbidden_topics' => $this->bullets($this->topicsFromForm($state['forbidden_topics'] ?? [])),
@@ -331,6 +341,19 @@ class AssistantSettings extends Page implements HasForms
             operatorsOnline: $presence->isOnline(),
             workingHours: $presence->scheduleSummary(),
         );
+    }
+
+    private const GENDERS = [
+        AssistantConfig::GENDER_FEMALE => 'Женский — «я поняла»',
+        AssistantConfig::GENDER_MALE => 'Мужской — «я понял»',
+    ];
+
+    /** Очищенный выбор — пустая строка, а не null: настройка хранится строкой. */
+    private function genderFromForm(mixed $gender): string
+    {
+        $gender = trim((string) $gender);
+
+        return isset(self::GENDERS[$gender]) ? $gender : '';
     }
 
     /** @param  list<string>  $items */

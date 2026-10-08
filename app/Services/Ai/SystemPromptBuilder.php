@@ -52,7 +52,8 @@ final class SystemPromptBuilder
      * @param  array<string, mixed>|null  $page  контекст страницы посетителя
      * @param  array<string, string>  $settings  редактируемый слой из админки:
      *                                           about, rules, forbidden_topics,
-     *                                           refusal, escalation, bot_name
+     *                                           refusal, escalation, bot_name,
+     *                                           bot_gender
      * @param  bool|null  $operatorsOnline  есть ли сейчас живой менеджер на связи
      * @param  string|null  $workingHours  часы работы для честной формулировки отказа
      */
@@ -63,10 +64,11 @@ final class SystemPromptBuilder
         ?string $workingHours = null,
     ): string {
         $botName = trim($settings['bot_name'] ?? '');
+        $botGender = trim($settings['bot_gender'] ?? '');
 
         $sections = [
             $this->role(),
-            $this->identityLock($botName),
+            $this->identityLock($botName, $botGender),
             $this->topicGate(),
             $this->factRules(),
             $this->prices(),
@@ -150,13 +152,23 @@ final class SystemPromptBuilder
      *
      * Раздел стоит вторым, то есть внутри кэшируемого префикса: смена имени
      * разово обесценит этот кэш. Раз в полгода это ничего не стоит.
+     *
+     * Род — одна фраза с примерами, а не правило грамматики: модели
+     * хватает образца, а гоняться промптом за каждой её ошибкой
+     * бессмысленно. Рода нет — нет и фразы, промпт прежний.
      */
-    private function identityLock(string $botName = ''): string
+    private function identityLock(string $botName = '', string $botGender = ''): string
     {
         $whoAmI = $botName !== ''
             ? 'Тебя зовут '.$botName.'. На вопросы о том, кто ты, отвечай: '
                 .'«Меня зовут '.$botName.', я консультант магазина '.$this->shopName.'».'
             : 'На вопросы о том, кто ты, отвечай: «Я консультант магазина '.$this->shopName.'».';
+
+        $whoAmI .= match ($botGender) {
+            AssistantConfig::GENDER_FEMALE => ' О себе говори в женском роде: «я поняла», «я подобрала», «я уточнила».',
+            AssistantConfig::GENDER_MALE => ' О себе говори в мужском роде: «я понял», «я подобрал», «я уточнил».',
+            default => '',
+        };
 
         return <<<TEXT
         КТО ТЫ

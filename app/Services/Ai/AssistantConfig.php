@@ -29,6 +29,12 @@ final class AssistantConfig
     /** Сколько правил магазина имеет смысл держать в промпте. */
     public const MAX_RULES = 30;
 
+    /** Бот говорит о себе в женском роде: «я поняла». */
+    public const GENDER_FEMALE = 'female';
+
+    /** Бот говорит о себе в мужском роде: «я понял». */
+    public const GENDER_MALE = 'male';
+
     public function __construct(
         /** Название магазина — для имени бота по умолчанию. */
         private readonly string $shopName,
@@ -96,6 +102,26 @@ final class AssistantConfig
     }
 
     /**
+     * В каком роде бот говорит о себе: `female`, `male` или пусто.
+     *
+     * Отдельная настройка, а не вывод из имени: «Саша» и «Консультант
+     * магазина» рода не говорят, а угадывать его по окончанию — значит
+     * однажды ошибиться на виду у покупателя. Пусто — строки о роде
+     * в промпте нет, и модель выбирает сама; с женским именем это
+     * заметно сразу: у донора «Ольга» писала «не совсем понял»
+     * (диалог 28, 08.10.2026).
+     *
+     * Неизвестное значение читается как пустое: в промпт уходит только
+     * то, для чего у сборщика есть готовая фраза.
+     */
+    public function botGender(): string
+    {
+        $gender = $this->text('bot_gender');
+
+        return in_array($gender, [self::GENDER_FEMALE, self::GENDER_MALE], true) ? $gender : '';
+    }
+
+    /**
      * Строка в подсказке у кнопки чата — то, чем бот зовёт начать разговор.
      *
      * Отдельная от приветствия: приветствие — три предложения для пустого
@@ -148,6 +174,7 @@ final class AssistantConfig
     {
         return array_filter([
             'bot_name' => $this->text('bot_name'),
+            'bot_gender' => $this->botGender(),
             'about' => $this->text('about'),
             'rules' => $this->bulletList('rules'),
             'forbidden_topics' => $this->bulletList('forbidden_topics'),

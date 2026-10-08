@@ -89,3 +89,17 @@ it('незаданное имя не попадает в промпт и не т
     // ключ не должен появляться вовсе — иначе выкат обесценит весь кэш.
     expect(assistantConfigWith()->promptSettings())->not->toHaveKey('bot_name');
 });
+
+it('род бота пропускает в промпт только известные значения', function (): void {
+    // Пусто и мусор — ключа нет вовсе: promptSettings() входит в отпечаток
+    // кэша ответов, и выкат не должен его трогать.
+    expect(assistantConfigWith()->botGender())->toBe('')
+        ->and(assistantConfigWith()->promptSettings())->not->toHaveKey('bot_gender');
+
+    config()->set('settings.assistant', []);
+    expect(assistantConfigWith(['bot_gender' => 'robot'])->promptSettings())->not->toHaveKey('bot_gender');
+
+    config()->set('settings.assistant', []);
+    expect(assistantConfigWith(['bot_gender' => 'female'])->promptSettings())
+        ->toHaveKey('bot_gender', AssistantConfig::GENDER_FEMALE);
+});
