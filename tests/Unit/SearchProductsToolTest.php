@@ -201,3 +201,27 @@ it('чужое слово в порядке выдачи не ломает по�
 
     expect($asked)->toBeNull();
 });
+
+it('выдача по совпадению напоминает искать заново, если под названный порог не подошло', function (): void {
+    // Песочница на бою, 09.10.2026: «пропил больше 400 мм», пятёрка по совпадению —
+    // BSM-400 MFR и четыре настольных станка, и бот ответил «подходит одна позиция»
+    // при сорока подходящих в наличии. Отбора по характеристикам у поиска нет.
+    $tool = searchToolWith(static fn (): ProductMatches => new ProductMatches(
+        [searchToolCard('Ленточнопильный станок Metal Master BSM-400 MFR')],
+        'lentochnopilnyj stanok',
+    ));
+
+    expect($tool->run(['query' => 'ленточнопильный станок'], new ToolContext))
+        ->toContain('Покупатель назвал порог')
+        ->toContain('ещё раз с sort «price_desc»');
+});
+
+it('выдача, уже упорядоченная по цене, на тот же поиск по кругу не посылает', function (string $sort): void {
+    $tool = searchToolWith(static fn (): ProductMatches => new ProductMatches(
+        [searchToolCard('Ленточнопильный станок Metal Master BSM-400 MFR')],
+        'lentochnopilnyj stanok',
+    ));
+
+    expect($tool->run(['query' => 'ленточнопильный станок', 'sort' => $sort], new ToolContext))
+        ->not->toContain('Покупатель назвал порог');
+})->with(['price_desc', 'price_asc']);

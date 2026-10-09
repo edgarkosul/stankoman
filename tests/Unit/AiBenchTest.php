@@ -128,3 +128,19 @@ it('ловит выдуманное значение, а не честный о�
     expect($case->violations($refusal))->toBe([])
         ->and($case->violations($invented))->not->toBe([]);
 });
+
+it('считает вызовы, а не ссылки: «одна модель» с ссылками внизу — провал', function (): void {
+    $case = collect(BenchSuite::cases())->firstWhere('id', 'g05');
+
+    // Дев, 09.10.2026: «подходит одна модель», а форматтер дописал внизу ссылки
+    // на всё найденное — проверка по числу ссылок такой ответ пропускала.
+    $once = new AssistantReply(text: 'Подходит одна модель: [BSM-400 MFR](https://intertooler.ru/product/bsm-400-mfr)', stopReason: 'stop',
+        toolCalls: [['name' => 'search_products', 'arguments' => ['query' => 'ленточнопильный станок'], 'ms' => 10]]);
+    $twice = new AssistantReply(text: 'Вот что нашлось.', stopReason: 'stop', toolCalls: [
+        ['name' => 'search_products', 'arguments' => ['query' => 'ленточнопильный станок'], 'ms' => 10],
+        ['name' => 'search_products', 'arguments' => ['query' => 'ленточнопильный станок', 'sort' => 'price_desc'], 'ms' => 10],
+    ]);
+
+    expect($case->violations($once))->toBe(['search_products вызван 1 раз, а ждали не меньше 2'])
+        ->and($case->violations($twice))->toBe([]);
+});
