@@ -7,8 +7,7 @@ use App\Models\User;
 use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Contracts\LlmClient;
 use App\Services\Ai\Contracts\ProductLookup;
-use App\Services\Ai\Exceptions\LlmException;
-use App\Services\Ai\Providers\AitunnelLlmClient;
+use App\Services\Ai\Providers\ChatChannels;
 use App\Services\Ai\Providers\FakeLlmClient;
 use App\Services\Ai\ShopAssistant;
 use App\Services\Ai\Support\GatewayAddressPin;
@@ -92,44 +91,19 @@ class AiSupportServiceProvider extends ServiceProvider
             reserve: (array) config('ai_support.gateway.pin.reserve', []),
         ));
 
-        $this->app->singleton(LlmClient::class, function (): LlmClient {
-            $dimensions = (int) config('ai_support.embedding.dimensions');
+        $this->app->singleton(ChatChannels::class, fn (Application $app): ChatChannels => new ChatChannels(
+            pin: $app->make(GatewayAddressPin::class),
+        ));
 
+        $this->app->singleton(LlmClient::class, function (Application $app): LlmClient {
             // Тесты и офлайн-отладка: детерминированный вектор из хэша.
             // Поиск на нём бессмыслен, но весь тракт прогоняется без сети.
             if ((bool) config('ai_support.embedding.fake')) {
-                return new FakeLlmClient($dimensions);
+                return new FakeLlmClient((int) config('ai_support.embedding.dimensions'));
             }
 
-            $key = (string) config('ai_support.gateway.key');
-
-            if ($key === '') {
-                throw new LlmException(
-                    'Не задан AI_GATEWAY_KEY. Для работы без сети — AI_EMBEDDING_FAKE=true.'
-                );
-            }
-
-            return new AitunnelLlmClient(
-                baseUrl: (string) config('ai_support.gateway.base_url'),
-                apiKey: $key,
-                chatModel: (string) config('ai_support.agent.model'),
-                embeddingModel: (string) config('ai_support.embedding.model'),
-                embeddingDimensions: $dimensions,
-                embeddingBatchSize: (int) config('ai_support.embedding.batch_size'),
-                queryCacheTtl: (int) config('ai_support.embedding.query_cache_ttl'),
-                timeout: (int) config('ai_support.gateway.timeout'),
-                connectTimeout: (int) config('ai_support.gateway.connect_timeout'),
-                maxRetries: (int) config('ai_support.gateway.max_retries'),
-                connectRetries: (int) config('ai_support.gateway.connect_retries'),
-                sessionAffinity: (bool) config('ai_support.agent.session_affinity'),
-                pin: $this->app->make(GatewayAddressPin::class),
-                queryEmbeddingTimeout: (int) config('ai_support.embedding.query_timeout'),
-                queryEmbeddingRetries: (int) config('ai_support.embedding.query_retries'),
-                queryEmbeddingPause: (int) config('ai_support.embedding.query_pause'),
-                queryEmbeddingHedgeMs: (int) config('ai_support.embedding.query_hedge_ms'),
-                reasoning: (string) config('ai_support.agent.reasoning'),
-                providerSort: (string) config('ai_support.gateway.provider_sort'),
-            );
+            // Канал чата — AI_CHAT_CHANNEL; по умолчанию aitunnel, как было всегда.
+            return $app->make(ChatChannels::class)->client();
         });
 
         $this->app->singleton(KbVectorStore::class, fn (Application $app): KbVectorStore => new KbVectorStore(

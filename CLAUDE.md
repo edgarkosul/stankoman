@@ -276,6 +276,49 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
   (`ReplyTail`), вызов инструмента текстом срезается (`ToolMarkup`). Выключать
   рассуждения насовсем (`AI_AGENT_REASONING=off`) bots проверял: быстрее не стало,
   а в каталог за характеристиками модель ходит реже.
+- **Канал чата — `AI_CHAT_CHANNEL`** (09.10.2026, по выжимке bots `~/projects/bots/docs/deepseek-direct.md`
+  через kratonshop; бой не переключён, по умолчанию `aitunnel` — в контейнере тот же объект, что раньше).
+  `deepseek` — чат прямо в `api.deepseek.com`, модель `deepseek-flash` (это V4.1-Flash), aitunnel —
+  запасной (`AI_CHAT_RESERVE`), эмбеддинги — всегда aitunnel. В bots и kratonshop так дешевле в 8–10 раз
+  (0,06–0,09 ₽ за ответ против 0,6–0,7), в пик DeepSeek медленнее: у kratonshop 09.10 в 10:26 МСК p50 4,2
+  против 3,0 с.
+  - Сборка — `ChatChannels::client()`: `SplitLlmClient(чат: FailoverLlmClient(deepseek, aitunnel), эмбеддинги:
+    aitunnel)`. Любой сбой DeepSeek (сеть, 429, 5xx, 401, 402, даже 400) — тот же вызов в aitunnel, строка
+    `LLM failover` с `status`, DeepSeek `AI_CHAT_RESERVE_PAUSE` секунд (120) не зовётся. `pii_blocked`
+    канал не меняет.
+  - `ApiDialect`: у DeepSeek первый шаг ответа (`tool_choice: required`) идёт с `thinking: disabled` — с
+    рассуждениями 400; у каждого вызова инструмента в истории — `reasoning_content` (пустой, если
+    рассуждения не было), иначе 400 на втором шаге каждого ответа и всё молча уходит в aitunnel. aitunnel
+    поле не получает.
+  - Цены в ответе DeepSeek нет — `DeepSeekPricing` по токенам: $0.006 / 0.30 / 1.20 за 1 млн (из кэша / мимо /
+    вывод) в пик (будни 04–07 и 09–13 МСК), вне пика вдвое дешевле, в рубли по `AI_DEEPSEEK_USD_RUB` (100).
+    Пишется туда же, куда раньше `cost_rub` шлюза. Плитка бюджета ключа после переключения про ответы не
+    говорит — там только поиск, индексация и запасной путь.
+  - Маскирования ПДн у DeepSeek нет: единственный слой — `PiiRedactor` (с 09.10 — ещё паспорт, СНИЛС, карта
+    по Луну, ФИО с отчеством → `[имя]`).
+  - Таймаут DeepSeek 60 с, без повторов на 429/5xx (`AI_DEEPSEEK_*`), один повтор неподнявшегося соединения;
+    `AI_DEEPSEEK_PROXY` — если путь закроют. Каждый вызов модели — строка `LLM call` с `channel`.
+  - `ai:kb-doctor`: «канал …, запасной …», раздел «Ключ DeepSeek» (баланс `GET /user/balance`, меньше $1 —
+    предупреждение) — как только задан `AI_DEEPSEEK_KEY`, ещё до переключения; в пробе — каким каналом
+    ответил диалог.
+  - Замер: `ai:bench --channels=deepseek --channels=aitunnel+latency` (`BenchVariant::channel`, модель
+    aitunnel — из настроек; без плюса — без `provider`). Запасного канала в замере нет: сбой виден как
+    «сорвалось».
+  - **Порядок на бою:** ключ DeepSeek в `shared/.env` (`AI_DEEPSEEK_KEY`, свой у проекта) → деплой →
+    `ai:kb-doctor` («Ключ принят, баланс …») → `ai:bench --channels=deepseek --runs=1` («сорвалось» 0 — значит
+    `reasoning_content` доходит) → по желанию полный замер вперемешку с `aitunnel+latency` → по решению Эдгара
+    `AI_CHAT_CHANNEL=deepseek` и `AI_CHAT_RESERVE=aitunnel` в `shared/.env`, три шага «Правки `shared/.env`»
+    плюс `queue:restart` → `ai:kb-doctor --probe` — «канал deepseek», в логе `LLM call` с
+    `"channel":"deepseek"`, `LLM failover` нет. Откат — `AI_CHAT_CHANNEL=aitunnel` и те же шаги.
+  - **Тексты для покупателей** (проверено на бою 09.10.2026). Под полем ввода чата: «Отправляя вопрос, вы
+    соглашаетесь с условиями и Политикой обработки персональных данных» — ссылки на страницы `terms`
+    (обновлена 29.09.2026) и `privacy` (28.03.2026) из таблицы `pages`. Ни консультанта, ни aitunnel, ни
+    трансграничной передачи они не упоминают; в политике получатели общими словами (п. 9.2: «хостинг-провайдеры,
+    IT-подрядчики…»). Фраза «трансграничной передачи нет» была только в шапке `config/ai_support.php` — теперь
+    она условная. С каналом `deepseek` переписка (после `PiiRedactor`) уходит в Китай: для политики это
+    трансграничная передача и новый получатель, вероятно и уведомление РКН (ст. 12 152-ФЗ). Решает Эдгар с
+    заказчиком; черновик формулировок — kratonshop, `docs/terms-ai-assistant.md`, «Если чат переводят на
+    сам DeepSeek». Заказчик юридических требований пока не выдвигает (09.10.2026).
 
 ### Чат на витрине
 
@@ -732,6 +775,9 @@ Ubuntu 24.04, 2 vCPU / ~3.7 ГБ RAM / 59 ГБ. Коробка общая — н
   до 09.10 10:25, пин не обновлялся. Признак — «Has Mutex» у пробы в `schedule:list` и пустой
   журнал `ai_gateway_probes`; снять мьютекс одной задачи — `$event->mutex->forget($event)`
   (команда — kratonshop, `docs/deploy.md`, «Шлюз не отвечает»).
+- **Канал чата ИИ**: `AI_CHAT_CHANNEL` в `shared/.env` (по умолчанию `aitunnel`), для `deepseek` нужен
+  `AI_DEEPSEEK_KEY` — ключ DeepSeek intertooler, кладёт Эдгар. Порядок проверки и переключения —
+  «Скорость ответа бота и шлюз», «Канал чата».
 - **Бэкапы**: Filament-плагин restic, команды `restic-backups:{run,cleanup-rollbacks,cleanup-exports,unlock}`.
 - **Прочее**: ispmanager на 1500/1501, vsftpd на 21 (пассивные 40000–40100),
   privoxy 8118 (локально), ufw, fail2ban (sshd, vsftpd), unattended-upgrades.

@@ -170,6 +170,22 @@ it('прогоняет цикл: вызов инструмента, затем �
         ->and($reply->isFailure())->toBeFalse();
 });
 
+it('возвращает рассуждение в историю рядом с вызовом инструмента', function (): void {
+    // DeepSeek без него следующий шаг с рассуждениями не примет (ApiDialect::history).
+    $llm = scriptedLlm([
+        new ChatResult('', [new ToolCall('c1', 'search_knowledge_base', ['query' => 'доставка'])], 'tool_calls',
+            reasoning: 'Нужны условия доставки.'),
+        new ChatResult('Доставка — 590 ₽.', finishReason: 'stop'),
+    ]);
+
+    assistant($llm, [scriptedTool('search_knowledge_base', '590 ₽')])->ask('Сколько стоит доставка?');
+
+    $turn = array_values(array_filter($llm->seen[1]['messages'], static fn (array $m): bool => $m['role'] === 'assistant'))[0];
+
+    expect($turn['reasoning_content'])->toBe('Нужны условия доставки.')
+        ->and($turn['tool_calls'][0]['id'])->toBe('c1');
+});
+
 it('скрывает ответ, где модель проговорилась об идентичности', function (): void {
     // Шлюз — перепродавец, и на siteko он однажды подставил чужую модель
     // с чужим системным промптом. Проверка ответа на выходе не формальность.

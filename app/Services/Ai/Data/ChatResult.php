@@ -31,6 +31,15 @@ final readonly class ChatResult
          * подсунули другую» было нечем.
          */
         public string $model = '',
+        /**
+         * Рассуждение, после которого модель ответила или позвала инструмент.
+         * Посетителю не показывается; нужно, чтобы вернуть его в историю
+         * рядом с вызовом инструмента — DeepSeek без этого следующий шаг
+         * не примет (ApiDialect::history).
+         */
+        public string $reasoning = '',
+        /** Каким каналом шёл вызов: aitunnel, deepseek (ChatChannels). При сбое основного отвечает запасной. */
+        public string $channel = '',
     ) {}
 
     public function wantsTools(): bool

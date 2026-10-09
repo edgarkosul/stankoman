@@ -30,6 +30,20 @@ it('не принимает выдуманный способ выбора пр�
     BenchVariant::parse('deepseek-v4.1-flash+fastest');
 })->throws(InvalidArgumentException::class);
 
+it('разбирает вариант канала: deepseek или aitunnel с выбором провайдера', function (): void {
+    $deepseek = BenchVariant::channel('deepseek');
+    $aitunnel = BenchVariant::channel('aitunnel+latency');
+
+    expect([$deepseek->channel, $deepseek->model, $deepseek->providerSort])->toBe(['deepseek', '', ''])
+        // Модель канала aitunnel — из настроек, как в проде.
+        ->and([$aitunnel->channel, $aitunnel->model, $aitunnel->providerSort])->toBe(['aitunnel', '', 'latency'])
+        ->and(BenchVariant::parse('deepseek-v4.1-flash')->channel)->toBe('aitunnel');
+});
+
+it('не принимает чужой канал и provider.sort у DeepSeek', function (string $label): void {
+    BenchVariant::channel($label);
+})->with(['openai', 'deepseek+latency', 'aitunnel+fastest'])->throws(InvalidArgumentException::class);
+
 it('первым идёт то один вариант, то другой', function (): void {
     expect(BenchRunner::order(['a', 'b'], run: 1, index: 0))->toBe(['a', 'b'])
         ->and(BenchRunner::order(['a', 'b'], run: 1, index: 1))->toBe(['b', 'a'])

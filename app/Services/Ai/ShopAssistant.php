@@ -137,6 +137,10 @@ final class ShopAssistant
                     'role' => 'assistant',
                     PiiRedactor::ORIGIN => PiiRedactor::ORIGIN_BOT,
                     'content' => $result->content,
+                    // Рассуждение перед вызовом: DeepSeek без него следующий
+                    // шаг с рассуждениями не примет. Нужно ли оно каналу,
+                    // решает ApiDialect::history().
+                    'reasoning_content' => $result->reasoning,
                     'tool_calls' => array_map(
                         static fn (ToolCall $call): array => [
                             'id' => $call->id,

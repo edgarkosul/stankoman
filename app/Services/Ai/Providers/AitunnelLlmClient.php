@@ -9,6 +9,7 @@ use App\Services\Ai\Data\EmbeddingBatch;
 use App\Services\Ai\Data\ToolCall;
 use App\Services\Ai\Exceptions\LlmException;
 use App\Services\Ai\Exceptions\PiiBlockedException;
+use App\Services\Ai\Support\DeepSeekPricing;
 use App\Services\Ai\Support\GatewayAddressPin;
 use GuzzleHttp\Exception\ConnectException as GuzzleConnectException;
 use GuzzleHttp\Handler\CurlMultiHandler;
@@ -18,6 +19,7 @@ use GuzzleHttp\Promise\Utils;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Promises\LazyPromise;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -25,8 +27,15 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Клиент шлюза aitunnel.ru — OpenAI-совместимые /chat/completions и /embeddings
- * под одним ключом.
+ * Клиент OpenAI-совместимого API — /chat/completions и /embeddings под одним
+ * ключом. Каналов два, и это два экземпляра одного класса (ChatChannels):
+ * aitunnel.ru (чат и эмбеддинги) и сам DeepSeek (только чат). Разница между
+ * ними — в настройках: адрес, ключ, имя модели, прокси и особенности API
+ * (ApiDialect: рассуждения, история, цена). Имя класса осталось от времён,
+ * когда канал был один.
+ *
+ * Аитуннельное — пин адреса, заголовки маскирования, `pii_blocked` — работает,
+ * только когда оно есть: у DeepSeek пина нет, а заголовков он не шлёт.
  *
  * Намеренно тонкий: ни цикла tool-use, ни сборки промпта, ни обрезки истории —
  * всё это живёт в агенте. Здесь только транспорт, ретраи, разбор ответа и учёт
@@ -80,7 +89,23 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
          * Пустая — объекта `provider` в запросе нет, и шлюз выбирает сам.
          */
         private readonly string $providerSort = '',
+        /** Имя канала — в логи, в ChatResult и в замер: aitunnel, aitunnel+latency, deepseek. */
+        private readonly string $channel = 'aitunnel',
+        /** Куда класть рассуждения, что слать в истории и откуда брать цену — у каждого API своё. */
+        private readonly ApiDialect $dialect = ApiDialect::Aitunnel,
+        /** Цена по токенам — когда в ответе её нет (ApiDialect::DeepSeek). */
+        private readonly ?DeepSeekPricing $pricing = null,
+        /**
+         * Прокси, `socks5h://…` или `http://…`. Главнее пина: с прокси curl
+         * соединяется не с конечным хостом, и CURLOPT_RESOLVE ничего бы не значил.
+         */
+        private readonly ?string $proxy = null,
     ) {}
+
+    public function channel(): string
+    {
+        return $this->channel;
+    }
 
     /**
      * Копия, а не переключатель: клиент — синглтон, и следующий разговор
@@ -117,25 +142,20 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
         ?string $sessionId = null,
         ?string $toolChoice = null,
     ): ChatResult {
+        $started = microtime(true);
+
         $payload = [
             'model' => $this->chatModel,
             'max_tokens' => $maxTokens ?? 1024,
             'messages' => [
                 ['role' => 'system', 'content' => $system],
-                ...$messages,
+                // Рассуждения у вызовов инструментов — по правилам канала.
+                ...$this->dialect->history($messages),
             ],
         ];
 
-        /*
-         * Шлюз понимает оба вида: reasoning_effort (как у OpenAI) и
-         * reasoning.enabled (как у OpenRouter). Выключить совсем умеет только
-         * второй: thinking.type=disabled оставлял десятки токенов рассуждений.
-         */
-        $payload += match ($this->reasoning) {
-            '' => [],
-            'off' => ['reasoning' => ['enabled' => false]],
-            default => ['reasoning_effort' => $this->reasoning],
-        };
+        // tool_choice уходит только вместе с инструментами (ниже).
+        $payload += $this->dialect->reasoning($this->reasoning, $tools === [] ? null : $toolChoice);
 
         if ($tools !== []) {
             $payload['tools'] = $tools;
@@ -183,17 +203,63 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
             array_values($message['tool_calls'] ?? []),
         );
 
-        return new ChatResult(
+        // `reasoning_content` — у самого DeepSeek, `reasoning` — у шлюза.
+        $reasoning = $message['reasoning_content'] ?? $message['reasoning'] ?? '';
+
+        $result = new ChatResult(
             content: (string) ($message['content'] ?? ''),
             toolCalls: $toolCalls,
             finishReason: (string) ($body['choices'][0]['finish_reason'] ?? ''),
             inputTokens: (int) ($usage['prompt_tokens'] ?? 0),
             outputTokens: (int) ($usage['completion_tokens'] ?? 0),
-            cachedTokens: (int) ($usage['prompt_tokens_details']['cached_tokens'] ?? 0),
-            costRub: (float) ($usage['cost_rub'] ?? 0),
+            cachedTokens: (int) ($usage['prompt_tokens_details']['cached_tokens'] ?? $usage['prompt_cache_hit_tokens'] ?? 0),
+            costRub: $this->costRub($usage),
             maskedTypes: $this->maskedTypes($response),
             model: (string) ($body['model'] ?? ''),
+            reasoning: is_string($reasoning) ? $reasoning : '',
+            channel: $this->channel,
         );
+
+        $this->logCall($result, $toolChoice, $started);
+
+        return $result;
+    }
+
+    /**
+     * @param  array<string, mixed>  $usage
+     */
+    private function costRub(array $usage): float
+    {
+        // Пик или нет — по часам приложения: их подменяет тест.
+        if ($this->pricing !== null) {
+            return $this->pricing->rub($usage, (float) now()->getTimestamp());
+        }
+
+        $field = $this->dialect->costField();
+
+        return $field === null ? 0.0 : (float) ($usage[$field] ?? 0);
+    }
+
+    /**
+     * Строка на каждый вызов модели: каким каналом, чем кончился, сколько
+     * стоил. Ответ посетителю — это 1–3 вызова, и по ответу целиком не
+     * видно, какой из них шёл запасным каналом и какой был медленным.
+     * После переключения на DeepSeek по ней проверяют, что чат идёт им.
+     */
+    private function logCall(ChatResult $result, ?string $toolChoice, float $started): void
+    {
+        Log::info('LLM call', [
+            'channel' => $this->channel,
+            'model' => $result->model ?: $this->chatModel,
+            'tool_choice' => $toolChoice,
+            'finish_reason' => $result->finishReason,
+            'tool_calls' => count($result->toolCalls),
+            'input_tokens' => $result->inputTokens,
+            'cached_tokens' => $result->cachedTokens,
+            'output_tokens' => $result->outputTokens,
+            'cost_rub' => round($result->costRub, 4),
+            'ms' => (int) round((microtime(true) - $started) * 1000),
+        ]);
     }
 
     public function embed(array $texts, string $mode = 'doc'): EmbeddingBatch
@@ -341,8 +407,8 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
 
             // Заведомо живой адрес вместо жребия по DNS-ответу. Пин ставит
             // ai:gateway-probe; его отсутствие — это не ошибка, а обычный
-            // режим «полагаемся на DNS».
-            $resolve = $this->pin?->resolveEntry();
+            // режим «полагаемся на DNS». С прокси пин не нужен (request()).
+            $resolve = $this->proxy === null ? $this->pin?->resolveEntry() : null;
 
             $response = $hedgeAfterMs > 0
                 ? $this->sendHedged($path, $payload, $timeout ?? $this->timeout, $resolve, $hedgeAfterMs)
@@ -368,6 +434,7 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
                 }
 
                 Log::warning('Aitunnel connect retry', [
+                    'channel' => $this->channel,
                     'path' => $path,
                     'attempt' => $attempt,
                     // Ушёл ли запрос — это и есть причина разной настойчивости.
@@ -404,7 +471,7 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
             if ($response->status() === 400) {
                 $error = $response->json('error') ?? [];
 
-                if (($error['type'] ?? $error['code'] ?? null) === 'pii_blocked') {
+                if (is_array($error) && ($error['type'] ?? $error['code'] ?? null) === 'pii_blocked') {
                     throw new PiiBlockedException(
                         (string) ($error['message'] ?? 'Запрос заблокирован из-за персональных данных.'),
                         $this->maskedTypes($response),
@@ -420,10 +487,11 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
                     $response->status(),
                     $path,
                     mb_substr($response->body(), 0, 300),
-                ));
+                ), status: $response->status());
             }
 
             Log::warning('Aitunnel retry', [
+                'channel' => $this->channel,
                 'path' => $path,
                 'status' => $response->status(),
                 'attempt' => $attempt,
@@ -442,6 +510,11 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
             return $this->request($timeout, $resolve)->post($this->baseUrl.$path, $payload);
         } catch (ConnectionException $e) {
             return $e;
+        } catch (RequestException $e) {
+            // Отказ прокси на CONNECT (403) Guzzle отдаёт исключением с ответом.
+            // Это такой же ответ, как остальные: код, LlmException и запасной
+            // канал, а не исключение мимо FailoverLlmClient.
+            return $e->response;
         }
     }
 
@@ -602,7 +675,7 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
     }
 
     /**
-     * Запрос к шлюзу со всем, что у него общего: ключ, таймауты, пин адреса.
+     * Запрос к шлюзу со всем, что у него общего: ключ, таймауты, прокси или пин адреса.
      */
     private function request(int|float $timeout, ?string $resolve): PendingRequest
     {
@@ -612,7 +685,9 @@ final class AitunnelLlmClient implements LlmClient, ReasoningSwitch
             ->connectTimeout($this->connectTimeout)
             ->timeout($timeout);
 
-        if ($resolve !== null) {
+        if ($this->proxy !== null) {
+            $request = $request->withOptions(['proxy' => $this->proxy]);
+        } elseif ($resolve !== null) {
             $request = $request->withOptions(['curl' => [CURLOPT_RESOLVE => [$resolve]]]);
         }
 

@@ -7,6 +7,7 @@ use App\Models\MessengerChannel;
 use App\Providers\AiSupportServiceProvider;
 use App\Services\Ai\AssistantConfig;
 use App\Services\Ai\Contracts\LlmClient;
+use App\Services\Ai\Providers\ChatChannels;
 use App\Services\Ai\Support\GatewayAddressPin;
 use App\Services\Catalog\CatalogSemanticIndex;
 use App\Services\Chat\Contracts\EscalationTarget;
@@ -43,6 +44,13 @@ class AiKbDoctor extends Command
 
         $this->section('Ключ шлюза');
         $this->gatewayKey();
+
+        // Ключ проверяем и до переключения канала: так видно, что он принят
+        // и баланс есть, раньше, чем на него уйдут ответы посетителям.
+        if ((string) config('ai_support.deepseek.key') !== '' || in_array(ChatChannels::DEEPSEEK, $this->chatChannels(), true)) {
+            $this->section('Ключ DeepSeek');
+            $this->deepseekKey();
+        }
 
         $this->section('База знаний');
         $this->knowledgeBase($llm);
@@ -103,13 +111,86 @@ class AiKbDoctor extends Command
 
         $this->check($key !== '' || $fake, 'Ключ шлюза задан', 'AI_GATEWAY_KEY пуст');
 
-        $this->info(sprintf('  · модель диалога   %s', $llm->chatModel()));
+        [$channel, $reserve] = $this->chatChannels() + [1 => null];
+
+        $this->info(sprintf(
+            '  · модель диалога   %s, канал %s%s',
+            $llm->chatModel(),
+            $channel,
+            $reserve === null ? '' : ', запасной '.$reserve,
+        ));
         $this->info(sprintf('  · рассуждения      %s', (string) config('ai_support.agent.reasoning') ?: 'как решит шлюз'));
         $this->info(sprintf('  · провайдер        %s', (string) config('ai_support.gateway.provider_sort') !== ''
             ? 'sort='.config('ai_support.gateway.provider_sort')
             : 'как решит шлюз'));
         $this->info(sprintf('  · эмбеддинги       %s, %d измерений', $llm->embeddingModel(), $llm->embeddingDimensions()));
         $this->info(sprintf('  · порог поиска     %.2f', (float) config('ai_support.knowledge_base.min_score')));
+    }
+
+    /**
+     * Каналы чата, как их соберёт ChatChannels::client(): основной и запасной, если он есть.
+     *
+     * @return list<string>
+     */
+    private function chatChannels(): array
+    {
+        $channel = (string) config('ai_support.agent.channel');
+        $reserve = (string) config('ai_support.agent.reserve');
+
+        return $channel === ChatChannels::AITUNNEL || $reserve === '' || $reserve === $channel
+            ? [$channel]
+            : [$channel, $reserve];
+    }
+
+    /**
+     * Баланс DeepSeek — бесплатным запросом. Кончится — DeepSeek ответит 402,
+     * и чат молча уйдёт в запасной канал: заметно это только здесь и в логе.
+     */
+    private function deepseekKey(): void
+    {
+        $key = (string) config('ai_support.deepseek.key');
+
+        if ($key === '') {
+            $this->bad('AI_DEEPSEEK_KEY пуст — канал deepseek не соберётся.');
+
+            return;
+        }
+
+        $proxy = (string) config('ai_support.deepseek.proxy');
+
+        try {
+            $response = Http::withToken($key)
+                ->acceptJson()
+                ->timeout(15)
+                ->withOptions($proxy === '' ? [] : ['proxy' => $proxy])
+                ->get(config('ai_support.deepseek.base_url').'/user/balance');
+        } catch (Throwable $e) {
+            $this->bad('DeepSeek недоступен: '.$e->getMessage());
+
+            return;
+        }
+
+        if (! $response->successful()) {
+            $this->bad(sprintf('DeepSeek ответил HTTP %d — ключ отозван или неверен.', $response->status()));
+
+            return;
+        }
+
+        $balance = $response->json('balance_infos.0') ?? [];
+        $total = (float) ($balance['total_balance'] ?? 0);
+
+        $this->check(
+            (bool) $response->json('is_available'),
+            sprintf('Ключ принят, баланс %.2f %s', $total, (string) ($balance['currency'] ?? '')),
+            'Баланса не хватает на вызовы (is_available=false) — чат идёт запасным каналом.',
+        );
+
+        if ($total < 1.0) {
+            $this->warn('  ! Баланс меньше $1 — пополнить в кабинете DeepSeek.');
+        }
+
+        $this->info(sprintf('  · курс пересчёта   %.2f ₽ за $ (AI_DEEPSEEK_USD_RUB)', (float) config('ai_support.deepseek.usd_rub')));
+        $this->line('  <fg=gray>·</> маскирования ПДн у DeepSeek нет — единственный слой PiiRedactor');
     }
 
     /**
@@ -549,12 +630,14 @@ class AiKbDoctor extends Command
             }
 
             $this->ok(sprintf(
-                'Диалог: «%s» за %.0f мс, %d/%d токенов, %.4f ₽',
+                'Диалог: «%s» за %.0f мс, %d/%d токенов, %.4f ₽%s',
                 mb_strimwidth(trim($result->content), 0, 40, '…'),
                 (microtime(true) - $started) * 1000,
                 $result->inputTokens,
                 $result->outputTokens,
                 $result->costRub,
+                // Каким каналом: при сбое основного отвечает запасной.
+                $result->channel !== '' ? ', канал '.$result->channel : '',
             ));
         } catch (Throwable $e) {
             $this->bad('Диалог: '.$e->getMessage());

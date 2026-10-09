@@ -7,6 +7,7 @@ use App\Services\Ai\Bench\BenchResult;
 use App\Services\Ai\Bench\BenchRunner;
 use App\Services\Ai\Bench\BenchSuite;
 use App\Services\Ai\Bench\BenchVariant;
+use App\Services\Ai\Exceptions\LlmException;
 use App\Services\Ai\Support\PiiRedactor;
 use App\Services\Ai\Support\ReplyFormatter;
 use App\Services\Ai\SystemPromptBuilder;
@@ -16,7 +17,10 @@ use InvalidArgumentException;
 
 /**
  * Воспроизводимый прогон набора вопросов через несколько вариантов —
- * модели и провайдера у aitunnel — одной волной, вперемешку.
+ * модели и провайдера у aitunnel или канала чата — одной волной, вперемешку:
+ *
+ *   php artisan ai:bench --models=deepseek-v4.1-flash --models=deepseek-v4.1-flash+latency
+ *   php artisan ai:bench --channels=deepseek --channels=aitunnel+latency
  *
  * Ручное тыканье эту работу НЕ заменяет. Провал в цикле tool-use
  * недетерминированный: на siteko один и тот же вопрос отрабатывался за
@@ -37,6 +41,7 @@ class AiBench extends Command
 {
     protected $signature = 'ai:bench
         {--models=* : Варианты: модель или «модель+latency» (throughput, price) — без плюса объекта provider в запросе нет}
+        {--channels=* : Варианты: канал deepseek или aitunnel[+latency|throughput|price] с моделью из настроек}
         {--runs=3 : Прогонов каждого вопроса}
         {--category= : Только одна категория: а, б, в, г, д, е, ж}
         {--case=* : Только эти вопросы по id: a01, g01…}
@@ -55,11 +60,23 @@ class AiBench extends Command
 
     public function handle(): int
     {
+        $models = array_values(array_filter((array) $this->option('models')));
+        $channels = array_values(array_filter((array) $this->option('channels')));
+
         try {
-            $variants = array_map(
-                static fn (string $label): BenchVariant => BenchVariant::parse($label),
-                array_values(array_filter((array) $this->option('models'))) ?: self::DEFAULT_VARIANTS,
-            );
+            $variants = [
+                ...array_map(
+                    static fn (string $label): BenchVariant => BenchVariant::parse($label),
+                    $models === [] && $channels === [] ? self::DEFAULT_VARIANTS : $models,
+                ),
+                ...array_map(static fn (string $label): BenchVariant => BenchVariant::channel($label), $channels),
+            ];
+
+            $labels = array_map(static fn (BenchVariant $v): string => $v->label, $variants);
+
+            if (count($labels) !== count(array_unique($labels))) {
+                throw new InvalidArgumentException('Один и тот же вариант задан дважды.');
+            }
         } catch (InvalidArgumentException $e) {
             $this->error($e->getMessage());
 
@@ -83,7 +100,6 @@ class AiBench extends Command
             return self::FAILURE;
         }
 
-        $labels = array_map(static fn (BenchVariant $v): string => $v->label, $variants);
         $total = count($variants) * count($cases) * $runs;
 
         $this->line(sprintf(
@@ -102,9 +118,18 @@ class AiBench extends Command
         $bar = $this->output->createProgressBar($total);
         $bar->start();
 
-        $all = $runner->run($variants, $cases, $runs, function () use ($bar): void {
-            $bar->advance();
-        });
+        try {
+            $all = $runner->run($variants, $cases, $runs, function () use ($bar): void {
+                $bar->advance();
+            });
+        } catch (LlmException $e) {
+            // Клиент не собрался — например, канал deepseek без ключа. Это
+            // случается до первого вызова: агенты строятся раньше прогона.
+            $this->newLine();
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        }
 
         $bar->finish();
         $this->newLine(2);
