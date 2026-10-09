@@ -725,6 +725,13 @@ Ubuntu 24.04, 2 vCPU / ~3.7 ГБ RAM / 59 ГБ. Коробка общая — н
 - **Очередь**: systemd-юнит `intertooler-queue-default.service` (один `queue:work redis`).
   После обновления PHP его надо перезапустить, иначе держит старый бинарник.
 - **Планировщик**: `intertooler-scheduler.timer` → `schedule:run` каждую минуту.
+  Сервис `oneshot`, и с 09.10.2026 у него drop-in
+  `/etc/systemd/system/intertooler-scheduler.service.d/killmode.conf` с `KillMode=process`.
+  Без него systemd по концу `schedule:run` убивал фоновые задачи (`runInBackground` у
+  `ai:gateway-probe`): мьютекс `withoutOverlapping` висел сутками, проб не было с 07.10 21:00
+  до 09.10 10:25, пин не обновлялся. Признак — «Has Mutex» у пробы в `schedule:list` и пустой
+  журнал `ai_gateway_probes`; снять мьютекс одной задачи — `$event->mutex->forget($event)`
+  (команда — kratonshop, `docs/deploy.md`, «Шлюз не отвечает»).
 - **Бэкапы**: Filament-плагин restic, команды `restic-backups:{run,cleanup-rollbacks,cleanup-exports,unlock}`.
 - **Прочее**: ispmanager на 1500/1501, vsftpd на 21 (пассивные 40000–40100),
   privoxy 8118 (локально), ufw, fail2ban (sshd, vsftpd), unattended-upgrades.
