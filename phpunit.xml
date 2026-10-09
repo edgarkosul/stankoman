@@ -60,6 +60,14 @@
             проверяет GatewayAddressPinTest, собирая его напрямую.
         -->
         <env name="AI_GATEWAY_PIN" value="false"/>
+        <!--
+            Ключ DeepSeek из .env дева в тесты не идёт: увидев его, доктор
+            спрашивает баланс у живого api.deepseek.com, и итог прогона
+            зависит от сети и прокси (так и упал AiKbCommandsTest 09.10.2026,
+            когда ключ положили в .env). Тесты, которым ключ нужен, задают
+            его сами и подменяют HTTP.
+        -->
+        <env name="AI_DEEPSEEK_KEY" value=""/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
