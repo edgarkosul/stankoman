@@ -3,11 +3,14 @@
 use App\Models\Category;
 use App\Models\Product;
 use App\Services\Ai\Data\ProductQuery;
+use App\Services\Ai\Data\SpecCondition;
+use App\Services\Ai\Data\SpecQuery;
 use App\Services\Ai\Support\ProductTextExtractor;
 use App\Shop\CatalogSections;
 use App\Shop\EloquentProductLookup;
 use App\Support\Products\ProductSpecs;
 use App\Support\Search\ProductTextSearch;
+use Illuminate\Support\Str;
 
 /*
  * Шов «товар и каталог» на живых моделях.
@@ -311,4 +314,106 @@ it('строит фильтр Meilisearch из запроса', function (): voi
             sectionIds: [57, 58, 59],
         )))->toBe('in_stock = true AND price >= 100000 AND price <= 200000'
             .' AND category_ids = 52 AND category_ids IN [57, 58, 59]');
+});
+
+/**
+ * Раздел с домкратами для подбора по характеристикам.
+ *
+ * @param  array<string, array{0: int, 1: list<array{name: string, value: string}>}>  $jacks  имя => [цена, характеристики]
+ */
+function specSection(array $jacks): Category
+{
+    $root = Category::query()->create([
+        'name' => 'Гидравлический инструмент',
+        'slug' => 'gidravlicheskii-instrument',
+        'parent_id' => Category::defaultParentKey(),
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    $leaf = Category::query()->create([
+        'name' => 'Домкраты гидравлические',
+        'slug' => 'domkraty-gidravlicheskie',
+        'parent_id' => $root->id,
+        'order' => 1,
+        'is_active' => true,
+    ]);
+
+    foreach ($jacks as $name => [$price, $specs]) {
+        $product = Product::query()->create([
+            'name' => $name,
+            'slug' => Str::slug($name),
+            'price_amount' => $price,
+            'currency' => 'RUB',
+            'in_stock' => true,
+            'is_active' => true,
+            'specs' => $specs,
+        ]);
+
+        $leaf->products()->attach($product->id, ['is_primary' => true]);
+    }
+
+    return $leaf;
+}
+
+it('подбор по характеристике смотрит весь раздел и отдаёт подходящие от дешёвых', function (): void {
+    $leaf = specSection([
+        'Домкрат 50 т' => [20000, [['name' => 'Грузоподьемность, т', 'value' => '50'], ['name' => 'Вес, кг', 'value' => '12']]],
+        'Домкрат 200 т' => [90000, [['name' => 'Грузоподьемность, т', 'value' => '200'], ['name' => 'Вес, кг', 'value' => '70']]],
+        'Домкрат 100 т' => [40000, [['name' => 'Грузоподьемность, т', 'value' => '100'], ['name' => 'Вес, кг', 'value' => '30']]],
+        'Домкрат без карточки' => [10000, [['name' => 'Вес, кг', 'value' => '5']]],
+    ]);
+
+    // Не из раздела — даже подходящий по числу не в счёт.
+    assistantProduct(['name' => 'Чужой домкрат 500 т', 'slug' => 'chuzhoi', 'specs' => [['name' => 'Грузоподьемность, т', 'value' => '500']]]);
+
+    $matches = assistantLookup()->bySpec(new SpecQuery(
+        conditions: [new SpecCondition(['грузоподъёмность'], min: 100, unit: 'т')],
+        sectionIds: [$leaf->id],
+    ));
+
+    expect(array_map(fn ($card) => $card->name, $matches->cards))->toBe(['Домкрат 100 т', 'Домкрат 200 т'])
+        ->and($matches->scanned)->toBe(4)
+        ->and($matches->passed)->toBe(2)
+        ->and($matches->failed)->toBe(1)
+        ->and($matches->unknown())->toBe(1)
+        // У карточки — только строка, по которой шёл отбор, а не весь список.
+        ->and($matches->cards[0]->specs)->toBe([['name' => 'Грузоподьемность, т', 'value' => '100']]);
+});
+
+it('когда не подошло ничего, отдаёт ближайших к порогу, а не случайных', function (): void {
+    // 09.10.2026: на «домкрат на 1000 тонн» бот назвал «самыми мощными» 200 т
+    // из поиска по словам, хотя в разделе стояли 300 т.
+    $leaf = specSection([
+        'Домкрат 200 т' => [90000, [['name' => 'Грузоподьемность, т', 'value' => '200']]],
+        'Домкрат 300 т' => [160000, [['name' => 'Грузоподьемность, т', 'value' => '300']]],
+        'Домкрат 50 т' => [20000, [['name' => 'Грузоподьемность, т', 'value' => '50']]],
+    ]);
+
+    $matches = assistantLookup()->bySpec(new SpecQuery(
+        conditions: [new SpecCondition(['грузоподъемность'], min: 1000, unit: 'т')],
+        sectionIds: [$leaf->id],
+    ));
+
+    expect($matches->cards)->toBe([])
+        ->and(array_map(fn ($card) => $card->name, $matches->nearest))->toBe(['Домкрат 300 т', 'Домкрат 200 т', 'Домкрат 50 т']);
+});
+
+it('при двух условиях товар обязан пройти оба', function (): void {
+    $leaf = specSection([
+        'Тяжёлый 100 т' => [30000, [['name' => 'Грузоподьемность, т', 'value' => '100'], ['name' => 'Вес, кг', 'value' => '90']]],
+        'Лёгкий 100 т' => [45000, [['name' => 'Грузоподьемность, т', 'value' => '100'], ['name' => 'Вес, кг', 'value' => '40']]],
+    ]);
+
+    $matches = assistantLookup()->bySpec(new SpecQuery(
+        conditions: [
+            new SpecCondition(['грузоподъемность'], min: 100, unit: 'т'),
+            new SpecCondition(['вес'], max: 60, unit: 'кг'),
+        ],
+        sectionIds: [$leaf->id],
+    ));
+
+    expect(array_map(fn ($card) => $card->name, $matches->cards))->toBe(['Лёгкий 100 т'])
+        // Ближайшие при двух условиях не определены — и не выдумываются.
+        ->and($matches->nearest)->toBe([]);
 });

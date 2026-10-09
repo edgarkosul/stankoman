@@ -66,6 +66,7 @@ final readonly class ChatMessageTelemetry
                 'search_knowledge_base' => 'искал в базе знаний',
                 'browse_categories' => 'смотрел разделы каталога',
                 'search_products' => 'искал товары',
+                'find_by_spec' => 'подбирал по характеристике',
                 'get_product' => 'смотрел карточку товара',
                 'escalate_to_operator' => 'позвал менеджера',
                 'request_contact' => 'предложил оставить контакты',

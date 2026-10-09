@@ -20,6 +20,7 @@ use App\Services\Ai\SystemPromptBuilder;
 use App\Services\Ai\Tools\AssistantTool;
 use App\Services\Ai\Tools\BrowseCategoriesTool;
 use App\Services\Ai\Tools\EscalateToOperatorTool;
+use App\Services\Ai\Tools\FindBySpecTool;
 use App\Services\Ai\Tools\GetProductTool;
 use App\Services\Ai\Tools\RequestContactTool;
 use App\Services\Ai\Tools\SearchKnowledgeBaseTool;
@@ -234,6 +235,7 @@ class AiSupportServiceProvider extends ServiceProvider
             $app->make(SearchKnowledgeBaseTool::class),
             $app->make(BrowseCategoriesTool::class),
             $app->make(SearchProductsTool::class),
+            $app->make(FindBySpecTool::class),
             $app->make(GetProductTool::class),
             $app->make(EscalateToOperatorTool::class),
             $app->make(RequestContactTool::class),

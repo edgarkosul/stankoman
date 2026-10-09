@@ -6,6 +6,8 @@ use App\Services\Ai\Data\ProductCard;
 use App\Services\Ai\Data\ProductMatches;
 use App\Services\Ai\Data\ProductQuery;
 use App\Services\Ai\Data\ProductSort;
+use App\Services\Ai\Data\SpecMatches;
+use App\Services\Ai\Data\SpecQuery;
 use App\Services\Ai\Tools\SearchProductsTool;
 use App\Services\Ai\Tools\ToolContext;
 use App\Services\Catalog\CatalogBrands;
@@ -37,6 +39,11 @@ function searchToolWith(Closure $onSearch, array $sections = []): SearchProducts
         public function search(ProductQuery $query): ProductMatches
         {
             return ($this->onSearch)($query);
+        }
+
+        public function bySpec(SpecQuery $query): SpecMatches
+        {
+            return new SpecMatches([], 0, 0, 0, [], []);
         }
 
         public function sections(string $query, int $limit): array
@@ -202,26 +209,19 @@ it('чужое слово в порядке выдачи не ломает по�
     expect($asked)->toBeNull();
 });
 
-it('выдача по совпадению напоминает искать заново, если под названный порог не подошло', function (): void {
+it('порог по характеристике выдача отправляет в find_by_spec, при любом порядке', function (?string $sort): void {
     // Песочница на бою, 09.10.2026: «пропил больше 400 мм», пятёрка по совпадению —
     // BSM-400 MFR и четыре настольных станка, и бот ответил «подходит одна позиция»
-    // при сорока подходящих в наличии. Отбора по характеристикам у поиска нет.
+    // при сорока подходящих в наличии. Ни повтор по словам, ни порядок по цене
+    // этого не лечат: порог проверяет только просмотр всего раздела.
     $tool = searchToolWith(static fn (): ProductMatches => new ProductMatches(
         [searchToolCard('Ленточнопильный станок Metal Master BSM-400 MFR')],
         'lentochnopilnyj stanok',
     ));
 
-    expect($tool->run(['query' => 'ленточнопильный станок'], new ToolContext))
-        ->toContain('Покупатель назвал порог')
-        ->toContain('ещё раз с sort «price_desc»');
-});
+    $arguments = ['query' => 'ленточнопильный станок'] + ($sort !== null ? ['sort' => $sort] : []);
 
-it('выдача, уже упорядоченная по цене, на тот же поиск по кругу не посылает', function (string $sort): void {
-    $tool = searchToolWith(static fn (): ProductMatches => new ProductMatches(
-        [searchToolCard('Ленточнопильный станок Metal Master BSM-400 MFR')],
-        'lentochnopilnyj stanok',
-    ));
-
-    expect($tool->run(['query' => 'ленточнопильный станок', 'sort' => $sort], new ToolContext))
-        ->not->toContain('Покупатель назвал порог');
-})->with(['price_desc', 'price_asc']);
+    expect($tool->run($arguments, new ToolContext))
+        ->toContain('Покупатель назвал порог по характеристике')
+        ->toContain('подбирай через find_by_spec');
+})->with([null, 'price_desc', 'price_asc']);

@@ -26,10 +26,6 @@ final readonly class BenchCase
      * @param  list<string>  $mustNotMatch  регулярки, которых быть не должно: число
      *                                      с единицей, а не сама единица — отказ
      *                                      «назвать значение в дБ не могу» не провал
-     * @param  array<string, int>  $mustCallTimes  инструмент => сколько раз он обязан
-     *                                             быть вызван: «искал один раз» там, где
-     *                                             первая выдача заведомо неполна, —
-     *                                             провал подбора, а не ответ
      */
     public function __construct(
         public string $id,
@@ -41,7 +37,6 @@ final readonly class BenchCase
         public ?bool $mustEscalate = null,
         public string $note = '',
         public array $mustNotMatch = [],
-        public array $mustCallTimes = [],
     ) {}
 
     /**
@@ -84,21 +79,6 @@ final readonly class BenchCase
         foreach ($this->mustNotMatch as $pattern) {
             if (preg_match($pattern, $text) === 1) {
                 $problems[] = "выдумал значение ({$pattern})";
-            }
-        }
-
-        /*
-         * Счёт вызовов, а не ссылок в ответе: ссылки на всё найденное
-         * дописывает к ответу форматтер, и «подходит одна модель» с пятью
-         * ссылками внизу проходило бы проверку по числу товаров.
-         */
-        $counts = array_count_values($called);
-
-        foreach ($this->mustCallTimes as $tool => $times) {
-            $made = $counts[$tool] ?? 0;
-
-            if ($made < $times) {
-                $problems[] = "{$tool} вызван {$made} раз, а ждали не меньше {$times}";
             }
         }
 

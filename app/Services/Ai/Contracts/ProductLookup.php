@@ -6,6 +6,8 @@ use App\Services\Ai\Data\CatalogSection;
 use App\Services\Ai\Data\ProductCard;
 use App\Services\Ai\Data\ProductMatches;
 use App\Services\Ai\Data\ProductQuery;
+use App\Services\Ai\Data\SpecMatches;
+use App\Services\Ai\Data\SpecQuery;
 
 /**
  * Каталог магазина глазами ассистента.
@@ -41,6 +43,16 @@ interface ProductLookup
      * есть только у товара, который покупатель назвал по обозначению.
      */
     public function search(ProductQuery $query): ProductMatches;
+
+    /**
+     * Подбор по характеристикам: ВСЕ товары разделов, отобранные по числу
+     * в строках характеристик, от дешёвых к дорогим.
+     *
+     * В отличие от search() здесь нет окна релевантности: на «компрессор
+     * от 3 кубов» поиск по словам отдаёт пятёрку, где порог прошли не все,
+     * а самые дешёвые подходящие лежат за её краем.
+     */
+    public function bySpec(SpecQuery $query): SpecMatches;
 
     /**
      * Листовые разделы каталога по слову покупателя, от самого подходящего.
