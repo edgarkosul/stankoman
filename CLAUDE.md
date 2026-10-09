@@ -277,7 +277,8 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
   рассуждения насовсем (`AI_AGENT_REASONING=off`) bots проверял: быстрее не стало,
   а в каталог за характеристиками модель ходит реже.
 - **Канал чата — `AI_CHAT_CHANNEL`** (09.10.2026, по выжимке bots `~/projects/bots/docs/deepseek-direct.md`
-  через kratonshop; бой не переключён, по умолчанию `aitunnel` — в контейнере тот же объект, что раньше).
+  через kratonshop; по умолчанию `aitunnel` — в контейнере тот же объект, что раньше; **бой на `deepseek`
+  с 09.10.2026 11:42 МСК**, копия `.env` до этого — `shared/.env.bak-2026-10-09-deepseek`).
   `deepseek` — чат прямо в `api.deepseek.com`, модель `deepseek-flash` (это V4.1-Flash), aitunnel —
   запасной (`AI_CHAT_RESERVE`), эмбеддинги — всегда aitunnel. В bots и kratonshop так дешевле в 8–10 раз
   (0,06–0,09 ₽ за ответ против 0,6–0,7), в пик DeepSeek медленнее: у kratonshop 09.10 в 10:26 МСК p50 4,2
@@ -310,6 +311,11 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
     `AI_CHAT_CHANNEL=deepseek` и `AI_CHAT_RESERVE=aitunnel` в `shared/.env`, три шага «Правки `shared/.env`»
     плюс `queue:restart` → `ai:kb-doctor --probe` — «канал deepseek», в логе `LLM call` с
     `"channel":"deepseek"`, `LLM failover` нет. Откат — `AI_CHAT_CHANNEL=aitunnel` и те же шаги.
+  - **Замер на бою 09.10.2026, 11:38 МСК (пик DeepSeek)**, `--channels=deepseek --runs=1`: 30 из 30, сорвалось 0,
+    ответ p50 / p90 / p95 7,1 / 9,7 / 10,5 с, 0,115 ₽, кэш ввода 91 %, 68 вызовов без единого сбоя. Медленнее, чем
+    у kratonshop (4,2 с): ответы intertooler длиннее, на последнем шаге 1,3–1,5 тыс. токенов вывода, а в пик
+    DeepSeek выдаёт их медленнее, чем «быстрый» провайдер aitunnel. Сравнения с aitunnel в тот же час нет —
+    при сомнениях `--channels=deepseek --channels=aitunnel+latency` вперемешку, лучше и вне пика.
   - **Тексты для покупателей** (проверено на бою 09.10.2026). Под полем ввода чата: «Отправляя вопрос, вы
     соглашаетесь с условиями и Политикой обработки персональных данных» — ссылки на страницы `terms`
     (обновлена 29.09.2026) и `privacy` (28.03.2026) из таблицы `pages`. Ни консультанта, ни aitunnel, ни
