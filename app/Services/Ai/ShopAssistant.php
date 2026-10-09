@@ -168,7 +168,8 @@ final class ShopAssistant
                 continue;
             }
 
-            $text = trim($result->content);
+            // Обращение по заглушке имени — не утечка, его просто убираем.
+            $text = PiiRedactor::withoutNamePlaceholder(trim($result->content));
 
             // Вызов инструмента текстом (ToolMarkup): посетителю — без тегов,
             // вызова по нему не делаем. Срезаем до гардов и до истории:
@@ -420,13 +421,14 @@ final class ShopAssistant
     /**
      * В ответе заглушка редактора вместо живого контакта.
      *
-     * Ложных срабатываний взяться неоткуда: эти три строки в проекте
+     * Ложных срабатываний взяться неоткуда: эти строки в проекте
      * встречаются только в PiiRedactor, а ссылки разметки выглядят как
-     * `[текст](адрес)` и с ними не совпадают.
+     * `[текст](адрес)` и с ними не совпадают. [имя] сюда доходит, только если
+     * withoutNamePlaceholder не нашёл, как его убрать.
      */
     public static function leaksPlaceholder(string $text): bool
     {
-        foreach ([PiiRedactor::EMAIL, PiiRedactor::PHONE, PiiRedactor::NUMBER] as $placeholder) {
+        foreach (PiiRedactor::PLACEHOLDERS as $placeholder) {
             if (str_contains($text, $placeholder)) {
                 return true;
             }
