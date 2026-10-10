@@ -19,7 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
          * Подлинность запроса подтверждает секрет в заголовке —
          * см. MaxHookController.
          */
-        $middleware->validateCsrfTokens(except: ['hooks/max']);
+        $middleware->preventRequestForgery(except: ['hooks/max']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

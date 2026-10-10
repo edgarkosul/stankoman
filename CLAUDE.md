@@ -11,11 +11,22 @@ Laravel-приложении, каталог наполняется импорт
 
 ## Стек
 
-Laravel 12 + Livewire 4 (Flux free) + Filament 5, PHP 8.4, MariaDB, Redis
+Laravel 13 + Livewire 4 (Flux free) + Filament 5, PHP 8.4, MariaDB, Redis
 (кэш и очередь), Meilisearch 1.16 через Scout, Tailwind v4 (CSS-first, без
 `tailwind.config.js`), Vite 7, Pest 4. Аутентификация витрины — Fortify,
 печать карточки товара — Dompdf, импорт/экспорт таблиц — PhpSpreadsheet,
 подсказки по реквизитам — DaData.
+
+**Guzzle закреплён на 7** (`guzzlehttp/guzzle ^7.8.2` в `composer.json`, 10.10.2026),
+хотя Laravel 13 принимает и 8. Копия движка бота при сетевой ошибке зовёт
+`ConnectException::getHandlerContext()` (`AitunnelLlmClient`), а в Guzzle 8 его нет;
+пакету `siteko/chatbot`, наоборот, нужен 8-й. Поэтому Guzzle меняется в одной выкладке
+с переводом на пакет (bots, реестр 10.3.4), а до неё ограничение не снимать.
+
+CSRF-мидлвар в Laravel 13 называется `PreventRequestForgery`; `VerifyCsrfToken` и
+`ValidateCsrfToken` остались его устаревшими наследниками. Снимать с маршрута надо
+именно его: `withoutMiddleware()` убирает класс и его наследников, а родителя по имени
+наследника не снимает.
 
 ## Наследие в именах
 
