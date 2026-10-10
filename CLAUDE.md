@@ -833,6 +833,15 @@ Ubuntu 24.04, 2 vCPU / ~3.7 ГБ RAM / 59 ГБ. Коробка общая — н
 - **Канал чата ИИ**: `AI_CHAT_CHANNEL` в `shared/.env` (по умолчанию `aitunnel`), для `deepseek` нужен
   `AI_DEEPSEEK_KEY` — ключ DeepSeek intertooler, кладёт Эдгар. Порядок проверки и переключения —
   «Скорость ответа бота и шлюз», «Канал чата».
+- **Приватные пакеты composer** (`siteko/filament-restic-backups`, с 10.3.4 — `siteko/chatbot`) хук
+  тянет через git по SSH ключами развёртывания `deploy` (10.10.2026; до этого брал только то, что лежало
+  в кэше composer, и restic 0.3.5 не поставился бы). У каждого репозитория свой ключ, read-only:
+  `~/.ssh/github_filament-restic-backups`, `~/.ssh/github_chatbot` — второй создан заранее, на GitHub
+  его добавить вместе с репозиторием. Один ключ GitHub на два репозитория не принимает, а ssh
+  остановился бы на первом подошедшем, поэтому у каждого свой псевдоним хоста в `~/.ssh/config`
+  (`github-restic`, `github-chatbot`), и `url.…insteadOf` в `~/.gitconfig` подменяет на него адрес
+  из `composer.lock`. Токена в `auth.json` нет: строка «Failed to download … from dist … Now trying
+  to download from source» в выводе деплоя — норма. Проверка — `ssh -T github-restic`.
 - **Бэкапы**: Filament-плагин restic, команды `restic-backups:{run,cleanup-rollbacks,cleanup-exports,unlock}`.
 - **Прочее**: ispmanager на 1500/1501, vsftpd на 21 (пассивные 40000–40100),
   privoxy 8118 (локально), ufw, fail2ban (sshd, vsftpd), unattended-upgrades.
