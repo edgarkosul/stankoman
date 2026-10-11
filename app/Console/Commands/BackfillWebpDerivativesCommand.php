@@ -64,13 +64,14 @@ class BackfillWebpDerivativesCommand extends Command
                     $paths = $this->collectContentPaths([$page->content], $resolver);
                     if ($paths === []) {
                         $noPageImages++;
+
                         continue;
                     }
 
                     foreach ($paths as $path) {
                         if (! $this->queuePath(
                             $path,
-                            'page ' . $page->id,
+                            'page '.$page->id,
                             $resolver,
                             $disk,
                             $force,
@@ -115,13 +116,14 @@ class BackfillWebpDerivativesCommand extends Command
                         $paths = $this->collectContentPaths([$slider->slides], $resolver);
                         if ($paths === []) {
                             $noSliderImages++;
+
                             continue;
                         }
 
                         foreach ($paths as $path) {
                             if (! $this->queuePath(
                                 $path,
-                                'slider ' . $slider->id,
+                                'slider '.$slider->id,
                                 $resolver,
                                 $disk,
                                 $force,
@@ -165,23 +167,23 @@ class BackfillWebpDerivativesCommand extends Command
         Log::info('WebP derivatives backfill queued', $summary);
 
         $this->info(
-            'Queued: ' . $queued
-            . '. Ready: ' . $ready
-            . '. Skipped: ' . $skipped
-            . '. Duplicates: ' . $duplicates
-            . '. No images (pages+sliders): ' . ($noPageImages + $noSliderImages)
-            . '. Unique paths: ' . count($seen)
-            . '.'
+            'Queued: '.$queued
+            .'. Ready: '.$ready
+            .'. Skipped: '.$skipped
+            .'. Duplicates: '.$duplicates
+            .'. No images (pages+sliders): '.($noPageImages + $noSliderImages)
+            .'. Unique paths: '.count($seen)
+            .'.'
         );
 
         if ($skipReasons !== []) {
-            $this->line('Skipped by reason: ' . $this->formatSkipReasons($skipReasons));
+            $this->line('Skipped by reason: '.$this->formatSkipReasons($skipReasons));
         }
 
         if ($showSkipped && $sampleLimit > 0 && $skipSamples !== []) {
             $this->line('Skipped examples:');
             foreach ($skipSamples as $reason => $samples) {
-                $this->line('- ' . $reason . ': ' . implode(' | ', $samples));
+                $this->line('- '.$reason.': '.implode(' | ', $samples));
             }
         }
 
@@ -223,6 +225,7 @@ class BackfillWebpDerivativesCommand extends Command
     ): bool {
         if (isset($seen[$path])) {
             $duplicates++;
+
             return true;
         }
 
@@ -230,6 +233,7 @@ class BackfillWebpDerivativesCommand extends Command
 
         if (! $disk->exists($path)) {
             $this->recordSkip($skipped, $skipReasons, $skipSamples, 'source_missing', $path, $recordLabel, $sampleLimit);
+
             return true;
         }
 
@@ -237,12 +241,14 @@ class BackfillWebpDerivativesCommand extends Command
             $srcset = $resolver->buildWebpSrcset($path);
             if ($srcset !== null) {
                 $ready++;
+
                 return true;
             }
         }
 
         if ($limit !== null && $queued >= $limit) {
             $limitReached = true;
+
             return false;
         }
 
@@ -251,6 +257,7 @@ class BackfillWebpDerivativesCommand extends Command
 
         if ($limit !== null && $queued >= $limit) {
             $limitReached = true;
+
             return false;
         }
 
@@ -283,7 +290,7 @@ class BackfillWebpDerivativesCommand extends Command
 
         $label = $value;
         if ($recordLabel !== null && $recordLabel !== '') {
-            $label = $recordLabel . ': ' . $value;
+            $label = $recordLabel.': '.$value;
         }
 
         $skipSamples[$reason][] = $label;
@@ -293,7 +300,7 @@ class BackfillWebpDerivativesCommand extends Command
     {
         $parts = [];
         foreach ($skipReasons as $reason => $count) {
-            $parts[] = $reason . '=' . $count;
+            $parts[] = $reason.'='.$count;
         }
 
         return implode(', ', $parts);

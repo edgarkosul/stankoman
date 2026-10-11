@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 class CategorySeeder extends Seeder
 {
     private ?array $picsPool = null;
+
     private bool $picsWarned = false;
 
     public function run(): void
@@ -66,7 +67,7 @@ class CategorySeeder extends Seeder
         }
 
         if ($slug === '') {
-            $slug = 'category-' . Str::lower(Str::random(6));
+            $slug = 'category-'.Str::lower(Str::random(6));
         }
 
         return Category::create([

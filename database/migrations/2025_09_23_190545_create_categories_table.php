@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('categories', function (Blueprint $table) {
@@ -23,7 +24,7 @@ return new class extends Migration {
             $table->timestamps();
 
             // уникальность внутри уровня
-            $table->unique(['parent_id', 'slug'],  'categories_parent_slug_unique');
+            $table->unique(['parent_id', 'slug'], 'categories_parent_slug_unique');
             $table->unique(['parent_id', 'order'], 'categories_parent_order_unique'); // гарантируем уникальные позиции
         });
     }

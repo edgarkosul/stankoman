@@ -2,7 +2,10 @@
 
 namespace App\Filament\Resources\Attributes\RelationManagers;
 
+use App\Filament\Resources\Products\ProductResource;
+use App\Models\Attribute;
 use App\Models\AttributeOption;
+use App\Models\Product;
 use App\Models\ProductAttributeOption;
 use App\Models\ProductAttributeValue;
 use Filament\Actions\Action;
@@ -67,7 +70,7 @@ class ProductsUnifiedRelationManager extends RelationManager
             ->columns([
                 TextColumn::make('product.id')->label('ID')->sortable(),
                 TextColumn::make('product.name')
-                    ->url(fn ($record) => \App\Filament\Resources\Products\ProductResource::getUrl('edit', [
+                    ->url(fn ($record) => ProductResource::getUrl('edit', [
                         'record' => $record->product?->slug,
                     ]))
                     ->openUrlInNewTab()
@@ -143,7 +146,7 @@ class ProductsUnifiedRelationManager extends RelationManager
                                 ->preload() // включаем предзагрузку
                                 // Что показать сразу при открытии модалки:
                                 ->options(function () {
-                                    /** @var \App\Models\Attribute $attribute */
+                                    /** @var Attribute $attribute */
                                     $attribute = $this->getOwnerRecord();
                                     $attributeId = $attribute->getKey();
                                     $categoryIds = $attribute->categories()->pluck('id')->all();
@@ -152,7 +155,7 @@ class ProductsUnifiedRelationManager extends RelationManager
                                         return [];
                                     }
 
-                                    $query = \App\Models\Product::query()
+                                    $query = Product::query()
                                         // если нужно — раскомментируй:
                                         // ->where('is_active', true)
                                         ->whereHas('categories', fn ($q) => $q->whereIn('categories.id', $categoryIds));
@@ -209,7 +212,7 @@ class ProductsUnifiedRelationManager extends RelationManager
 
                                 // Поиск по тем же допустимым товарам:
                                 ->getSearchResultsUsing(function (string $queryString) {
-                                    /** @var \App\Models\Attribute $attribute */
+                                    /** @var Attribute $attribute */
                                     $attribute = $this->getOwnerRecord();
                                     $attributeId = $attribute->getKey();
                                     $categoryIds = $attribute->categories()->pluck('id')->all();
@@ -218,7 +221,7 @@ class ProductsUnifiedRelationManager extends RelationManager
                                         return [];
                                     }
 
-                                    $query = \App\Models\Product::query()
+                                    $query = Product::query()
                                         // ->where('is_active', true)
                                         ->whereHas('categories', fn ($q) => $q->whereIn('categories.id', $categoryIds))
                                         ->where('name', 'like', "%{$queryString}%");
@@ -265,7 +268,7 @@ class ProductsUnifiedRelationManager extends RelationManager
                                 })
 
                                 ->noSearchResultsMessage('Ничего не найдено в привязанных категориях')
-                                ->getOptionLabelUsing(fn ($value) => \App\Models\Product::find($value)?->name)
+                                ->getOptionLabelUsing(fn ($value) => Product::find($value)?->name)
                                 ->required(),
 
                         ];
@@ -327,13 +330,13 @@ class ProductsUnifiedRelationManager extends RelationManager
                         $attributeId = $attr->getKey();
                         $productId = (int) $data['product_id'];
                         $allowedCategoryIds = $attr->categories()->pluck('id')->all();
-                        $belongs = \App\Models\Product::query()
+                        $belongs = Product::query()
                             ->whereKey($productId)
                             ->whereHas('categories', fn ($q) => $q->whereIn('categories.id', $allowedCategoryIds))
                             ->exists();
 
                         if (! $belongs) {
-                            \Filament\Notifications\Notification::make()
+                            Notification::make()
                                 ->danger()
                                 ->title('Товар не относится к категориям этого фильтра')
                                 ->body('Выберите товар из привязанных к фильтру категорий.')

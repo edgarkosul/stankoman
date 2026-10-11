@@ -81,7 +81,7 @@ XML;
         expect(fn () => iterator_to_array((new XmlStreamParser)->parse(
             new ResolvedSource(source: $path, resolvedPath: $path),
             ['record_node' => '  '],
-        )))->toThrow(\RuntimeException::class);
+        )))->toThrow(RuntimeException::class);
     } finally {
         @unlink($path);
     }

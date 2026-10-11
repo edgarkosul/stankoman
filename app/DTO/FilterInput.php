@@ -10,13 +10,13 @@ use App\Enums\FilterType;
 final class FilterInput
 {
     /**
-     * @param string          $key           Ключ фильтра.
-     * @param FilterType|null $type          Тип фильтра из UI.
-     * @param string[]        $values        Список значений (очищенных).
-     * @param float|null      $min           Минимум для диапазона.
-     * @param float|null      $max           Максимум для диапазона.
-     * @param bool|null       $bool          Значение булевого фильтра.
-     * @param bool            $hasBoolValue  Был ли передан флажок (отличие false/null).
+     * @param  string  $key  Ключ фильтра.
+     * @param  FilterType|null  $type  Тип фильтра из UI.
+     * @param  string[]  $values  Список значений (очищенных).
+     * @param  float|null  $min  Минимум для диапазона.
+     * @param  float|null  $max  Максимум для диапазона.
+     * @param  bool|null  $bool  Значение булевого фильтра.
+     * @param  bool  $hasBoolValue  Был ли передан флажок (отличие false/null).
      */
     public function __construct(
         public string $key,

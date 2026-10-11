@@ -12,7 +12,7 @@ final class FilterInputNormalizer
 {
     public static function normalize(string $key, mixed $payload): FilterInput
     {
-        $type   = self::extractType($payload);
+        $type = self::extractType($payload);
         $values = self::normalizeValues($payload);
 
         [$min, $max] = $type === FilterType::RANGE
@@ -69,10 +69,10 @@ final class FilterInputNormalizer
             $values[] = $payload;
         }
 
-        $values = array_map(static fn($v) => trim((string) $v), $values);
+        $values = array_map(static fn ($v) => trim((string) $v), $values);
         $values = array_values(array_filter(
             array_unique($values),
-            static fn($v) => $v !== ''
+            static fn ($v) => $v !== ''
         ));
 
         return $values;

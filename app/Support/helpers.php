@@ -5,8 +5,7 @@ if (! function_exists('price')) {
      * Формат рублёвой суммы: 12 345 ₽
      *
      * @param  int|float|string|null  $amount  сумма в рублях
-     * @param  string|null            $symbol  символ валюты (по умолчанию ₽)
-     * @return string
+     * @param  string|null  $symbol  символ валюты (по умолчанию ₽)
      */
     function price(int|float|string|null $amount, ?string $symbol = null): string
     {
@@ -20,6 +19,6 @@ if (! function_exists('price')) {
         $nbsp = "\u{00A0}";
         $symbol = $symbol ?? '₽';
 
-        return $formatted . $nbsp . $symbol;
+        return $formatted.$nbsp.$symbol;
     }
 }

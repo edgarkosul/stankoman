@@ -6,6 +6,7 @@ use App\Enums\ProductWarranty;
 use App\Models\Category;
 use App\Models\Product;
 use Faker\Factory as FakerFactory;
+use Faker\Generator;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -140,7 +141,7 @@ class ProductSeeder extends Seeder
         Schema::enableForeignKeyConstraints();
     }
 
-    private function discountFrom(int $price, \Faker\Generator $faker): int
+    private function discountFrom(int $price, Generator $faker): int
     {
         $discount = (int) round($price * $faker->randomFloat(2, 0.6, 0.95));
 

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Support\FilterSchemaCache;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $category_id
@@ -15,8 +16,8 @@ use Illuminate\Database\Eloquent\Relations\Pivot;
  * @property bool $visible_in_specs
  * @property bool $visible_in_compare
  * @property string|null $group_override
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  *
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CategoryAttribute newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|CategoryAttribute newQuery()

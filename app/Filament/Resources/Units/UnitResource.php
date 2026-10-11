@@ -11,7 +11,6 @@ use App\Models\Unit;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use UnitEnum;
 
@@ -21,14 +20,16 @@ class UnitResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-scale';
 
-
     protected static ?string $recordTitleAttribute = 'name';
+
     protected static ?string $navigationLabel = 'Единицы измерения';
 
     protected static ?string $modelLabel = 'единица изменения';
+
     protected static ?string $pluralModelLabel = 'единицы измерения';
 
-    protected static string | UnitEnum | null $navigationGroup = 'Фильтры';
+    protected static string|UnitEnum|null $navigationGroup = 'Фильтры';
+
     protected static ?int $navigationSort = 3;
 
     public static function form(Schema $schema): Schema
