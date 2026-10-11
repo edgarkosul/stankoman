@@ -154,10 +154,6 @@ test('edit setting page switches the product callback button with a toggle', fun
     // Строку заводит миграция, фабрика здесь упёрлась бы в уникальный ключ.
     $setting = Setting::query()->where('key', 'product.show_callback_button')->sole();
 
-    // Подпись проверяем напрямую: админка в тестах рендерится в локали en
-    // (из-за этого же на main падают три соседних теста этого файла).
-    app()->setLocale('ru');
-
     expect(Setting::translateKey('product.show_callback_button'))
         ->toBe('Кнопка «Заказать звонок менеджера» на карточке товара');
 

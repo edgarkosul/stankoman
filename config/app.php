@@ -80,9 +80,12 @@ return [
     |
     */
 
-    'locale' => env('APP_LOCALE', 'en'),
+    // Переводы у сайта только русские (lang/ru), на бою APP_LOCALE=ru.
+    // С умолчанием 'en' дев и тесты без этой переменной рисовали админку
+    // по-английски, а ключи настроек — сырыми.
+    'locale' => env('APP_LOCALE', 'ru'),
 
-    'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
+    'fallback_locale' => env('APP_FALLBACK_LOCALE', 'ru'),
 
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
 
