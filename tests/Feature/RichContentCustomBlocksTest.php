@@ -182,24 +182,25 @@ it('renders pdf link custom block using direct external url', function () {
 
 it('renders rutube video with optional width cap', function () {
     $html = RutubeVideoBlock::toHtml([
-        'rutube_id' => 'abc123',
+        'rutube_id' => '1b883a32340ac3c8f33b77695879a227',
         'width' => 640,
         'alignment' => 'left',
     ], []);
 
     expect($html)->toContain('style="max-width: min(100%, 640px);"')
         ->and($html)->toContain('video--left')
-        ->and($html)->toContain('src="https://rutube.ru/play/embed/abc123"')
+        ->and($html)->toContain('src="https://rutube.ru/play/embed/1b883a32340ac3c8f33b77695879a227"')
         ->and($html)->not->toContain('width="')
         ->and($html)->not->toContain('height="');
 });
 
 it('renders rutube video without width cap when missing', function () {
     $html = RutubeVideoBlock::toHtml([
-        'rutube_id' => 'abc123',
+        'rutube_id' => '1b883a32340ac3c8f33b77695879a227',
     ], []);
 
-    expect($html)->not->toContain('style="max-width:');
+    expect($html)->toContain('src="https://rutube.ru/play/embed/1b883a32340ac3c8f33b77695879a227"')
+        ->and($html)->not->toContain('style="max-width:');
 });
 
 it('renders youtube video with optional width cap', function () {
