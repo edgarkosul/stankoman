@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Page;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Siteko\Chatbot\Contracts\SettingsStore;
 use Siteko\Chatbot\Settings\Keys;
@@ -19,6 +20,9 @@ beforeEach(function (): void {
     // Предпросмотр выключен — иначе виджета на странице нет вовсе.
     config(['ai_support.chat.preview.enabled' => false]);
     Storage::fake('public');
+    // «Доставка и оплата» — в базе знаний бота: её сохранение ставит
+    // переиндексацию на redis-assistant мимо QUEUE_CONNECTION=sync.
+    Queue::fake();
 });
 
 function launcherPage(): Page
