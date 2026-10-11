@@ -1,0 +1,6 @@
+# Коммиты, которые git blame пропускает: только форматирование, авторство строк не меняют.
+# Локально включается один раз: git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub читает файл сам.
+
+# style: код приведён к pint (50 файлов)
+928a42b2e04fe698aae5b2e1cd03e3297c8dd100
