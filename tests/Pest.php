@@ -21,11 +21,19 @@ pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->in('Feature');
 
-beforeEach(function (): void {
+/*
+ * Именно pest()->beforeEach()->in(): голый beforeEach() здесь применяется
+ * только к самому Pest.php и не выполнялся ни для одного теста. Проверка
+ * базы и запрет живого Redis — в Tests\TestCase, им нужно успеть раньше.
+ */
+pest()->beforeEach(function (): void {
+    if (! $this instanceof TestCase) {
+        return;
+    }
+
     NameNormalizer::flushCache();
-    ensureSafeTestingDatabase();
     ensureBackupTablesExist();
-});
+})->in('Feature', 'Unit');
 
 /*
  * Unit-тесты, которые рисуют витрину на своей урезанной схеме, получают
@@ -67,29 +75,6 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
-}
-
-function ensureSafeTestingDatabase(): void
-{
-    if (! app()->environment('testing')) {
-        throw new RuntimeException('Tests must run in the testing environment.');
-    }
-
-    $defaultConnection = (string) config('database.default');
-    $connection = config("database.connections.{$defaultConnection}", []);
-    $driver = $connection['driver'] ?? null;
-    $database = $connection['database'] ?? null;
-
-    $isSafeSqliteConnection = $driver === 'sqlite';
-    $isSafeDedicatedDatabase = is_string($database) && str_contains($database, '_test');
-
-    if (! $isSafeSqliteConnection && ! $isSafeDedicatedDatabase) {
-        throw new RuntimeException(sprintf(
-            'Refusing to run tests against the [%s] connection with database [%s].',
-            $defaultConnection,
-            is_scalar($database) ? (string) $database : 'unknown',
-        ));
-    }
 }
 
 /**

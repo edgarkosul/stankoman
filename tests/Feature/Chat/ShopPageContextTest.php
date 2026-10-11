@@ -3,6 +3,7 @@
 use App\Models\Category;
 use App\Models\Page;
 use App\Models\Product;
+use Illuminate\Support\Facades\Queue;
 use Siteko\Chatbot\Ai\Tools\ToolContext;
 use Siteko\Chatbot\Chat\Contracts\PageContextSource;
 
@@ -13,6 +14,12 @@ use Siteko\Chatbot\Chat\Contracts\PageContextSource;
  * (DiscountVisibility), и бот не должен узнать её из контекста страницы
  * в обход карточки.
  */
+
+beforeEach(function (): void {
+    // Страницы из базы знаний бота ставят переиндексацию на redis-assistant
+    // мимо QUEUE_CONNECTION=sync.
+    Queue::fake();
+});
 
 function chatShopProduct(array $overrides = []): Product
 {

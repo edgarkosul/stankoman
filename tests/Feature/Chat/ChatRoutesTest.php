@@ -8,8 +8,15 @@ use App\Shop\Chat\ChatPreviewGate;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
 use Siteko\Chatbot\Models\ChatConversation;
+
+beforeEach(function (): void {
+    // Страницы из базы знаний бота ставят переиндексацию на redis-assistant
+    // мимо QUEUE_CONNECTION=sync.
+    Queue::fake();
+});
 
 function chatRoutesCookie(): string
 {

@@ -4,8 +4,13 @@ use App\Models\Menu;
 use App\Models\MenuItem;
 use App\Models\Page;
 use Database\Seeders\PrimaryMenuSeeder;
+use Illuminate\Support\Facades\Queue;
 
 test('primary menu seeder creates pages and menu items', function () {
+    // Сидер заводит «Производство» и «Сервис» — они в базе знаний бота
+    // и ставят переиндексацию на redis-assistant мимо QUEUE_CONNECTION=sync.
+    Queue::fake();
+
     $this->seed(PrimaryMenuSeeder::class);
 
     $menu = Menu::query()->where('key', 'primary')->first();
