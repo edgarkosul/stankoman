@@ -195,7 +195,12 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 >   («90° (мм)» → «Сечение заготовки под 90°, мм»).
 > - **Выкладка перевода:** очередь `assistant` должна быть пуста, а отложенные задачи
 >   прежних классов (`App\Jobs\…`) в Redis не переживут выкладку — на деве 11.10 так
->   упали 180 старых задач переиндексации.
+>   упали 180 старых задач переиндексации. **Выложено на бой 11.10.2026 в 21:30 МСК**
+>   (релиз `20261011213027`, прошлый — `20261011055830`; снимок restic перед ней — тег
+>   `pre-chatbot-package`): 13 миграций за 0,27 с, `chatbot:kb-reindex` — пересчитано 0,
+>   `chatbot:bench --channels=deepseek --runs=1` — 33 из 33, 0,064 ₽. Откат — сначала
+>   `php artisan migrate:rollback` в НОВОМ релизе (миграции перевода — один пакет), потом
+>   `current` на прошлый, reload php8.4-fpm и `queue:restart`.
 > - **Канал `deepseek` на пакете проверен на деве 11.10.2026** (в дев-`.env` канала нет — там
 >   aitunnel, поэтому `AI_CHAT_CHANNEL=deepseek AI_CHAT_RESERVE=aitunnel` перед командой и обход privoxy):
 >   `chatbot:kb-doctor --probe` — «канал deepseek», ключ принят; `chatbot:bench --channels=deepseek --runs=1`
@@ -502,7 +507,10 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
   этого решения разошлись. Неполная настройка = выключенная капча; недоступный сервис
   пропускает посетителя и пишет в лог (над капчей есть и намордник, и nginx). На деве
   и в тестах — заглушка: ключи выписаны на `intertooler.ru` с проверкой домена, и токен
-  с `localhost` сервис не примет, то есть живого виджета на деве нет.
+  с `localhost` сервис не примет, то есть живого виджета на деве нет. А на бою браузер
+  без окна (Playwright) получает задание «введите текст с картинки» — первое сообщение
+  автоматом не проверить, только руками (11.10.2026). Ошибки React #418/#423 в консоли
+  при этом — из скрипта самой капчи (`smartcaptcha.cloud.yandex.ru`), не наши.
   Прятать угловой блок сервиса можно только в обмен на свою плашку (`x-captcha.notice`) —
   это условия использования, а не косметика.
 - **Потолок на действиях Livewire** — `throttle:120,1`, ставится
@@ -630,8 +638,8 @@ LegacyProducts) плюс отдельные страницы под импорт
 
 Всё в `routes/console.php` — там же комментарии, почему что стоит именно так.
 На бою его крутит systemd-таймер `intertooler-scheduler.timer`, **не cron**
-(кронтабы пустые). Очередь на бою обрабатывает один воркер —
-`intertooler-queue-default.service`.
+(кронтабы пустые). Очередь на бою обрабатывают два воркера —
+`intertooler-queue-default.service` и `intertooler-queue-assistant.service` (ответы бота).
 
 ## Работа на деве
 
@@ -887,8 +895,10 @@ Ubuntu 24.04, 2 vCPU / ~3.7 ГБ RAM / 59 ГБ. Коробка общая — н
 - **Поиск**: Meilisearch в докере, compose — `/opt/meilisearch/docker-compose.yml`,
   контейнер `meilisearch-meilisearch-1` (`restart=unless-stopped`), слушает
   `127.0.0.1:7700`, здоровье — `curl 127.0.0.1:7700/health`.
-- **Очередь**: systemd-юнит `intertooler-queue-default.service` (один `queue:work redis`).
-  После обновления PHP его надо перезапустить, иначе держит старый бинарник.
+- **Очередь**: два systemd-юнита — `intertooler-queue-default.service`
+  (`queue:work redis --queue=default`) и `intertooler-queue-assistant.service`
+  (`queue:work redis-assistant --queue=assistant --timeout=240`, ответы бота).
+  После обновления PHP их надо перезапустить, иначе держат старый бинарник.
 - **Планировщик**: `intertooler-scheduler.timer` → `schedule:run` каждую минуту.
   Сервис `oneshot`, и с 09.10.2026 у него drop-in
   `/etc/systemd/system/intertooler-scheduler.service.d/killmode.conf` с `KillMode=process`.
