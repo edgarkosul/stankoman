@@ -5,6 +5,7 @@ use App\Filament\Resources\Products\ProductResource;
 use App\Filament\Resources\Products\RelationManagers\AttributeOptionsRelationManager;
 use App\Filament\Resources\Products\RelationManagers\AttributeValuesRelationManager;
 use App\Filament\Resources\Products\RelationManagers\CategoriesRelationManager;
+use App\Filament\Resources\Products\RelationManagers\LegacyProductsRelationManager;
 use App\Models\Product;
 use App\Models\User;
 use Filament\Resources\RelationManagers\RelationGroup;
@@ -20,7 +21,7 @@ test('product resource groups filter relation managers under filters tab', funct
     $relations = ProductResource::getRelations();
 
     expect($relations)
-        ->toHaveCount(2)
+        ->toHaveCount(3)
         ->and($relations[0])->toBeInstanceOf(RelationGroup::class)
         ->and($relations[0]->getLabel())->toBe('Фильтры')
         ->and($relations[0]->getManagers())->toBe([
@@ -29,7 +30,8 @@ test('product resource groups filter relation managers under filters tab', funct
         ])
         ->and(AttributeValuesRelationManager::getTitle($product, EditProduct::class))->toBe('Свободные значения')
         ->and(AttributeOptionsRelationManager::getTitle($product, EditProduct::class))->toBe('Заданные варианты')
-        ->and($relations[1])->toBe(CategoriesRelationManager::class);
+        ->and($relations[1])->toBe(CategoriesRelationManager::class)
+        ->and($relations[2])->toBe(LegacyProductsRelationManager::class);
 });
 
 test('edit product page renders grouped filter relation managers', function (): void {

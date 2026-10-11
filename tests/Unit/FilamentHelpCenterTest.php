@@ -42,6 +42,7 @@ test('help center routes match real admin routes and only omit explicitly unsupp
         // Страница-инструкция сама себе справка.
         'filament.admin.pages.bot-guide',
         'filament.admin.pages.assistant-settings',
+        'filament.admin.pages.chat-appearance',
         'filament.admin.pages.kb-gaps',
         'filament.admin.resources.chat-conversations.index',
         'filament.admin.resources.chat-conversations.view',
@@ -49,6 +50,9 @@ test('help center routes match real admin routes and only omit explicitly unsupp
         'filament.admin.resources.kb-articles.edit',
         'filament.admin.resources.kb-articles.index',
         'filament.admin.resources.kb-categories.index',
+        // Ручное сопоставление товаров старого kratonkuban.ru появилось уже
+        // без живой справки — та же причина, что у заявок на звонок.
+        'filament.admin.resources.legacy-products.index',
     ])->sort()->values();
 
     expect($filamentRouteNames->diff($mappedRouteNames)->values())->toEqual($unsupportedRouteNames);
