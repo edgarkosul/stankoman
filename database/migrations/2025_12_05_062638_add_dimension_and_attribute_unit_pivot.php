@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -68,7 +68,7 @@ return new class extends Migration
                 DB::table('attribute_unit')->updateOrInsert(
                     [
                         'attribute_id' => $attr->id,
-                        'unit_id'      => $attr->unit_id,
+                        'unit_id' => $attr->unit_id,
                     ],
                     [
                         'is_default' => true,

@@ -2,9 +2,9 @@
 
 namespace App\Filament\Resources\Categories\Pages;
 
-use Filament\Resources\Pages\ListRecords;
 use App\Filament\Resources\Categories\CategoryResource;
 use App\Filament\Resources\Categories\Widgets\CategoryTreeWidget;
+use Filament\Resources\Pages\ListRecords;
 
 class ListCategories extends ListRecords
 {
@@ -30,7 +30,8 @@ class ListCategories extends ListRecords
             // CategoryTreeWidget::class,
         ];
     }
-    public  function getHeaderWidgetsColumns(): int|array
+
+    public function getHeaderWidgetsColumns(): int|array
     {
         return 1; // одна колонка => виджет растянется на всю ширину
     }

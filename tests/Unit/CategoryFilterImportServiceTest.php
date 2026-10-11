@@ -12,6 +12,7 @@ use App\Support\Products\CategoryFilterImportService;
 use App\Support\Products\CategoryFilterTemplateExportService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -303,7 +304,7 @@ function setTemplateCellByHeader(Worksheet $sheet, int $row, string $header, mix
         throw new RuntimeException("Header {$header} not found");
     }
 
-    $columnLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($index + 1);
+    $columnLetter = Coordinate::stringFromColumnIndex($index + 1);
     $sheet->setCellValue($columnLetter.$row, $value);
 }
 

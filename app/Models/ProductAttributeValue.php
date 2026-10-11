@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\FilterSchemaCache;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -17,13 +18,13 @@ use Illuminate\Database\Eloquent\Model;
  * @property float|null $value_min
  * @property float|null $value_max
  * @property bool|null $value_boolean
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Models\Attribute $attribute
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read Attribute $attribute
  * @property-read string|null $display_value
  * @property-read string|null $display_value_si
  * @property-read mixed $raw_value
- * @property-read \App\Models\Product $product
+ * @property-read Product $product
  *
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeValue newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeValue newQuery()

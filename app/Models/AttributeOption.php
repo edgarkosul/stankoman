@@ -4,15 +4,16 @@ namespace App\Models;
 
 use App\Support\FilterSchemaCache;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
  * @property int $attribute_id
  * @property string $value
  * @property int $sort_order
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Models\Attribute $attribute
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read Attribute $attribute
  *
  * @method static \Illuminate\Database\Eloquent\Builder<static>|AttributeOption newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|AttributeOption newQuery()

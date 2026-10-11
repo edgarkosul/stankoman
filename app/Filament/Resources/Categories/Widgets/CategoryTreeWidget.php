@@ -8,7 +8,7 @@ use Illuminate\Contracts\View\View;
 
 class CategoryTreeWidget extends Widget
 {
-    protected  string $view = 'filament.resources.categories.widgets.category-tree-widget';
+    protected string $view = 'filament.resources.categories.widgets.category-tree-widget';
 
     protected ?string $heading = 'Дерево категорий';
 
@@ -35,9 +35,9 @@ class CategoryTreeWidget extends Widget
             ->get();
     }
 
-    public function render(): \Illuminate\Contracts\View\View
+    public function render(): View
     {
-        $expandableIds = \App\Models\Category::query()
+        $expandableIds = Category::query()
             ->whereHas('children')
             ->pluck('id')
             ->all();

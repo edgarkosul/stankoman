@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Models\Product;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -19,6 +18,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $value_min
  * @property string|null $value_max
  * @property-read Product|null $product
+ *
  * @method static \Illuminate\Database\Eloquent\Builder<static>|AttributeProductLink newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|AttributeProductLink newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|AttributeProductLink query()
@@ -34,6 +34,7 @@ use Illuminate\Database\Eloquent\Model;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|AttributeProductLink whereValueMin($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|AttributeProductLink whereValueNumber($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|AttributeProductLink whereValueText($value)
+ *
  * @mixin \Eloquent
  */
 class AttributeProductLink extends Model
@@ -42,10 +43,13 @@ class AttributeProductLink extends Model
 
     // Ключ теперь есть
     protected $primaryKey = 'id';
+
     public $incrementing = false;
+
     protected $keyType = 'string';
 
     public $timestamps = false;
+
     protected $guarded = [];
 
     public function product()

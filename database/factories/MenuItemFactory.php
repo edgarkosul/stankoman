@@ -3,10 +3,11 @@
 namespace Database\Factories;
 
 use App\Models\Menu;
+use App\Models\MenuItem;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\MenuItem>
+ * @extends Factory<MenuItem>
  */
 class MenuItemFactory extends Factory
 {

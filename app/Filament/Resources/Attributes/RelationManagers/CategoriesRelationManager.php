@@ -76,7 +76,7 @@ class CategoriesRelationManager extends RelationManager
                     ->color('danger')
                     ->requiresConfirmation()
                     ->modalHeading('Отвязать эту категорию от атрибута?')
-                    ->action(function (\App\Models\Category $record): void {
+                    ->action(function (Category $record): void {
                         $categoryId = (int) $record->getKey();
 
                         $this->getRelationship()->detach($categoryId);

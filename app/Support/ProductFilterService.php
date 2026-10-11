@@ -338,7 +338,7 @@ class ProductFilterService
 
         foreach ($selected as $key => $payload) {
             $input = FilterInputNormalizer::normalize($key, $payload);
-            /** @var \App\Models\Attribute|null $attr */
+            /** @var Attribute|null $attr */
             $attr = $attrs->get($key);
             $type = $input->type;
 

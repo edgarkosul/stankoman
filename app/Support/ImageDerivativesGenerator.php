@@ -24,13 +24,15 @@ class ImageDerivativesGenerator
         if (! $disk->exists($normalizedPath)) {
             $result->skipped['source'] = 'missing';
             $result->status = 'fail';
+
             return $result;
         }
 
-        $lock = Cache::lock('image-derivatives:' . $key, 600);
+        $lock = Cache::lock('image-derivatives:'.$key, 600);
         if (! $lock->get()) {
             $result->skipped['lock'] = 'locked';
             $result->status = 'partial';
+
             return $result;
         }
 
@@ -40,21 +42,23 @@ class ImageDerivativesGenerator
             $sourceWidth = $sourceImage->width();
 
             $folder = trim((string) config('image-derivatives.folder', 'images-webp'), '/');
-            $targetDir = $folder . '/' . $key;
+            $targetDir = $folder.'/'.$key;
             $disk->makeDirectory($targetDir);
 
             foreach ($this->ladder() as $w) {
                 if ($w > $sourceWidth) {
                     $result->skipped[(string) $w] = 'too_large';
+
                     continue;
                 }
 
-                $finalPath = $targetDir . '/w' . $w . '.webp';
+                $finalPath = $targetDir.'/w'.$w.'.webp';
                 $finalExists = $disk->exists($finalPath);
                 $finalValid = $finalExists ? $this->validFileExists($finalPath) : false;
 
                 if (! $force && $finalValid) {
                     $result->skipped[(string) $w] = 'exists';
+
                     continue;
                 }
 
@@ -68,12 +72,13 @@ class ImageDerivativesGenerator
                     $image->scaleDown($w);
                     $encoded = $this->encodeWebp($image, $w);
 
-                    $tmpPath = $targetDir . '/w' . $w . '.webp.tmp-' . Str::random(8);
+                    $tmpPath = $targetDir.'/w'.$w.'.webp.tmp-'.Str::random(8);
                     $disk->put($tmpPath, $encoded);
 
                     if (! $this->validFileExists($tmpPath)) {
                         $disk->delete($tmpPath);
                         $result->skipped[(string) $w] = 'error: empty';
+
                         continue;
                     }
 
@@ -82,6 +87,7 @@ class ImageDerivativesGenerator
                     if (! $this->validFileExists($finalPath)) {
                         $disk->delete($tmpPath);
                         $result->skipped[(string) $w] = 'error: move_failed';
+
                         continue;
                     }
 
@@ -90,13 +96,13 @@ class ImageDerivativesGenerator
                     if ($tmpPath && $disk->exists($tmpPath)) {
                         $disk->delete($tmpPath);
                     }
-                    $result->skipped[(string) $w] = 'error: ' . Str::limit($e->getMessage(), 180, '');
+                    $result->skipped[(string) $w] = 'error: '.Str::limit($e->getMessage(), 180, '');
                 }
             }
 
             $result->status = $this->determineStatus($result);
         } catch (\Throwable $e) {
-            $result->skipped['error'] = 'error: ' . Str::limit($e->getMessage(), 180, '');
+            $result->skipped['error'] = 'error: '.Str::limit($e->getMessage(), 180, '');
             $result->status = 'fail';
         } finally {
             $lock->release();

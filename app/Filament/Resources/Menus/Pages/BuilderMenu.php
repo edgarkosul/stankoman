@@ -28,6 +28,7 @@ class BuilderMenu extends Page implements HasForms
     use InteractsWithRecord;
 
     protected static string $resource = MenuResource::class;
+
     protected static ?string $title = 'Конструктор меню';
 
     protected string $view = 'filament.resources.menus.pages.builder-menu';

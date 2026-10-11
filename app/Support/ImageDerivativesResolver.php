@@ -11,7 +11,7 @@ class ImageDerivativesResolver
     {
         $folder = trim((string) config('image-derivatives.folder', 'images-webp'), '/');
 
-        return $folder . '/' . $key . '/w' . $w . '.webp';
+        return $folder.'/'.$key.'/w'.$w.'.webp';
     }
 
     public function derivativeUrl(string $key, int $w): string
@@ -78,7 +78,7 @@ class ImageDerivativesResolver
 
     public function hashKeyFromSourcePath(string $path): string
     {
-        return 'h_' . sha1($this->normalizeSourcePath($path));
+        return 'h_'.sha1($this->normalizeSourcePath($path));
     }
 
     public function legacyKeyFromSourcePath(string $path): string
@@ -116,7 +116,7 @@ class ImageDerivativesResolver
 
         $items = [];
         foreach ($widths as $w) {
-            $items[] = $this->derivativeUrl($key, $w) . ' ' . $w . 'w';
+            $items[] = $this->derivativeUrl($key, $w).' '.$w.'w';
         }
 
         return implode(', ', $items);

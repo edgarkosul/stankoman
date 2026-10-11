@@ -27,7 +27,7 @@ class HeroSliderBlock extends RichContentCustomBlock
             ->schema([
                 Select::make('slider_id')
                     ->label('Слайдер')
-                    ->options(fn() => Slider::query()
+                    ->options(fn () => Slider::query()
                         ->orderBy('name')
                         ->pluck('name', 'id'))
                     ->searchable()
@@ -41,14 +41,14 @@ class HeroSliderBlock extends RichContentCustomBlock
     public static function toPreviewHtml(array $config): string
     {
         $slider = null;
-        if (!empty($config['slider_id'])) {
+        if (! empty($config['slider_id'])) {
             $slider = Slider::find($config['slider_id']);
         }
 
         $slidesCount = $slider ? count($slider->slides ?? []) : 0;
 
         return view('filament.forms.components.rich-editor.rich-content-custom-blocks.hero-slider.preview', [
-            'slider'      => $slider,
+            'slider' => $slider,
             'slidesCount' => $slidesCount,
         ])->render();
     }
@@ -60,7 +60,7 @@ class HeroSliderBlock extends RichContentCustomBlock
     public static function toHtml(array $config, array $data): string
     {
         $slider = null;
-        if (!empty($config['slider_id'])) {
+        if (! empty($config['slider_id'])) {
             $slider = Slider::find($config['slider_id']);
         }
 

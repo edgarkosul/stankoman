@@ -15,7 +15,7 @@ class Show extends Component
     public Order $order;
 
     /**
-     * @throws \Symfony\Component\HttpKernel\Exception\NotFoundHttpException
+     * @throws NotFoundHttpException
      */
     public function mount(string $date, string $seq): void
     {

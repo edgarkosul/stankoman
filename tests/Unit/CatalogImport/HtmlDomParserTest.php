@@ -102,7 +102,7 @@ it('throws for invalid card selector', function () {
         expect(fn () => iterator_to_array((new HtmlDomParser)->parse(
             new ResolvedSource(source: $path, resolvedPath: $path),
             ['card_selector' => 'div['],
-        )))->toThrow(\RuntimeException::class);
+        )))->toThrow(RuntimeException::class);
     } finally {
         @unlink($path);
     }

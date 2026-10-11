@@ -5,8 +5,8 @@ namespace App\Support;
 class ImageDerivativesGenerationResult
 {
     /**
-     * @param array<int> $generatedWidths
-     * @param array<string, string> $skipped
+     * @param  array<int>  $generatedWidths
+     * @param  array<string, string>  $skipped
      */
     public function __construct(
         public string $key,

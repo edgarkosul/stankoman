@@ -5,16 +5,17 @@ namespace App\Models;
 use App\Support\FilterSchemaCache;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $product_id
  * @property int $attribute_id
  * @property int $attribute_option_id
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Models\Attribute $attribute
- * @property-read \App\Models\AttributeOption $option
- * @property-read \App\Models\Product $product
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property-read Attribute $attribute
+ * @property-read AttributeOption $option
+ * @property-read Product $product
  * @property-write mixed $for_product
  *
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ProductAttributeOption forAttribute(int $attributeId)
