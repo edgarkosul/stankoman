@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "addf52795661163135ce9f9f21b028fe",
+    "content-hash": "6c8ef3216813ee5ade85c47744e5b391",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -7340,11 +7340,17 @@
         },
         {
             "name": "siteko/chatbot",
-            "version": "0.1.0",
+            "version": "v0.1.1",
+            "source": {
+                "type": "git",
+                "url": "git@github.com:siteko-net/chatbot.git",
+                "reference": "8e2836d1fbf21aabce48f41677b25e78d7d7fc13"
+            },
             "dist": {
-                "type": "path",
-                "url": "../bots/packages/chatbot",
-                "reference": "d9a8caf5b8b32f6e855fd658a705630759dcb96d"
+                "type": "zip",
+                "url": "https://api.github.com/repos/siteko-net/chatbot/zipball/8e2836d1fbf21aabce48f41677b25e78d7d7fc13",
+                "reference": "8e2836d1fbf21aabce48f41677b25e78d7d7fc13",
+                "shasum": ""
             },
             "require": {
                 "guzzlehttp/guzzle": "^8.0",
@@ -7371,10 +7377,7 @@
                 "proprietary"
             ],
             "description": "Движок ИИ-консультанта: шлюз, база знаний, чат. Про конкретный сайт знает только через контракты.",
-            "transport-options": {
-                "symlink": false,
-                "relative": true
-            }
+            "time": "2026-10-11T11:49:50+00:00"
         },
         {
             "name": "siteko/filament-restic-backups",
