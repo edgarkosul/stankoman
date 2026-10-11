@@ -7340,16 +7340,16 @@
         },
         {
             "name": "siteko/chatbot",
-            "version": "v0.1.1",
+            "version": "v0.1.2",
             "source": {
                 "type": "git",
                 "url": "git@github.com:siteko-net/chatbot.git",
-                "reference": "8e2836d1fbf21aabce48f41677b25e78d7d7fc13"
+                "reference": "a7ab07f5696458aed97de40ad947dbc1d1fc1dec"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/siteko-net/chatbot/zipball/8e2836d1fbf21aabce48f41677b25e78d7d7fc13",
-                "reference": "8e2836d1fbf21aabce48f41677b25e78d7d7fc13",
+                "url": "https://api.github.com/repos/siteko-net/chatbot/zipball/a7ab07f5696458aed97de40ad947dbc1d1fc1dec",
+                "reference": "a7ab07f5696458aed97de40ad947dbc1d1fc1dec",
                 "shasum": ""
             },
             "require": {
@@ -7377,7 +7377,7 @@
                 "proprietary"
             ],
             "description": "Движок ИИ-консультанта: шлюз, база знаний, чат. Про конкретный сайт знает только через контракты.",
-            "time": "2026-10-11T11:49:50+00:00"
+            "time": "2026-10-11T20:01:33+00:00"
         },
         {
             "name": "siteko/filament-restic-backups",
