@@ -5,28 +5,29 @@ namespace App\Support\Mail;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
 use App\Mail\CallbackRequestManagerMail;
-use App\Mail\ChatEscalationManagerMail;
 use App\Mail\ChatOperatorRepliedMail;
 use App\Mail\OrderSubmittedCustomerMail;
 use App\Mail\OrderSubmittedManagerMail;
 use App\Mail\WelcomeNoPassword;
 use App\Mail\WelcomeSetPassword;
 use App\Models\CallbackRequest;
-use App\Models\ChatConversation;
-use App\Models\ChatMessage;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\User;
 use App\Notifications\Auth\ResetPasswordNotification;
 use App\Notifications\Auth\VerifyEmailNotification;
-use App\Services\Chat\ChatEscalationService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Mail\Mailable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Siteko\Chatbot\Chat\ChatEscalationService;
+use Siteko\Chatbot\Chat\Data\EscalationNotice;
+use Siteko\Chatbot\Mail\EscalationManagerMail;
+use Siteko\Chatbot\Models\ChatConversation;
+use Siteko\Chatbot\Models\ChatMessage;
 
 class MailPreviewFactory
 {
@@ -58,7 +59,7 @@ class MailPreviewFactory
                 'key' => 'chat-escalation-manager',
                 'group' => 'Заявки',
                 'label' => 'Чат: вопрос передан менеджеру',
-                'expectedText' => 'Чат: покупатель просит менеджера',
+                'expectedText' => 'Посетитель просит менеджера в чате',
             ],
             [
                 'key' => 'chat-operator-replied',
@@ -242,7 +243,7 @@ class MailPreviewFactory
      * Поэтому реплики подкладываются отношением, а заявка — пустым
      * отношением, чтобы письмо не полезло её искать.
      */
-    private function chatEscalationPreview(): ChatEscalationManagerMail
+    private function chatEscalationPreview(): EscalationManagerMail
     {
         $conversation = $this->existing(new ChatConversation, [
             'id' => 412,
@@ -254,7 +255,6 @@ class MailPreviewFactory
             'created_at' => Carbon::parse('2026-03-27 12:51:00'),
         ]);
 
-        $conversation->setRelation('callbackRequest', null);
         $conversation->setRelation('messages', collect([
             $this->existing(new ChatMessage, [
                 'id' => 8801,
@@ -270,12 +270,19 @@ class MailPreviewFactory
             ]),
         ]));
 
-        return new ChatEscalationManagerMail(
+        // Письмо — пакета бота (`chatbot::mail.escalation-manager`); тексты
+        // уведомления собирает его же джоба, здесь — их образец.
+        return new EscalationManagerMail(
             conversation: $conversation,
-            trigger: ChatEscalationService::TRIGGER_VISITOR,
-            reason: 'Покупатель просит подтвердить срок отгрузки.',
-            adminUrl: url('/admin/chat-conversations/'.$conversation->id),
-            customer: 'Иван Петров (ivan.petrov@example.test)',
+            notice: new EscalationNotice(
+                conversationId: (int) $conversation->id,
+                trigger: ChatEscalationService::TRIGGER_VISITOR,
+                title: 'Посетитель просит менеджера в чате',
+                summary: 'Нужен станок под нержавейку 40 мм. Успеете отгрузить до конца недели?',
+                url: url('/admin/chat-conversations/'.$conversation->id),
+                reason: 'Покупатель просит подтвердить срок отгрузки.',
+            ),
+            visitor: 'Иван Петров (ivan.petrov@example.test)',
         );
     }
 

@@ -1,20 +1,21 @@
 <?php
 
-use App\Jobs\GenerateChatReplyJob;
-use App\Models\AiUsageEntry;
-use App\Models\ChatConversation;
-use App\Models\ChatMessage;
-use App\Services\Ai\Contracts\LlmClient;
-use App\Services\Ai\Data\ChatResult;
-use App\Services\Ai\Data\EmbeddingBatch;
-use App\Services\Ai\Exceptions\LlmException;
-use App\Services\Ai\Providers\FakeLlmClient;
-use App\Services\Ai\ShopAssistant;
-use App\Services\Chat\ChatConversationService;
+use Siteko\Chatbot\Ai\Assistant;
+use Siteko\Chatbot\Ai\Contracts\LlmClient;
+use Siteko\Chatbot\Ai\Data\ChatResult;
+use Siteko\Chatbot\Ai\Data\EmbeddingBatch;
+use Siteko\Chatbot\Ai\Exceptions\LlmException;
+use Siteko\Chatbot\Ai\Providers\FakeLlmClient;
+use Siteko\Chatbot\Chat\ChatConversationService;
+use Siteko\Chatbot\Jobs\GenerateChatReplyJob;
+use Siteko\Chatbot\Models\AiUsageEntry;
+use Siteko\Chatbot\Models\ChatConversation;
+use Siteko\Chatbot\Models\ChatMessage;
 
 /*
- * Джоба запускается руками через контейнер: очередь здесь не нужна, нужен
- * исход в ленте. Модель — FakeLlmClient (AI_EMBEDDING_FAKE=true в phpunit.xml):
+ * Джоба — пакета бота; здесь она проверяется на швах магазина и в режиме
+ * одного сайта (номер 1, `chatbot.site_id`). Запускается руками через
+ * контейнер: очередь здесь не нужна, нужен исход в ленте. Модель — FakeLlmClient (AI_EMBEDDING_FAKE=true в phpunit.xml):
  * отвечает заглушкой без сети, векторы детерминированы.
  *
  * Правило, которое тут держится: посетитель смотрит на индикатор, поэтому
@@ -33,7 +34,7 @@ function chatVisitorQuestion(array $conversation = [], string $body = 'Кака�
 
 function runChatReplyJob(ChatMessage $question): void
 {
-    app()->call([new GenerateChatReplyJob($question->chat_conversation_id, $question->id), 'handle']);
+    app()->call([new GenerateChatReplyJob(1, $question->chat_conversation_id, $question->id), 'handle']);
 }
 
 /** Шлюз, который не отвечает на вопросы, но векторы считать умеет. */
@@ -45,7 +46,7 @@ function chatBrokenGateway(): LlmClient
 
         public function __construct()
         {
-            $this->fake = new FakeLlmClient((int) config('ai_support.embedding.dimensions'));
+            $this->fake = new FakeLlmClient((int) config('chatbot.embedding.dimensions'));
         }
 
         public function chat(
@@ -141,7 +142,7 @@ it('не отвечает на вопрос, который перебит сл�
 });
 
 it('с выключенным ботом не молчит, а передаёт вопрос менеджеру', function (): void {
-    config(['ai_support.agent.enabled' => false]);
+    config(['chatbot.agent.enabled' => false]);
 
     $question = chatVisitorQuestion();
 
@@ -158,7 +159,7 @@ it('повтор первого вопроса отдаёт из кэша без
 
     // Второй разговор: шлюз лежит, но отвечать ему и не придётся.
     app()->instance(LlmClient::class, chatBrokenGateway());
-    app()->forgetInstance(ShopAssistant::class);
+    app()->forgetInstance(Assistant::class);
 
     $repeat = chatVisitorQuestion(body: 'как оплатить заказ');
 

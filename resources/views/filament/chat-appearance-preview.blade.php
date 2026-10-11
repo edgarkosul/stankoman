@@ -42,7 +42,7 @@
     </style>
 </head>
 @php
-    $classes = $launcher->classes($picture !== null || $launcher->image === \App\Services\Chat\ChatLauncher::IMAGE_ROBOT);
+    $classes = $launcher->classes($picture !== null || $launcher->image === \App\Shop\Chat\ChatLauncher::IMAGE_ROBOT);
 @endphp
 <body>
     <div class="page" aria-hidden="true">
@@ -50,7 +50,7 @@
         <div class="cards"><b></b><b></b><b></b><b></b></div>
     </div>
 
-    @if ($launcher->style === \App\Services\Chat\ChatLauncher::STYLE_PILL)
+    @if ($launcher->style === \App\Shop\Chat\ChatLauncher::STYLE_PILL)
         <div class="sample">
             <div class="{{ $classes }} cl-narrow">
                 <span class="cl-button">

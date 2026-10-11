@@ -6,10 +6,10 @@ use App\Enums\SettingType;
 use App\Filament\Resources\ChatConversations\ChatConversationResource;
 use App\Filament\Resources\KbArticles\KbArticleResource;
 use App\Models\Setting;
-use App\Services\Ai\AssistantConfig;
 use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
 use Illuminate\Support\Facades\Auth;
+use Siteko\Chatbot\Ai\AssistantConfig;
 use Throwable;
 use UnitEnum;
 

@@ -29,6 +29,13 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // С пакетом siteko/chatbot эту таблицу создаёт его миграция от 19.09 —
+        // на свежей базе (тесты) раньше этой. На бою таблица от этой миграции
+        // и пакетная её пропускает; схема у них одна.
+        if (Schema::hasTable('ai_gateway_probes')) {
+            return;
+        }
+
         Schema::create('ai_gateway_probes', function (Blueprint $table): void {
             $table->id();
 

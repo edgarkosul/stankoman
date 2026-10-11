@@ -2,10 +2,17 @@
 
 namespace App\Shop;
 
+use App\Filament\Resources\ChatConversations\ChatConversationResource;
 use App\Models\User;
-use App\Services\Chat\Contracts\EscalationTarget;
+use Filament\Actions\Action;
+use Filament\Notifications\Notification as FilamentNotification;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Siteko\Chatbot\Chat\Contracts\EscalationTarget;
+use Siteko\Chatbot\Chat\Data\EscalationNotice;
+use Siteko\Chatbot\Contracts\SettingsStore;
+use Siteko\Chatbot\Settings\Keys;
 
 /**
  * Сотрудники магазина — те, чьи почты стоят в настройках.
@@ -18,38 +25,61 @@ use Illuminate\Support\Str;
  *
  * ⚠️ Список админов и живые пользователи — РАЗНЫЕ вещи. Почта в настройке
  * без строки в `users` уведомление в колокольчике не получит: получатель
- * ищется по таблице. Ошибки при этом не будет нигде — поэтому `ai:kb-doctor`
- * и проверяет пересечение.
+ * ищется по таблице, и ошибки при этом не будет нигде. Поэтому каждая
+ * эскалация, у которой из списка выпал хоть один адрес, пишет это в лог.
  */
 final class SettingsEscalationTarget implements EscalationTarget
 {
+    public function __construct(private readonly SettingsStore $settings) {}
+
     /**
      * @return list<string>
      */
     public function managerEmails(): array
     {
-        $managers = self::normalize(config('settings.general.manager_emails', []));
+        $managers = self::normalize($this->settings->get(Keys::ESCALATION_EMAILS, []));
 
         // Менеджерских почт нет — письмо уходит админам панели. Иначе
         // единственная незаполненная настройка тихо гасит весь канал.
-        return $managers !== [] ? $managers : $this->panelEmails();
+        return $managers !== [] ? $managers : self::panelEmails();
     }
 
     /**
-     * @return Collection<int, User>
+     * Колокольчик админки — источник истины об эскалации: письмо и пуш
+     * в MAX могут не дойти, а уведомление в панели лежит, пока его не прочли.
      */
-    public function panelRecipients(): Collection
+    public function notifyPanel(EscalationNotice $notice): void
     {
-        $emails = $this->panelEmails();
+        $emails = self::panelEmails();
+        $recipients = self::panelRecipients($emails);
 
-        if ($emails === []) {
-            /** @var Collection<int, User> */
-            return new Collection;
+        $missing = array_values(array_diff($emails, $recipients->pluck('email')->map(
+            static fn (mixed $email): string => Str::lower((string) $email),
+        )->all()));
+
+        if ($missing !== []) {
+            Log::warning('Escalation panel recipients without user rows', [
+                'conversation_id' => $notice->conversationId,
+                'emails' => $missing,
+            ]);
         }
 
-        // Регистронезависимость даёт сама колонка (utf8mb4_unicode_ci):
-        // LOWER() здесь был бы лишним и заодно выключил бы индекс.
-        return User::query()->whereIn('email', $emails)->get();
+        if ($recipients->isEmpty()) {
+            return;
+        }
+
+        FilamentNotification::make()
+            ->title($notice->title)
+            ->body($notice->summary)
+            ->icon('heroicon-o-chat-bubble-left-right')
+            ->warning()
+            ->actions($notice->url === null ? [] : [
+                Action::make('open')
+                    ->label('Открыть диалог')
+                    ->url($notice->url)
+                    ->markAsRead(),
+            ])
+            ->sendToDatabase($recipients);
     }
 
     public function displayName(?int $userId): string
@@ -69,6 +99,11 @@ final class SettingsEscalationTarget implements EscalationTarget
             : (string) $user->name;
     }
 
+    public function conversationUrl(int $conversationId): ?string
+    {
+        return ChatConversationResource::getUrl('view', ['record' => $conversationId]);
+    }
+
     /**
      * Почты тех, кто ходит в админку.
      *
@@ -80,9 +115,25 @@ final class SettingsEscalationTarget implements EscalationTarget
      *
      * @return list<string>
      */
-    private function panelEmails(): array
+    private static function panelEmails(): array
     {
-        return User::filamentAdminEmails();
+        return self::normalize(User::filamentAdminEmails());
+    }
+
+    /**
+     * @param  list<string>  $emails
+     * @return Collection<int, User>
+     */
+    private static function panelRecipients(array $emails): Collection
+    {
+        if ($emails === []) {
+            /** @var Collection<int, User> */
+            return new Collection;
+        }
+
+        // Регистронезависимость даёт сама колонка (utf8mb4_unicode_ci):
+        // LOWER() здесь был бы лишним и заодно выключил бы индекс.
+        return User::query()->whereIn('email', $emails)->get();
     }
 
     /**

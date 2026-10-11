@@ -3,12 +3,6 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Resources\KbArticles\KbArticleResource;
-use App\Services\Kb\Data\KbGapCluster;
-use App\Services\Kb\Data\KbGapQuestion;
-use App\Services\Kb\Data\KbGapReport;
-use App\Services\Kb\KbArticleDrafter;
-use App\Services\Kb\KbGapAnalyzer;
-use App\Services\Kb\KbVectorStore;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\Cache;
@@ -16,6 +10,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
+use Siteko\Chatbot\Kb\Data\KbGapCluster;
+use Siteko\Chatbot\Kb\Data\KbGapQuestion;
+use Siteko\Chatbot\Kb\Data\KbGapReport;
+use Siteko\Chatbot\Kb\KbArticleDrafter;
+use Siteko\Chatbot\Kb\KbGapAnalyzer;
+use Siteko\Chatbot\Kb\KbVectorStore;
 use Throwable;
 use UnitEnum;
 
@@ -121,7 +121,7 @@ class KbGaps extends Page
              */
             $hits = app(KbVectorStore::class)->searchByVector(
                 $cluster->centroid,
-                (int) config('ai_support.knowledge_base.draft.top_k'),
+                (int) config('chatbot.knowledge_base.draft.top_k'),
             );
 
             $draft = app(KbArticleDrafter::class)->draft(
@@ -159,7 +159,7 @@ class KbGaps extends Page
         Cache::put(
             self::draftCacheKey($key),
             $draft->toArray(),
-            (int) config('ai_support.knowledge_base.draft.ttl'),
+            (int) config('chatbot.knowledge_base.draft.ttl'),
         );
 
         $this->redirect(KbArticleResource::getUrl('create', [

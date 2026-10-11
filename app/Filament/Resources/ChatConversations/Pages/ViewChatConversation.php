@@ -6,10 +6,7 @@ use App\Filament\Resources\CallbackRequests\CallbackRequestResource;
 use App\Filament\Resources\ChatConversations\ChatConversationResource;
 use App\Filament\Resources\KbArticles\KbArticleResource;
 use App\Models\CallbackRequest;
-use App\Models\ChatConversation;
-use App\Models\ChatMessage;
 use App\Rules\ValidPhone;
-use App\Services\Chat\ChatEscalationService;
 use App\Support\CallbackRequestService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Radio;
@@ -20,6 +17,9 @@ use Filament\Resources\Pages\ViewRecord;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Livewire\Attributes\On;
+use Siteko\Chatbot\Chat\ChatEscalationService;
+use Siteko\Chatbot\Models\ChatConversation;
+use Siteko\Chatbot\Models\ChatMessage;
 
 /**
  * Карточка диалога: переписка целиком, ответ оператора и действия над ней.
@@ -156,7 +156,7 @@ class ViewChatConversation extends ViewRecord
                 ->icon('heroicon-o-phone-arrow-down-left')
                 ->color('gray')
                 ->modalDescription('Заявка появится в «Заявках на звонок» и привяжется к этому диалогу. Письмо менеджерам о ней не уйдёт — вы её и заводите.')
-                ->visible(fn (ChatConversation $record): bool => $record->callback_request_id === null)
+                ->visible(fn (ChatConversation $record): bool => $record->lead_ref === null)
                 ->schema([
                     TextInput::make('name')
                         ->label('Имя')
@@ -188,7 +188,7 @@ class ViewChatConversation extends ViewRecord
                         $record,
                         'Оператор '.Auth::user()?->name.' завёл заявку №'.$request->getKey().' по контактам из переписки.',
                         operatorId: Auth::id(),
-                        meta: ['event' => 'callback_created', 'callback_request_id' => $request->getKey()],
+                        meta: ['event' => 'callback_created', 'lead_ref' => $request->getKey()],
                     );
 
                     $this->refreshConversation();
@@ -204,9 +204,9 @@ class ViewChatConversation extends ViewRecord
                 ->label('Заявка')
                 ->icon('heroicon-o-phone')
                 ->color('gray')
-                ->visible(fn (ChatConversation $record): bool => $record->callback_request_id !== null)
+                ->visible(fn (ChatConversation $record): bool => $record->lead_ref !== null)
                 ->url(fn (ChatConversation $record): string => CallbackRequestResource::getUrl('view', [
-                    'record' => $record->callback_request_id,
+                    'record' => $record->lead_ref,
                 ])),
         ];
     }
@@ -240,7 +240,7 @@ class ViewChatConversation extends ViewRecord
             'notified_at' => now(),
         ]);
 
-        $record->forceFill(['callback_request_id' => $request->getKey()])->save();
+        $record->forceFill(['lead_ref' => $request->getKey()])->save();
 
         return $request;
     }

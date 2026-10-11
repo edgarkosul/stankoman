@@ -3,7 +3,7 @@
 namespace App\Services\Messengers;
 
 use App\Models\MessengerChannel;
-use App\Services\Notifications\Contracts\EscalationNotifier;
+use Siteko\Chatbot\Notifications\Contracts\EscalationNotifier;
 use Throwable;
 
 /**

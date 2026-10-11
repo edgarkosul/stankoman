@@ -5,13 +5,15 @@ namespace App\Shop;
 use App\Models\Category;
 use App\Models\Page;
 use App\Models\Product;
-use App\Services\Ai\Contracts\ProductLookup;
-use App\Services\Chat\Contracts\PageContextSource;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Siteko\Chatbot\Ai\Contracts\ProductLookup;
+use Siteko\Chatbot\Ai\Tools\ToolContext;
+use Siteko\Chatbot\Chat\Contracts\PageContextSource;
 use Throwable;
 
 /**
@@ -23,21 +25,77 @@ use Throwable;
  * скидку и НДС. У донора здесь была своя формула цены, вторая копия
  * ценовой политики, — а у нас скидка видна по посетителю, и разойтись
  * две копии могли бы ровно в деньгах.
+ *
+ * Панель чата пакета живёт в своей рамке (`/chat/panel`) и о странице знает
+ * только то, что ей сказал лаунчер: `{type: page, url, title}`. Что это за
+ * страница, решают маршруты самого сайта (`locator()`): адрес карточки
+ * товара — тот же разбор, что у роутера, а не своё регулярное выражение.
+ * Не узнали — остаётся адрес с заголовком, это тоже контекст.
  */
 final class ShopPageContext implements PageContextSource
 {
     public function __construct(
         private readonly ProductLookup $products,
+        private readonly Router $router,
     ) {}
 
     public function locate(Request $request): ?array
     {
         $route = $request->route();
 
-        if (! $route instanceof Route) {
+        return $route instanceof Route ? self::fromRoute($route) : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes  кто спрашивает — `ToolContext::$attributes`
+     */
+    public function describe(?array $locator, array $attributes = []): ?array
+    {
+        if ($locator === null || $locator === []) {
             return null;
         }
 
+        if (isset($locator['url']) && ! isset($locator['slug']) && ! isset($locator['path'])) {
+            $resolved = $this->locator((string) $locator['url']);
+
+            // Не наша страница или её нет — отдаём то, что прислала панель.
+            if ($resolved === null) {
+                return $locator;
+            }
+
+            return $this->resolve($resolved, $attributes) ?? $locator;
+        }
+
+        return $this->resolve($locator, $attributes);
+    }
+
+    /**
+     * Адрес страницы → указатель вида `{type, slug|path}` по маршрутам сайта.
+     *
+     * @return array<string, string>|null
+     */
+    private function locator(string $url): ?array
+    {
+        $path = parse_url($url, PHP_URL_PATH);
+
+        if (! is_string($path) || $path === '') {
+            return null;
+        }
+
+        try {
+            $route = $this->router->getRoutes()->match(Request::create($path, 'GET'));
+        } catch (Throwable) {
+            return null;
+        }
+
+        return self::fromRoute($route);
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    private static function fromRoute(Route $route): ?array
+    {
         return match ($route->getName()) {
             'home' => ['type' => 'home'],
             'product.show' => ['type' => 'product', 'slug' => self::slug($route->parameter('product'))],
@@ -47,8 +105,14 @@ final class ShopPageContext implements PageContextSource
         };
     }
 
-    public function describe(?array $locator, bool $seesDiscounts): ?array
+    /**
+     * @param  array<string, mixed>  $locator
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>|null
+     */
+    private function resolve(array $locator, array $attributes): ?array
     {
+        $seesDiscounts = (bool) ($attributes[ToolContext::SEES_MEMBER_PRICES] ?? false);
         $type = $locator['type'] ?? null;
 
         if ($type === null) {
@@ -86,7 +150,7 @@ final class ShopPageContext implements PageContextSource
             return null;
         }
 
-        $card = $this->products->find('', $slug, $seesDiscounts);
+        $card = $this->products->find('', $slug, [ToolContext::SEES_MEMBER_PRICES => $seesDiscounts]);
 
         if ($card === null) {
             return null;

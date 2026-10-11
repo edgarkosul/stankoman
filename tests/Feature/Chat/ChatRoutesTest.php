@@ -2,14 +2,14 @@
 
 use App\Listeners\Chat\AttachConversationToUser;
 use App\Listeners\Chat\ForgetConversationCookie;
-use App\Models\ChatConversation;
 use App\Models\Page;
 use App\Models\User;
-use App\Services\Chat\ChatPreviewGate;
+use App\Shop\Chat\ChatPreviewGate;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
+use Siteko\Chatbot\Models\ChatConversation;
 
 function chatRoutesCookie(): string
 {
@@ -104,4 +104,41 @@ it('привязывает разговор к покупателю, вошед�
     app(AttachConversationToUser::class)->handle(new Login('web', $user, false));
 
     expect($conversation->fresh()->user_id)->toBe($user->id);
+});
+
+it('рамку панели в предпросмотре не открыть по адресу без ключа', function (): void {
+    config(['ai_support.chat.preview.enabled' => true, 'ai_support.chat.preview.key' => 'klyuch-1']);
+
+    $this->get(route('chat.panel'))->assertNotFound();
+
+    // Ключ, раз пришедший со ссылкой, запоминается кукой — рамка с той же
+    // страницы открывается уже без него.
+    $this->get(route('chat.panel', ['bot' => 'klyuch-1']))->assertOk();
+});
+
+it('рамку встраивают только свои страницы, и она не кэшируется', function (): void {
+    config(['ai_support.chat.preview.enabled' => false]);
+
+    $this->get(route('chat.panel'))
+        ->assertOk()
+        ->assertHeader('Content-Security-Policy', "frame-ancestors 'self'")
+        ->assertHeader('X-Frame-Options', 'SAMEORIGIN')
+        ->assertSee('<meta name="robots" content="noindex, nofollow">', escape: false)
+        ->assertSeeLivewire('chatbot.chat-panel');
+});
+
+it('вошедшему покупателю рамка открывает цены «для своих», гостю — нет', function (): void {
+    config(['ai_support.chat.preview.enabled' => false]);
+
+    $guest = $this->get(route('chat.panel'))->assertOk();
+    $guestPanel = collect($guest->viewData('visitor'));
+
+    $user = User::factory()->create();
+    $member = $this->actingAs($user)->get(route('chat.panel'))->assertOk();
+
+    expect($guestPanel->all())->toBe(['sees_member_prices' => false])
+        ->and($member->viewData('visitor'))->toBe(['sees_member_prices' => true])
+        ->and($member->viewData('userId'))->toBe($user->id)
+        ->and($member->viewData('staff'))->toBeFalse()
+        ->and($member->viewData('origins'))->toBe([rtrim(url('/'), '/')]);
 });

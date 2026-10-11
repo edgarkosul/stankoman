@@ -1,8 +1,8 @@
 <?php
 
-use App\Services\Ai\Support\ProductTextExtractor;
 use App\Shop\ProductEmbeddingText;
 use App\Support\Products\ProductSpecs;
+use Siteko\Chatbot\Ai\Support\ProductTextExtractor;
 
 /*
  * Текст товара, уходящий в вектор. Здесь проверяется то, что от базы

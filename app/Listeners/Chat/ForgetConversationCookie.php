@@ -2,8 +2,8 @@
 
 namespace App\Listeners\Chat;
 
-use App\Services\Chat\ChatConversationService;
 use Illuminate\Auth\Events\Logout;
+use Siteko\Chatbot\Chat\ChatConversationService;
 
 /**
  * Выход из аккаунта — сбрасываем куку.
@@ -19,6 +19,6 @@ class ForgetConversationCookie
 
     public function handle(Logout $event): void
     {
-        $this->chat->forgetCookie();
+        $this->chat->forgetToken();
     }
 }

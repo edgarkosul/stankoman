@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Services\Chat;
+namespace App\Shop\Chat;
 
-use App\Models\ChatMessage;
+use Siteko\Chatbot\Models\ChatMessage;
 
 /**
  * Телеметрия ответа бота, переведённая на человеческий.

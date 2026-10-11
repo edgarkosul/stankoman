@@ -2,9 +2,6 @@ import tooltip from './plugins/tooltip';
 import cartModalFactory from './alpine/cart-modal';
 import chatLauncherFactory from './alpine/chat-launcher';
 import chatAvatarFactory from './alpine/chat-avatar';
-import autogrowTextareaFactory from './alpine/autogrow-textarea';
-import captchaSubmitFactory from './alpine/captcha-submit';
-import { captchaPreload } from './modules/captcha';
 import { initRuPhoneMask } from './modules/phone-mask-ru';
 import './modules/session-keepalive';
 import './modules/livewire-session-guard';
@@ -864,16 +861,6 @@ const overflowTooltipFactory = (content = '') => ({
 
 if (typeof window !== 'undefined') {
     window.prettyNumberInput = prettyNumberInputFactory;
-
-    /*
-     * Прогрев капчи по требованию.
-     *
-     * Глобальная функция, а не метод Alpine-компонента, потому что зовут её
-     * не с кнопки, а с обёртки формы: у чата это отрисовка поля ввода,
-     * у модалки витрины — её открытие. Момент у каждой формы свой, и решает
-     * его разметка.
-     */
-    window.captchaPreload = captchaPreload;
 }
 
 let imageGalleryLightboxes = [];
@@ -1524,8 +1511,6 @@ const registerAlpineData = () => {
     alpine.data('cartModal', cartModalFactory);
     alpine.data('chatLauncher', chatLauncherFactory);
     alpine.data('chatAvatar', chatAvatarFactory);
-    alpine.data('autogrowTextarea', autogrowTextareaFactory);
-    alpine.data('captchaSubmit', captchaSubmitFactory);
     registerRecentProductsStore(alpine);
 };
 

@@ -28,6 +28,17 @@ beforeEach(function (): void {
 });
 
 /*
+ * Unit-тесты, которые рисуют витрину на своей урезанной схеме, получают
+ * таблицу настроек бота: лаунчер чата на каждой странице читает из неё имя
+ * бота и подсказку. Тестам без приложения (чистые unit) она не нужна.
+ */
+pest()->beforeEach(function (): void {
+    if ($this instanceof TestCase) {
+        ensureChatbotSettingsTableExists();
+    }
+})->in('Unit');
+
+/*
 |--------------------------------------------------------------------------
 | Expectations
 |--------------------------------------------------------------------------
@@ -145,4 +156,24 @@ function ensureBackupTablesExist(): void
             $table->timestamps();
         });
     }
+}
+
+/**
+ * Настройки бота (пакет siteko/chatbot) — схема как у его миграции.
+ * Feature-тесты получают таблицу миграциями.
+ */
+function ensureChatbotSettingsTableExists(): void
+{
+    if (Schema::hasTable('chatbot_settings')) {
+        return;
+    }
+
+    Schema::create('chatbot_settings', function (Blueprint $table): void {
+        $table->id();
+        $table->unsignedBigInteger('site_id');
+        $table->string('key', 100);
+        $table->json('value');
+        $table->timestamp('updated_at')->nullable();
+        $table->unique(['site_id', 'key']);
+    });
 }

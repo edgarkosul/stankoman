@@ -1,18 +1,24 @@
 <?php
 
-namespace App\Services\Chat;
+namespace App\Shop\Chat;
 
 use Illuminate\Support\Facades\Storage;
+use Siteko\Chatbot\Contracts\SettingsStore;
+use Siteko\Chatbot\Settings\Keys;
 
 /**
  * Как чат выглядит на витрине: кнопка, аватар бота и своя картинка кнопки.
  *
- * Значения живут в общей таблице `settings` под `assistant.` и, как всё
- * остальное оттуда, читаются из конфига: лаунчер стоит на каждой странице
- * витрины, и лишний запрос к базе ради его вида не нужен никому.
+ * Кнопка — витрина магазина, а не пакета бота: у пакетного лаунчера нет
+ * робота, и умолчания у него другие. Поэтому кнопка и её картинка живут
+ * в общей таблице `settings` под `assistant.` и, как всё остальное оттуда,
+ * читаются из конфига: лаунчер стоит на каждой странице витрины, и лишний
+ * запрос к базе ради его вида не нужен никому.
  *
- * Только чтение. Пишет страница «Вид чата»: сервисы ассистента моделей
- * магазина (и `Setting` в том числе) не знают — сторож `AiServicesSeamTest`.
+ * Аватар — в настройках бота (`widget.avatar`): его же показывает шапка
+ * панели пакета, и лицо у бота на кнопке и в окне обязано быть одно.
+ *
+ * Только чтение. Пишет страница «Вид чата».
  */
 final class ChatAppearance
 {
@@ -23,7 +29,8 @@ final class ChatAppearance
     /** Ключи в `settings`: пишет по ним страница, витрина читает из конфига. */
     public const LAUNCHER = 'assistant.launcher';
 
-    public const AVATAR = 'assistant.avatar';
+    /** Аватар — настройка бота, а не магазина: см. шапку класса. */
+    public const AVATAR = Keys::WIDGET_AVATAR;
 
     public const LAUNCHER_PICTURE = 'assistant.launcher_picture';
 
@@ -41,6 +48,8 @@ final class ChatAppearance
 
     /** Значок чата на диске цвета бренда. */
     public const FACE_ICON = 'icon';
+
+    public function __construct(private readonly SettingsStore $settings) {}
 
     public function launcher(): ChatLauncher
     {
@@ -64,7 +73,7 @@ final class ChatAppearance
 
     public function avatarPath(): ?string
     {
-        return self::path(config('settings.'.self::AVATAR));
+        return self::path($this->settings->get(self::AVATAR));
     }
 
     public function launcherPicturePath(): ?string

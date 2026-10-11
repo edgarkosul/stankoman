@@ -1,4 +1,8 @@
 {
+  "_livewire-session-guard-BRVTAnrb.js": {
+    "file": "assets/livewire-session-guard-BRVTAnrb.js",
+    "name": "livewire-session-guard"
+  },
   "node_modules/photoswipe/dist/photoswipe.esm.js": {
     "file": "assets/photoswipe.esm-BXDdABy_.js",
     "name": "photoswipe.esm",
@@ -6,12 +10,21 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-DwkxDIH8.css",
+    "file": "assets/app-B_u8n1ee.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
     "names": [
       "app.css"
+    ]
+  },
+  "resources/css/chat-frame.css": {
+    "file": "assets/chat-frame-DU4xiOWP.css",
+    "src": "resources/css/chat-frame.css",
+    "isEntry": true,
+    "name": "chat-frame",
+    "names": [
+      "chat-frame.css"
     ]
   },
   "resources/css/filament/admin/theme.css": {
@@ -31,15 +44,14 @@
     "file": "assets/roboto-flex-latin-7RIjvx03.woff2",
     "src": "resources/fonts/roboto-flex/roboto-flex-latin.woff2"
   },
-  "resources/images/chat-bg.svg": {
-    "file": "assets/chat-bg-DcIQgZFK.svg",
-    "src": "resources/images/chat-bg.svg"
-  },
   "resources/js/app.js": {
-    "file": "assets/app-AyFhBLJQ.js",
+    "file": "assets/app-Exz6pXiF.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
+    "imports": [
+      "_livewire-session-guard-BRVTAnrb.js"
+    ],
     "dynamicImports": [
       "resources/js/mascot/mascot-loader.js",
       "resources/js/mascot/mascot-loader.js",
@@ -48,6 +60,15 @@
     ],
     "css": [
       "assets/app-DZU1WGtr.css"
+    ]
+  },
+  "resources/js/chat-frame.js": {
+    "file": "assets/chat-frame-DCUaoLyo.js",
+    "name": "chat-frame",
+    "src": "resources/js/chat-frame.js",
+    "isEntry": true,
+    "imports": [
+      "_livewire-session-guard-BRVTAnrb.js"
     ]
   },
   "resources/js/mascot/mascot-loader.js": {

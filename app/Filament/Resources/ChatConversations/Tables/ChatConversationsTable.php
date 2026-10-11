@@ -2,10 +2,6 @@
 
 namespace App\Filament\Resources\ChatConversations\Tables;
 
-use App\Models\ChatConversation;
-use App\Models\ChatMessage;
-use App\Services\Chat\ChatEscalationService;
-use App\Services\Chat\ChatMarkdown;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
@@ -16,6 +12,10 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Siteko\Chatbot\Chat\ChatEscalationService;
+use Siteko\Chatbot\Chat\ChatMarkdown;
+use Siteko\Chatbot\Models\ChatConversation;
+use Siteko\Chatbot\Models\ChatMessage;
 
 class ChatConversationsTable
 {

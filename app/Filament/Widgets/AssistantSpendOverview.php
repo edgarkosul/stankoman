@@ -2,13 +2,13 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\AiUsageEntry;
-use App\Services\Ai\GatewayBudget;
-use App\Services\Chat\ChatAbuseGuard;
 use Carbon\CarbonInterface;
 use Filament\Support\Icons\Heroicon;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use Siteko\Chatbot\Ai\GatewayBudget;
+use Siteko\Chatbot\Chat\ChatAbuseGuard;
+use Siteko\Chatbot\Models\AiUsageEntry;
 
 /**
  * Во сколько обходится бот — человеческим языком.
@@ -78,7 +78,7 @@ class AssistantSpendOverview extends StatsOverviewWidget
      * Сумма и счётчики по ответам бота начиная с даты.
      *
      * Из расходной книги, а не из переписки: «Очистить переписку» удаляет
-     * разговор насовсем, а `chat:purge` через полгода удаляет все, — и виджет
+     * разговор насовсем, а `chatbot:chat-purge` через полгода удаляет все, — и виджет
      * показывал бы расход тем меньший, чем дольше бот работает.
      */
     private function totals(CarbonInterface $since): object

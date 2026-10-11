@@ -4,9 +4,8 @@ namespace App\Filament\Pages;
 
 use App\Enums\SettingType;
 use App\Models\Setting;
-use App\Services\Ai\AssistantConfig;
-use App\Services\Chat\ChatAppearance;
-use App\Services\Chat\ChatLauncher;
+use App\Shop\Chat\ChatAppearance;
+use App\Shop\Chat\ChatLauncher;
 use App\Support\AvatarPresets;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
@@ -27,6 +26,8 @@ use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\HtmlString;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Siteko\Chatbot\Ai\AssistantConfig;
+use Siteko\Chatbot\Contracts\SettingsStore;
 use Throwable;
 use UnitEnum;
 
@@ -153,7 +154,11 @@ class ChatAppearanceSettings extends Page implements HasForms
         $launcher = ChatLauncher::from(self::launcherState($state))->toArray();
 
         $this->persist(ChatAppearance::LAUNCHER, $launcher === [] ? null : $launcher, SettingType::Json);
-        $this->persist(ChatAppearance::AVATAR, ChatAppearance::path(self::file($state['avatar'] ?? null)), SettingType::String);
+        // Аватар — настройка бота (его показывает и шапка панели пакета), не магазина.
+        $avatar = ChatAppearance::path(self::file($state['avatar'] ?? null));
+        $avatar === null
+            ? app(SettingsStore::class)->forget(ChatAppearance::AVATAR)
+            : app(SettingsStore::class)->set(ChatAppearance::AVATAR, $avatar);
         $this->persist(ChatAppearance::LAUNCHER_PICTURE, ChatAppearance::path(self::file($state['launcher_picture'] ?? null)), SettingType::String);
 
         /*

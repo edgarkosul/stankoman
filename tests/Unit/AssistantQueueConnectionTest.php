@@ -1,8 +1,8 @@
 <?php
 
-use App\Jobs\GenerateChatReplyJob;
-use App\Jobs\ReindexKbDocumentJob;
 use Illuminate\Support\Facades\Config;
+use Siteko\Chatbot\Jobs\GenerateChatReplyJob;
+use Siteko\Chatbot\Jobs\ReindexKbDocumentJob;
 use Tests\TestCase;
 
 uses(TestCase::class);
@@ -13,6 +13,10 @@ uses(TestCase::class);
  * Тест держит не «настройку», а решение: у ответа бота свой retry_after,
  * потому что задаётся он на соединение, и общий с импортом (1800 на бою)
  * означал бы, что повисший диалог ждёт полчаса вместо пяти минут.
+ *
+ * Джобы — пакета бота, соединение и воркер — наши: пакет ставит задачи на
+ * `chatbot.queue.connection` (по умолчанию `redis-assistant`), а заводит это
+ * соединение и запускает воркер приложение.
  */
 
 it('gives the assistant its own queue connection', function (): void {
@@ -53,7 +57,7 @@ it('keeps knowledge base reindexing inside the assistant worker timeout', functi
      * Сетевой вызов эмбеддингов, переживший воркер, был бы убит посреди
      * записи и выдан заново — второй оплаченный вызов на ту же правку.
      */
-    $job = new ReindexKbDocumentJob('intertooler-page', 'dostavka-i-oplata');
+    $job = new ReindexKbDocumentJob(1, 'intertooler-page', 'dostavka-i-oplata');
 
     expect($job->connection)->toBe('redis-assistant')
         ->and($job->queue)->toBe('assistant')
@@ -67,7 +71,7 @@ it('gives up on a chat reply before the worker kills it', function (): void {
      * Сдавшаяся по своему таймауту получает исключение внутрь handle()
      * и отвечает «передал менеджеру».
      */
-    $job = new GenerateChatReplyJob(1, 1);
+    $job = new GenerateChatReplyJob(1, 1, 1);
 
     expect($job->connection)->toBe('redis-assistant')
         ->and($job->queue)->toBe('assistant')

@@ -17,7 +17,7 @@
 ])
 
 <span class="cl-face" aria-hidden="true">
-    @if ($launcher->image === \App\Services\Chat\ChatLauncher::IMAGE_ROBOT)
+    @if ($launcher->image === \App\Shop\Chat\ChatLauncher::IMAGE_ROBOT)
         <span @unless ($preview) x-ref="mascot" @endunless class="cl-robot-slot @unless ($launcher->floatingRobot()) chat-mascot-slot--sm @endunless">
             @if ($preview)
                 <img src="{{ \Illuminate\Support\Facades\Vite::asset('resources/js/mascot/robot-head.svg') }}" alt="" class="chat-mascot">
@@ -25,7 +25,7 @@
                 <svg data-mascot-placeholder class="cl-robot-placeholder"
                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                      stroke-linecap="round" stroke-linejoin="round">
-                    {!! \App\Services\Chat\ChatLauncher::ICON_PATHS['chat'] !!}
+                    {!! \App\Shop\Chat\ChatLauncher::ICON_PATHS['chat'] !!}
                 </svg>
             @endif
         </span>

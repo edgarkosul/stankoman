@@ -2,15 +2,19 @@
 
 use App\Models\Category;
 use App\Models\Product;
-use App\Services\Ai\Data\ProductQuery;
-use App\Services\Ai\Data\SpecCondition;
-use App\Services\Ai\Data\SpecQuery;
-use App\Services\Ai\Support\ProductTextExtractor;
 use App\Shop\CatalogSections;
 use App\Shop\EloquentProductLookup;
 use App\Support\Products\ProductSpecs;
 use App\Support\Search\ProductTextSearch;
 use Illuminate\Support\Str;
+use Siteko\Chatbot\Ai\Data\ProductQuery;
+use Siteko\Chatbot\Ai\Data\SpecCondition;
+use Siteko\Chatbot\Ai\Data\SpecHit;
+use Siteko\Chatbot\Ai\Data\SpecMatches;
+use Siteko\Chatbot\Ai\Data\SpecScope;
+use Siteko\Chatbot\Ai\Support\ProductTextExtractor;
+use Siteko\Chatbot\Ai\Tools\ToolContext;
+use Siteko\Chatbot\Catalog\SpecSearch;
 
 /*
  * Шов «товар и каталог» на живых моделях.
@@ -67,7 +71,7 @@ function assistantProduct(array $overrides = []): Product
 it('гостю называет базовую цену и процент скидки, но не сумму со скидкой', function (): void {
     assistantProduct();
 
-    $text = assistantLookup()->find('RSE 7.5-8', '', seesDiscounts: false)->toPromptText();
+    $text = assistantLookup()->find('RSE 7.5-8', '', [ToolContext::SEES_MEMBER_PRICES => false])->toPromptText();
 
     expect($text)->toContain('Цена: 108 596 руб. (НДС 22% в том числе)')
         ->and($text)->toContain('значок «−5%»')
@@ -81,7 +85,7 @@ it('гостю называет базовую цену и процент ски
 it('вошедшему называет цену со скидкой и зачёркнутую базовую', function (): void {
     assistantProduct();
 
-    $text = assistantLookup()->find('RSE 7.5-8', '', seesDiscounts: true)->toPromptText();
+    $text = assistantLookup()->find('RSE 7.5-8', '', [ToolContext::SEES_MEMBER_PRICES => true])->toPromptText();
 
     expect($text)->toContain('Цена: 103 166 руб. (НДС 22% в том числе)')
         ->and($text)->toContain('это УЖЕ цена со скидкой 5% для зарегистрированных')
@@ -101,7 +105,7 @@ it('отдаёт скрытую от гостя сумму отдельно — 
 it('товар без скидки идёт без всякой приписки о цене', function (): void {
     assistantProduct(['discount_price' => null]);
 
-    $card = assistantLookup()->find('RSE 7.5-8', '', seesDiscounts: false);
+    $card = assistantLookup()->find('RSE 7.5-8', '', [ToolContext::SEES_MEMBER_PRICES => false]);
 
     expect($card->price)->toBe(108596)
         ->and($card->priceNote)->toBe('')
@@ -111,7 +115,7 @@ it('товар без скидки идёт без всякой приписки
 it('нулевую цену отдаёт как «Цена по запросу», а не как ноль рублей', function (): void {
     assistantProduct(['price_amount' => 0, 'discount_price' => null]);
 
-    $card = assistantLookup()->find('RSE 7.5-8', '', seesDiscounts: false);
+    $card = assistantLookup()->find('RSE 7.5-8', '', [ToolContext::SEES_MEMBER_PRICES => false]);
 
     expect($card->price)->toBeNull()
         ->and($card->toPromptText())->toContain('«Цена по запросу»');
@@ -129,7 +133,7 @@ it('в списке выдачи характеристики обрезаны, 
     // Пять карточек по 67 строк (наш максимум) утопили бы ответ, поэтому
     // в списке строк меньше. А у get_product спросили про ОДИН товар.
     $inList = assistantLookup(specsInList: 3)->search(new ProductQuery(text: 'Hansmann', limit: 5))->cards;
-    $single = assistantLookup(specsInList: 3)->find('RSE 7.5-8', '', seesDiscounts: false);
+    $single = assistantLookup(specsInList: 3)->find('RSE 7.5-8', '', [ToolContext::SEES_MEMBER_PRICES => false]);
 
     expect($inList[0]->specs)->toHaveCount(3)
         ->and($single->specs)->toHaveCount(12)
@@ -157,19 +161,19 @@ it('находит товар по обозначению с шильдика, �
     // покупатель уходит к тому, у кого «есть».
     assistantProduct(['sku' => 'VK41001510']);
 
-    $byDesignation = assistantLookup()->find('RSE 7.5-8', '', seesDiscounts: false);
-    $bySku = assistantLookup()->find('VK41001510', '', seesDiscounts: false);
+    $byDesignation = assistantLookup()->find('RSE 7.5-8', '', [ToolContext::SEES_MEMBER_PRICES => false]);
+    $bySku = assistantLookup()->find('VK41001510', '', [ToolContext::SEES_MEMBER_PRICES => false]);
 
     expect($byDesignation?->sku)->toBe('VK41001510')
         ->and($bySku?->sku)->toBe('VK41001510')
         // Соседняя модель серии — это другая машина и другие деньги.
-        ->and(assistantLookup()->find('RSE 7.5-10', '', seesDiscounts: false))->toBeNull();
+        ->and(assistantLookup()->find('RSE 7.5-10', '', [ToolContext::SEES_MEMBER_PRICES => false]))->toBeNull();
 });
 
 it('снятый с публикации товар не отдаётся', function (): void {
     assistantProduct(['is_active' => false]);
 
-    expect(assistantLookup()->find('RSE 7.5-8', '', seesDiscounts: false))->toBeNull()
+    expect(assistantLookup()->find('RSE 7.5-8', '', [ToolContext::SEES_MEMBER_PRICES => false]))->toBeNull()
         ->and(assistantLookup()->search(new ProductQuery(text: 'Hansmann'))->cards)->toBe([]);
 });
 
@@ -317,6 +321,31 @@ it('строит фильтр Meilisearch из запроса', function (): voi
 });
 
 /**
+ * Подбор по порогу так, как его делает инструмент `find_by_spec`: кандидатов
+ * отдаёт адаптер магазина (весь раздел из базы), сверяет с порогом движок.
+ *
+ * @param  list<SpecCondition>  $conditions
+ */
+function specMatch(Category $leaf, array $conditions): SpecMatches
+{
+    return (new SpecSearch)->run(assistantLookup()->specCandidates(new SpecScope([$leaf->id])), $conditions, 5);
+}
+
+/**
+ * Названия товаров найденного — карточками адаптера, в порядке выдачи.
+ *
+ * @param  list<SpecHit>  $hits
+ * @return list<string>
+ */
+function specNames(array $hits): array
+{
+    return array_map(
+        static fn ($card): string => $card->name,
+        assistantLookup()->cards(array_map(static fn ($hit): int => $hit->id, $hits)),
+    );
+}
+
+/**
  * Раздел с домкратами для подбора по характеристикам.
  *
  * @param  array<string, array{0: int, 1: list<array{name: string, value: string}>}>  $jacks  имя => [цена, характеристики]
@@ -367,18 +396,15 @@ it('подбор по характеристике смотрит весь ра�
     // Не из раздела — даже подходящий по числу не в счёт.
     assistantProduct(['name' => 'Чужой домкрат 500 т', 'slug' => 'chuzhoi', 'specs' => [['name' => 'Грузоподьемность, т', 'value' => '500']]]);
 
-    $matches = assistantLookup()->bySpec(new SpecQuery(
-        conditions: [new SpecCondition(['грузоподъёмность'], min: 100, unit: 'т')],
-        sectionIds: [$leaf->id],
-    ));
+    $matches = specMatch($leaf, [new SpecCondition(['грузоподъёмность'], min: 100, unit: 'т')]);
 
-    expect(array_map(fn ($card) => $card->name, $matches->cards))->toBe(['Домкрат 100 т', 'Домкрат 200 т'])
+    expect(specNames($matches->hits))->toBe(['Домкрат 100 т', 'Домкрат 200 т'])
         ->and($matches->scanned)->toBe(4)
         ->and($matches->passed)->toBe(2)
         ->and($matches->failed)->toBe(1)
         ->and($matches->unknown())->toBe(1)
-        // У карточки — только строка, по которой шёл отбор, а не весь список.
-        ->and($matches->cards[0]->specs)->toBe([['name' => 'Грузоподьемность, т', 'value' => '100']]);
+        // В выдаче — только строка, по которой шёл отбор, а не весь список.
+        ->and($matches->hits[0]->lines)->toBe([['name' => 'Грузоподьемность, т', 'value' => '100']]);
 });
 
 it('когда не подошло ничего, отдаёт ближайших к порогу, а не случайных', function (): void {
@@ -390,13 +416,10 @@ it('когда не подошло ничего, отдаёт ближайших
         'Домкрат 50 т' => [20000, [['name' => 'Грузоподьемность, т', 'value' => '50']]],
     ]);
 
-    $matches = assistantLookup()->bySpec(new SpecQuery(
-        conditions: [new SpecCondition(['грузоподъемность'], min: 1000, unit: 'т')],
-        sectionIds: [$leaf->id],
-    ));
+    $matches = specMatch($leaf, [new SpecCondition(['грузоподъемность'], min: 1000, unit: 'т')]);
 
-    expect($matches->cards)->toBe([])
-        ->and(array_map(fn ($card) => $card->name, $matches->nearest))->toBe(['Домкрат 300 т', 'Домкрат 200 т', 'Домкрат 50 т']);
+    expect($matches->hits)->toBe([])
+        ->and(specNames($matches->nearest))->toBe(['Домкрат 300 т', 'Домкрат 200 т', 'Домкрат 50 т']);
 });
 
 it('при двух условиях товар обязан пройти оба', function (): void {
@@ -405,15 +428,45 @@ it('при двух условиях товар обязан пройти оба
         'Лёгкий 100 т' => [45000, [['name' => 'Грузоподьемность, т', 'value' => '100'], ['name' => 'Вес, кг', 'value' => '40']]],
     ]);
 
-    $matches = assistantLookup()->bySpec(new SpecQuery(
-        conditions: [
-            new SpecCondition(['грузоподъемность'], min: 100, unit: 'т'),
-            new SpecCondition(['вес'], max: 60, unit: 'кг'),
-        ],
-        sectionIds: [$leaf->id],
-    ));
+    $matches = specMatch($leaf, [
+        new SpecCondition(['грузоподъемность'], min: 100, unit: 'т'),
+        new SpecCondition(['вес'], max: 60, unit: 'кг'),
+    ]);
 
-    expect(array_map(fn ($card) => $card->name, $matches->cards))->toBe(['Лёгкий 100 т'])
+    expect(specNames($matches->hits))->toBe(['Лёгкий 100 т'])
         // Ближайшие при двух условиях не определены — и не выдумываются.
         ->and($matches->nearest)->toBe([]);
+});
+
+it('отдаёт подбору строки поставщика понятными названиями', function (): void {
+    // Metal Master пишет сечение заготовки под углом строкой «90° (мм)» —
+    // модель её не узнавала (реестр bots 10.1), а покупатель так не говорит.
+    $leaf = specSection([
+        'Ленточная пила MGH-400E' => [700000, [['name' => '90° (мм)', 'value' => '400 / 400х400'], ['name' => 'Мощность, кВт', 'value' => '3']]],
+    ]);
+
+    $rows = assistantLookup()->specCandidates(new SpecScope([$leaf->id]))[0]->rows;
+
+    expect($rows)->toBe([
+        ['name' => 'Сечение заготовки под 90°, мм', 'value' => '400 / 400х400'],
+        ['name' => 'Мощность, кВт', 'value' => '3'],
+    ]);
+});
+
+it('кандидаты подбора — только активные товары разделов, с фильтрами цены и наличия', function (): void {
+    $leaf = specSection([
+        'Домкрат 50 т' => [20000, [['name' => 'Грузоподьемность, т', 'value' => '50']]],
+        'Домкрат 100 т' => [40000, [['name' => 'Грузоподьемность, т', 'value' => '100']]],
+    ]);
+
+    Product::query()->where('name', 'Домкрат 50 т')->update(['in_stock' => false]);
+
+    $all = assistantLookup()->specCandidates(new SpecScope([$leaf->id]));
+    $cheapInStock = assistantLookup()->specCandidates(new SpecScope([$leaf->id], inStockOnly: true, priceMax: 50000));
+
+    expect(count($all))->toBe(2)
+        ->and(array_map(static fn ($c): int => $c->price, $all))->toBe([20000, 40000])
+        ->and(array_map(static fn ($c): bool => $c->inStock, $cheapInStock))->toBe([true])
+        ->and(assistantLookup()->specCandidates(new SpecScope([])))->toBe([])
+        ->and(assistantLookup()->hasCatalog())->toBeTrue();
 });

@@ -1,9 +1,9 @@
 <?php
 
 use App\Models\Page;
-use App\Services\Kb\HtmlKbTextExtractor;
 use App\Shop\PageKbSource;
 use Illuminate\Support\Facades\Queue;
+use Siteko\Chatbot\Kb\HtmlKbTextExtractor;
 
 beforeEach(function (): void {
     // Страница из белого списка ставит переиндексацию в очередь ассистента,

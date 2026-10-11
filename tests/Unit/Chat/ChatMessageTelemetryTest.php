@@ -1,8 +1,8 @@
 <?php
 
-use App\Models\ChatMessage;
-use App\Providers\AiSupportServiceProvider;
-use App\Services\Chat\ChatMessageTelemetry;
+use App\Shop\Chat\ChatMessageTelemetry;
+use Siteko\Chatbot\Ai\Tools\ToolRegistry;
+use Siteko\Chatbot\Models\ChatMessage;
 use Tests\TestCase;
 
 uses(TestCase::class);
@@ -34,7 +34,12 @@ it('знает все инструменты бота — ни один не п�
     // выглядел бы строкой из кода. Сверяем с самим реестром, а не со списком.
     $calls = array_map(
         static fn ($tool): array => ['name' => $tool->name(), 'arguments' => [], 'ms' => 0],
-        AiSupportServiceProvider::tools(),
+        // Все инструменты пакета, какие у магазина есть: ядро, каталог, подбор по порогу.
+        [
+            ...app()->tagged(ToolRegistry::CORE),
+            ...app()->tagged(ToolRegistry::CATALOG),
+            ...app()->tagged(ToolRegistry::SPECS),
+        ],
     );
 
     $phrases = ChatMessageTelemetry::for(telemetryAnswer(['tool_calls' => $calls]))->toolPhrases;

@@ -1,10 +1,14 @@
 <?php
 
-use App\Services\Ai\Contracts\ProductLookup;
-use App\Services\Chat\PageContext;
 use App\Shop\ShopPageContext;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Illuminate\Routing\Router;
+use Siteko\Chatbot\Ai\Contracts\ProductLookup;
+use Siteko\Chatbot\Chat\PageContext;
+use Tests\TestCase;
+
+uses(TestCase::class);
 
 /*
  * Проверяется белый список маршрутов и то, что уезжает в промпт: обе половины
@@ -24,7 +28,7 @@ function chatRequestOn(string $name, array $parameters = [], string $uri = '/'):
 
 function chatPageContext(): ShopPageContext
 {
-    return new ShopPageContext(Mockery::mock(ProductLookup::class));
+    return new ShopPageContext(Mockery::mock(ProductLookup::class), app(Router::class));
 }
 
 it('узнаёт каталог и информационные страницы', function (): void {
@@ -78,7 +82,8 @@ it('не выдумывает полей, которых нет', function (): v
         ->toBe(['страница' => 'карточка товара', 'товар' => 'Генератор'])
         ->and(PageContext::toPrompt(['type' => 'category', 'breadcrumb' => 'Станки → Ленточнопильные']))
         ->toBe(['страница' => 'раздел каталога', 'раздел' => 'Станки → Ленточнопильные'])
-        ->and(PageContext::toPrompt(['type' => 'catalog']))->toBe(['страница' => 'каталог магазина'])
+        // Слова пакета: он обслуживает не только магазины.
+        ->and(PageContext::toPrompt(['type' => 'catalog']))->toBe(['страница' => 'каталог сайта'])
         ->and(PageContext::toPrompt(null))->toBeNull()
         ->and(PageContext::toPrompt(['type' => 'unknown']))->toBeNull();
 });

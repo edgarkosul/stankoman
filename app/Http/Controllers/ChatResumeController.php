@@ -2,24 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ChatConversation;
-use App\Services\Chat\ChatConversationService;
 use Illuminate\Http\RedirectResponse;
+use Siteko\Chatbot\Chat\Contracts\ConversationTokenStore;
+use Siteko\Chatbot\Models\ChatConversation;
 
-/**
- * Возврат в переписку по ссылке из письма «менеджер ответил».
- *
- * Смысл маршрута — перенести разговор на другое устройство: писали
- * с рабочего компьютера, ответ читают с телефона. Кука там своя, поэтому
- * ссылка выдаёт новую — с тем же токеном разговора.
- *
- * Ссылка подписана и живёт неделю. Токен в ней и так секрет, но подпись
- * добавляет срок годности: письмо, забытое в почте на полгода, не должно
- * оставаться ключом к переписке.
- */
 class ChatResumeController extends Controller
 {
-    public function __invoke(string $token, ChatConversationService $chat): RedirectResponse
+    public function __invoke(string $token, ConversationTokenStore $tokens): RedirectResponse
     {
         // Токен — 40 символов из алфавита Str::random. Всё, что не похоже,
         // до базы не доходит.
@@ -29,7 +18,7 @@ class ChatResumeController extends Controller
 
         abort_if($conversation === null, 404);
 
-        $chat->rememberCookie($conversation);
+        $tokens->remember($conversation->token);
 
         // ?chat=1 разворачивает панель сразу: человек пришёл читать ответ,
         // а не искать на витрине, куда нажать.

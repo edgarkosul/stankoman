@@ -1,0 +1,33 @@
+/*
+ * Рамка панели чата (/chat/panel): стили для своего в ней — формы
+ * «Оставить контакты менеджеру» (common.request-callback), которую панель
+ * пакета показывает по кнопке под перепиской.
+ *
+ * Не app.css витрины, и это не экономия: у панели пакета свои стили
+ * (`chatbot::widget-styles`) на весь документ рамки, и витринные `.chat-*`,
+ * flux и preflight Tailwind столкнулись бы с ними. Поэтому здесь только
+ * тема и утилиты — без preflight — и только по классам самой формы.
+ */
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+
+@source "../views/livewire/common/request-callback.blade.php";
+
+/* Те же значения, что в @theme app.css: форма в чате — та же, что на витрине. */
+@theme {
+    --color-zinc-500: #737373;
+    --color-zinc-600: #525252;
+    --color-zinc-700: #404040;
+    --color-zinc-800: #262626;
+    --color-zinc-900: #171717;
+    --color-zinc-950: #0a0a0a;
+
+    --color-brand-green: #0f6a24;
+    --color-brand-red: #ea0005;
+}
+
+[x-cloak] {
+    display: none !important;
+}

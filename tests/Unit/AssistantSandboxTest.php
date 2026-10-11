@@ -1,8 +1,8 @@
 <?php
 
 use App\Filament\Pages\AssistantSandbox;
-use App\Models\ChatMessage;
-use App\Services\Chat\ChatMessageTelemetry;
+use App\Shop\Chat\ChatMessageTelemetry;
+use Siteko\Chatbot\Models\ChatMessage;
 use Tests\TestCase;
 
 // Песочница показывает разбор тем же кодом, что и лента диалога.

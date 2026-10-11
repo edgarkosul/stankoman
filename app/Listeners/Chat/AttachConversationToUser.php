@@ -2,8 +2,8 @@
 
 namespace App\Listeners\Chat;
 
-use App\Services\Chat\ChatConversationService;
 use Illuminate\Auth\Events\Login;
+use Siteko\Chatbot\Chat\ChatConversationService;
 
 /**
  * Посетитель вошёл в аккаунт посреди разговора — привязываем диалог задним

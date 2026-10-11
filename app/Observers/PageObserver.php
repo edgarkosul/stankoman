@@ -2,12 +2,12 @@
 
 namespace App\Observers;
 
-use App\Jobs\ReindexKbDocumentJob;
 use App\Models\Menu;
 use App\Models\MenuItem;
 use App\Models\Page;
 use App\Shop\PageKbSource;
 use App\Support\Menu\MenuService;
+use Siteko\Chatbot\Jobs\ReindexKbDocumentJob;
 
 class PageObserver
 {
@@ -63,7 +63,7 @@ class PageObserver
 
         foreach ($slugs as $slug) {
             if ($slug !== '' && $source->covers($slug)) {
-                ReindexKbDocumentJob::dispatch(PageKbSource::NAME, $slug);
+                ReindexKbDocumentJob::dispatch((int) config('chatbot.site_id'), PageKbSource::NAME, $slug);
             }
         }
     }

@@ -2,12 +2,12 @@
 
 use App\Jobs\NotifyVisitorAboutOperatorReplyJob;
 use App\Mail\ChatOperatorRepliedMail;
-use App\Models\ChatConversation;
 use App\Models\User;
-use App\Services\Chat\ChatEscalationService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Siteko\Chatbot\Chat\ChatEscalationService;
+use Siteko\Chatbot\Models\ChatConversation;
 
 /*
  * Ответ менеджера в закрытую вкладку. Чат на витрине живёт только в открытой

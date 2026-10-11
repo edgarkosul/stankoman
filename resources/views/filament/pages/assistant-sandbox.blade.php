@@ -22,7 +22,7 @@
             Выключенный бот песочницу не блокирует: проверять его перед
             включением иначе было бы нечем, а включают именно в этом порядке.
         --}}
-        @unless (app(\App\Services\Ai\AssistantConfig::class)->enabled())
+        @unless (app(\Siteko\Chatbot\Ai\AssistantConfig::class)->enabled())
             <x-filament::callout icon="heroicon-o-pause-circle" color="warning">
                 <x-slot name="description">
                     Для покупателей бот сейчас выключен — в чате они видят форму контактов.
@@ -43,7 +43,7 @@
                         </div>
                     @else
                         @php($message = $this->messageFor($turn))
-                        @php($telemetry = \App\Services\Chat\ChatMessageTelemetry::for($message))
+                        @php($telemetry = \App\Shop\Chat\ChatMessageTelemetry::for($message))
 
                         <div class="space-y-2">
                             {{--
@@ -60,7 +60,7 @@
                                         и предложение оставить контакты.
                                     </span>
                                 @else
-                                    {!! app(\App\Services\Chat\ChatMarkdown::class)->toHtml($turn['text']) !!}
+                                    {!! app(\Siteko\Chatbot\Chat\ChatMarkdown::class)->toHtml($turn['text']) !!}
                                 @endif
                             </div>
 

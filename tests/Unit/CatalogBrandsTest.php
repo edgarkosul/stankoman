@@ -1,6 +1,6 @@
 <?php
 
-use App\Services\Catalog\CatalogBrands;
+use Siteko\Chatbot\Catalog\CatalogBrands;
 
 /*
  * Сопоставление запроса со списком брендов — чистая функция, база не нужна.

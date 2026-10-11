@@ -24,6 +24,9 @@ export default defineConfig(({ mode }) => {
                     // Витрина (публичная часть) — @vite в resources/views/partials/head.blade.php
                     'resources/css/app.css',
                     'resources/js/app.js',
+                    // Рамка панели чата (/chat/panel) — resources/views/chat/panel.blade.php
+                    'resources/css/chat-frame.css',
+                    'resources/js/chat-frame.js',
                     // Тема админки Filament (подключается через ->viteTheme(...))
                     'resources/css/filament/admin/theme.css',
                 ],

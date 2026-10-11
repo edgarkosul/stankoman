@@ -2,6 +2,13 @@
  * Кнопка чата: раскрытие панели, сторож ответа при свёрнутой панели,
  * ленивая подгрузка маскота, угол кнопки и её перетаскивание.
  *
+ * Панель — компонент пакета siteko/chatbot в рамке `/chat/panel` со своего
+ * же домена. Рамка создаётся при первом открытии, и разговор с ней идёт
+ * протоколом `widget.js` пакета (`ns: 'siteko-bots'`): она говорит `ready` —
+ * отвечаем `init` со страницей посетителя; свернули и развернули — `opened`;
+ * крестик в её шапке — `close`. Токен разговора панели не передаём: он
+ * в httpOnly-куке, и рамка со своего домена читает её сама.
+ *
  * Живёт здесь, а не в атрибуте x-data, ровно по той же причине, по какой
  * панель грузится лениво: лаунчер стоит на каждой странице витрины, и полсотни
  * строк логики в разметке — это полсотни строк, которые каждый посетитель
@@ -20,7 +27,7 @@
  * bots (`resources/widget/widget.js`, 06.10.2026).
  *
  * @param {{open: boolean, unread: number, pollSeconds: number|null, url: string,
- *          stopsAfter: number, invite: string, robot: boolean, robotSize: number|null,
+ *          frameUrl: string, stopsAfter: number, invite: string, robot: boolean, robotSize: number|null,
  *          face: string, pill: boolean, side: string, x: number, y: number,
  *          height: number, drag: boolean}} config
  */
@@ -41,6 +48,12 @@ export default (config) => {
      * размер, от которого движку нечего считать.
      */
     let bubbleMascot = null;
+
+    /* Рамка панели — одна на страницу, создаётся при первом открытии. */
+    let frame = null;
+
+    /* Пространство имён сообщений протокола `widget.js` пакета. */
+    const NS = 'siteko-bots';
 
     /* Таймеры подсказки: показать через паузу и убрать, не дождавшись клика. */
     let inviteTimer = null;
@@ -134,9 +147,13 @@ export default (config) => {
                 this.$dispatch('chat-invite', invite);
                 if (invite && config.face === 'robot') this.mountBubbleMascot();
             });
+            this.listenToFrame();
             this.startWatching();
             this.dress();
             this.loadMascot();
+
+            // Пришли по ссылке из письма (`?chat=1`) — панель открыта сразу.
+            if (this.open) this.mountFrame();
 
             /*
              * `$watch` на начальном значении не срабатывает, поэтому ответ,
@@ -379,21 +396,59 @@ export default (config) => {
         },
 
         /**
-         * Развернуть панель.
+         * Рамка панели: при первом открытии — создать, при повторном —
+         * толкнуть сообщением `opened`.
          *
-         * Событие `chat-opened` здесь обязательно, и вот почему. Свёрнутая
-         * панель сервер не опрашивает вовсе, поэтому уже загруженный компонент
-         * остаётся с лентой, собранной в тот момент, когда его последний раз
-         * показывали. Посетитель жмёт на бейдж «вам ответили», открывает чат —
-         * и видит переписку БЕЗ этого ответа: он приедет на первом тике
-         * `wire:poll`, то есть через 4–10 секунд. Пауза заметная, а читается
-         * ещё хуже, чем длится: бейдж был, ответа нет, значит соврали.
-         *
-         * Livewire слушает такие события на window, поэтому обычного alpine'ного
-         * $dispatch достаточно. Панель ещё не загружена (первое открытие на
-         * странице) — событие пропадёт, и это правильно: ленивая загрузка сама
-         * соберёт ленту свежей.
+         * Толчок обязателен, и вот почему. Свёрнутая панель сервер не опрашивает
+         * вовсе, поэтому уже загруженная рамка остаётся с лентой, собранной
+         * в тот момент, когда её последний раз показывали. Посетитель жмёт
+         * на бейдж «вам ответили», открывает чат — и видит переписку БЕЗ этого
+         * ответа: он приедет на первом тике опроса, то есть через 4–10 секунд.
+         * Пауза заметная, а читается ещё хуже, чем длится: бейдж был, ответа
+         * нет, значит соврали. Новая рамка соберёт ленту свежей сама.
          */
+        mountFrame() {
+            if (frame) {
+                frame.contentWindow?.postMessage({ ns: NS, type: 'opened' }, window.location.origin);
+
+                return;
+            }
+
+            frame = document.createElement('iframe');
+            frame.title = 'Чат с консультантом';
+            frame.src = config.frameUrl;
+            frame.className = 'block h-full w-full border-0';
+            this.$refs.frame?.appendChild(frame);
+        },
+
+        /**
+         * Сообщения рамки — только от неё самой и только со своего origin:
+         * чужая вкладка или рамка на странице командовать панелью не может.
+         */
+        listenToFrame() {
+            window.addEventListener('message', (event) => {
+                if (!frame || event.source !== frame.contentWindow || event.origin !== window.location.origin) return;
+
+                const message = event.data;
+                if (!message || message.ns !== NS) return;
+
+                if (message.type === 'ready') {
+                    frame.contentWindow.postMessage({
+                        ns: NS,
+                        type: 'init',
+                        token: null,
+                        page: { url: window.location.href, title: document.title },
+                        source: {},
+                        storage: 'memory',
+                        theme: 'light',
+                    }, window.location.origin);
+                } else if (message.type === 'close') {
+                    this.open = false;
+                }
+            });
+        },
+
+        /** Развернуть панель. */
         show() {
             // Чат открыли — человека уже представили, звать больше некуда.
             this.clearInviteTimers();
@@ -402,7 +457,7 @@ export default (config) => {
             store('sessionStorage', OPENED_KEY, '1');
             this.$refs.corner?.classList.add('cl-calm');
 
-            this.$dispatch('chat-opened');
+            this.mountFrame();
             this.open = true;
         },
 

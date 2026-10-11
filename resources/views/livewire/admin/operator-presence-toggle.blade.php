@@ -1,6 +1,6 @@
 {{--
-    Пульт присутствия в топбаре: есть ли сейчас живой человек и что из
-    этого следует для покупателя. Подпись считается по двум состояниям
+    Пульт режима чата в топбаре: звать ли менеджера в чат и что из этого
+    следует для покупателя. Подпись считается по двум состояниям
     сразу — «работает ли бот» и «есть ли менеджер», — потому что по
     одному присутствию она врёт: над выключенным ботом писала бы
     «отвечает бот».
@@ -40,17 +40,13 @@
         <div class="p-3 text-sm">
             <p class="text-gray-600">{{ $explanation }}</p>
 
-            @if ($until)
-                <p class="mt-1 text-xs text-gray-500">Действует до {{ $until->format('H:i') }}.</p>
-            @endif
-
             <p class="mt-2 text-xs text-gray-500">{{ $chatEffect }}</p>
 
             @if ($botOffReason)
                 {{--
                     Выключенный бот сильнее всего, что есть на этом экране:
                     не сказать о нём — значит оставить админа щёлкать
-                    присутствием без единого следствия.
+                    режимом без единого следствия.
                 --}}
                 <p class="mt-2 rounded-md bg-warning-50 px-2 py-1.5 text-xs text-warning-700">
                     {{ $botOffReason }}
@@ -61,53 +57,27 @@
             @endif
 
             <p class="mt-2 text-xs text-gray-500">
-                Автоматически — это «пока вы в админке, вы на связи;
-                когда вышли — по расписанию {{ $schedule }}».
+                Разговор, в который вы ответили, остаётся за вами {{ $hold }} минут после
+                вашей последней реплики, потом на новые вопросы снова отвечает бот.
             </p>
         </div>
 
         {{--
-            Три состояния показываются ВСЕГДА, и текущее отмечено.
-
-            Прятать активный пункт нельзя: в автоматическом режиме меню
-            состояло бы из двух ручных кнопок, и «вернуть как было» в нём
-            не было бы вовсе. Радиокнопка из трёх строк объясняет
-            устройство переключателя сама, без инструкции.
+            Три режима показываются ВСЕГДА, и текущий отмечен: радиокнопка
+            из трёх строк объясняет устройство переключателя сама.
         --}}
-        @php($manual = $source === \App\Services\Chat\OperatorPresence::SOURCE_OVERRIDE)
-
-        <x-filament::dropdown.header color="gray">Присутствие</x-filament::dropdown.header>
+        <x-filament::dropdown.header color="gray">Звать менеджера в чат</x-filament::dropdown.header>
 
         <x-filament::dropdown.list>
-            <x-filament::dropdown.list.item
-                wire:click="goOnline"
-                :icon="$manual && $online ? 'heroicon-m-check-circle' : 'heroicon-o-check-circle'"
-                :color="$manual && $online ? 'primary' : 'gray'"
-            >
-                Я на смене{{ $manual && $online ? ' — сейчас' : '' }}
-            </x-filament::dropdown.list.item>
-
-            <x-filament::dropdown.list.item
-                wire:click="goOffline"
-                :icon="$manual && ! $online ? 'heroicon-m-moon' : 'heroicon-o-moon'"
-                :color="$manual && ! $online ? 'primary' : 'gray'"
-            >
-                Ушёл со смены{{ $manual && ! $online ? ' — сейчас' : '' }}
-            </x-filament::dropdown.list.item>
-
-            {{--
-                «По расписанию» читалось бы как «включить только расписание»,
-                и это неверно: режим возвращает ОБА автоматических признака —
-                активность в админке (она выше расписания и работает хоть
-                ночью) и сами часы работы.
-            --}}
-            <x-filament::dropdown.list.item
-                wire:click="followSchedule"
-                :icon="$manual ? 'heroicon-o-clock' : 'heroicon-m-clock'"
-                :color="$manual ? 'gray' : 'primary'"
-            >
-                Определять автоматически{{ $manual ? '' : ' — сейчас' }}
-            </x-filament::dropdown.list.item>
+            @foreach ($modes as $value => $title)
+                <x-filament::dropdown.list.item
+                    wire:click="setMode('{{ $value }}')"
+                    :icon="$mode === $value ? 'heroicon-m-check-circle' : 'heroicon-o-minus-circle'"
+                    :color="$mode === $value ? 'primary' : 'gray'"
+                >
+                    {{ $title }}{{ $mode === $value ? ' — сейчас' : '' }}
+                </x-filament::dropdown.list.item>
+            @endforeach
         </x-filament::dropdown.list>
     </x-filament::dropdown>
 </div>

@@ -3,12 +3,12 @@
 namespace App\Listeners\CallbackRequests;
 
 use App\Events\CallbackRequests\CallbackRequestSubmitted;
-use App\Models\ChatConversation;
 use App\Models\MessengerChannel;
 use App\Services\Messengers\MessengerMessages;
 use App\Services\Messengers\MessengerNotifier;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
+use Siteko\Chatbot\Models\ChatConversation;
 
 /**
  * Заявка на обратный звонок — в чаты MAX.
@@ -54,7 +54,7 @@ class NotifyMessengersAboutCallback implements ShouldQueue
         }
 
         // Заявку забрал чат — про неё уже написала эскалация.
-        if (ChatConversation::query()->where('callback_request_id', $request->getKey())->exists()) {
+        if (ChatConversation::query()->where('lead_ref', $request->getKey())->exists()) {
             return;
         }
 

@@ -55,7 +55,7 @@ Schedule::command('search:audit', ['--fix'])
  * Проход инкрементный по content_hash: неизменившийся текст не пересчитывается
  * и не оплачивается, так что ночь без правок стоит ноль вызовов шлюза.
  */
-Schedule::command('ai:kb-reindex', ['--prune'])
+Schedule::command('chatbot:kb-reindex', ['--prune'])
     ->dailyAt('04:00')
     ->withoutOverlapping(180)
     ->appendOutputTo(storage_path('logs/ai-kb-reindex.log'));
@@ -84,40 +84,11 @@ Schedule::command('ai:catalog-embed')
     ->appendOutputTo(storage_path('logs/ai-catalog-embed.log'));
 
 /*
- * Доступность шлюза по каждому его адресу и живой пин (перенесено
- * из kratonshop, GatewayAddressPin).
- *
- * Каждые пять минут, и это не дорого: проба ходит на бесключевой каталог
- * моделей, ни авторизации, ни денег. Расход — две строки в таблице
- * за прогон.
- *
- * Пять минут выбраны по ttl пина (30 минут): пин обязан обновляться
- * заметно чаще, чем протухает, иначе клиент будет регулярно проваливаться
- * на обычный DNS без всякой аварии.
- *
- * Без appendOutputTo намеренно: команда молчалива по делу, а таблица
- * на каждый прогон — это 288 таблиц в сутки в файле, который потом
- * никто не читает. События идут в лог, состояние показывает ai:kb-doctor.
+ * Проба шлюза (каждые пять минут, своим процессом) и сроки хранения переписки
+ * (03:40) ставит в расписание сам пакет бота — ChatbotServiceProvider пакета.
+ * Здесь их нет намеренно: две записи одной команды гоняли бы её дважды.
+ * Пробу под systemd держит drop-in `KillMode=process` у планировщика на бою.
  */
-Schedule::command('ai:gateway-probe')
-    ->everyFiveMinutes()
-    ->withoutOverlapping()
-    /*
-     * Своим процессом: адресов с запасными — тринадцать, мёртвый держит
-     * пробу до 6 с, и когда умирает всё, прогон длится больше минуты.
-     * Внутри schedule:run он задержал бы соседние задачи этой минуты.
-     */
-    ->runInBackground();
-
-/*
- * Сроки хранения переписки чата: через 30 дней диалог обезличивается,
- * через 180 — удаляется насовсем (config/ai_support.php, `chat.retention`).
- * Расходная книга бота при этом остаётся — в ней нет ни текста, ни адреса.
- */
-Schedule::command('chat:purge')
-    ->dailyAt('04:15')
-    ->withoutOverlapping(60)
-    ->appendOutputTo(storage_path('logs/chat-purge.log'));
 
 Schedule::command('legacy:kraton-match')
     ->dailyAt('05:20')

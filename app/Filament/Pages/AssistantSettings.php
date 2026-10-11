@@ -2,12 +2,8 @@
 
 namespace App\Filament\Pages;
 
-use App\Enums\SettingType;
 use App\Filament\Resources\Settings\SettingResource;
 use App\Models\Setting;
-use App\Services\Ai\AssistantConfig;
-use App\Services\Ai\SystemPromptBuilder;
-use App\Services\Chat\OperatorPresence;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
@@ -22,6 +18,15 @@ use Filament\Pages\Page;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Support\HtmlString;
+use Siteko\Chatbot\Ai\AssistantConfig;
+use Siteko\Chatbot\Ai\Prompt\CatalogPrompt;
+use Siteko\Chatbot\Ai\Prompt\ProfileResolver;
+use Siteko\Chatbot\Ai\Prompt\PromptCore;
+use Siteko\Chatbot\Ai\Prompt\SystemPromptBuilder;
+use Siteko\Chatbot\Ai\Tools\ToolRegistry;
+use Siteko\Chatbot\Chat\OperatorPresence;
+use Siteko\Chatbot\Contracts\SettingsStore;
+use Siteko\Chatbot\Settings\ArraySettingsStore;
 use UnitEnum;
 
 /**
@@ -29,7 +34,9 @@ use UnitEnum;
  *
  * Здесь живёт редактируемая половина системного промпта. Вторая половина —
  * гарды: замок идентичности, тематический гейт, запрет выдумывать факты,
- * правила о ценах, — лежит в `SystemPromptBuilder` и в админку не выносится.
+ * правила о ценах, — лежит в пакете бота (`PromptCore`, `CatalogPrompt`)
+ * и в админку не выносится. Значения — настройки бота (`chatbot_settings`,
+ * ключи `assistant.*`), пишет их `AssistantConfig` пакета.
  * Причина простая: снесённый гард не ломает бота заметно, он делает его
  * услужливым — тот начинает отвечать на посторонние темы и называть цены,
  * которых посетитель не видит, а обнаруживается это через месяц по жалобе.
@@ -250,17 +257,17 @@ class AssistantSettings extends Page implements HasForms
         $state = $this->form->getState();
         $config = app(AssistantConfig::class);
 
-        $this->persist([
+        $config->save([
             'enabled' => (bool) ($state['enabled'] ?? true),
-            'about' => trim((string) ($state['about'] ?? '')),
+            'about' => $state['about'] ?? '',
             'rules' => $this->rulesFromForm($state['rules'] ?? []),
             'forbidden_topics' => $this->topicsFromForm($state['forbidden_topics'] ?? []),
-            'bot_name' => trim((string) ($state['bot_name'] ?? '')),
+            'bot_name' => $state['bot_name'] ?? '',
             'bot_gender' => $this->genderFromForm($state['bot_gender'] ?? null),
-            'invite' => trim((string) ($state['invite'] ?? '')),
-            'greeting' => trim((string) ($state['greeting'] ?? '')),
-            'refusal' => trim((string) ($state['refusal'] ?? '')),
-            'escalation' => trim((string) ($state['escalation'] ?? '')),
+            'invite' => $state['invite'] ?? '',
+            'greeting' => $state['greeting'] ?? '',
+            'refusal' => $state['refusal'] ?? '',
+            'escalation' => $state['escalation'] ?? '',
         ]);
 
         Notification::make()
@@ -275,71 +282,51 @@ class AssistantSettings extends Page implements HasForms
     }
 
     /**
-     * Записать значения в таблицу настроек под префиксом `assistant.`.
-     *
-     * Здесь, а не в `AssistantConfig`: тот живёт в сервисах ассистента
-     * и моделей магазина не знает, а `Setting` — модель магазина.
-     *
-     * `autoload` = true у всех: их читает каждый ответ бота, и отдельный
-     * запрос к базе за каждым ключом на каждом ходе не нужен никому.
-     * Кэш настроек сбрасывает сама модель на сохранении — иначе воркер
-     * и витрина до конца `rememberForever` жили бы со старыми правилами.
-     *
-     * @param  array<string, mixed>  $values  ключ без префикса => значение
-     */
-    private function persist(array $values): void
-    {
-        foreach ($values as $key => $value) {
-            [$stored, $type] = match (true) {
-                is_bool($value) => [$value ? '1' : '0', SettingType::Bool],
-                is_array($value) => [json_encode(array_values($value), JSON_UNESCAPED_UNICODE), SettingType::Json],
-                default => [(string) $value, SettingType::String],
-            };
-
-            Setting::query()->updateOrCreate(
-                ['key' => AssistantConfig::PREFIX.$key],
-                ['value' => $stored, 'type' => $type, 'autoload' => true],
-            );
-
-            /*
-             * Сохранённое должно действовать в этом же запросе: уведомление
-             * ниже спрашивает, включён ли бот, а провайдер разложит настройки
-             * заново только на следующем запросе. Поэтому кладём в конфиг руками.
-             */
-            config()->set('settings.'.AssistantConfig::PREFIX.$key, is_array($value) ? array_values($value) : $value);
-        }
-    }
-
-    /**
      * Бот выключен аварийно, строкой в `.env`. Тогда выключатель в форме
      * не значит ничего, и сказать об этом надо крупно: иначе владелец будет
      * щёлкать им и не понимать, почему чат молчит.
      */
     public function emergencyOverride(): bool
     {
-        return ! (bool) config('ai_support.agent.enabled', true);
+        return ! (bool) config('chatbot.agent.enabled', true);
     }
 
-    /** Промпт по текущему состоянию формы — то, что получит модель после сохранения. */
+    /**
+     * Промпт по текущему состоянию формы — то, что получит модель после сохранения.
+     *
+     * Сохранённые настройки плюс форма — в копии (`ArraySettingsStore`):
+     * предпросмотр не должен ничего записать. Сборка та же, что у пакета
+     * в ответе посетителю, с каталогом и подбором по порогу.
+     */
     private function previewPrompt(): string
     {
-        $state = $this->form->getState();
-        $presence = app(OperatorPresence::class);
+        $state = $this->form->getRawState();
 
-        return app(SystemPromptBuilder::class)->build(
-            settings: array_filter([
-                // Имя правит замок идентичности, поэтому обязано попадать
-                // в предпросмотр: иначе владелец увидит не тот промпт, что уйдёт.
-                'bot_name' => trim((string) ($state['bot_name'] ?? '')),
-                'bot_gender' => $this->genderFromForm($state['bot_gender'] ?? null),
-                'about' => trim((string) ($state['about'] ?? '')),
-                'rules' => $this->bullets($this->rulesFromForm($state['rules'] ?? [])),
-                'forbidden_topics' => $this->bullets($this->topicsFromForm($state['forbidden_topics'] ?? [])),
-                'refusal' => trim((string) ($state['refusal'] ?? '')),
-                'escalation' => trim((string) ($state['escalation'] ?? '')),
-            ], static fn (string $value): bool => $value !== ''),
+        $store = new ArraySettingsStore(app(SettingsStore::class)->all());
+        $config = new AssistantConfig($store);
+        $config->save([
+            'about' => $state['about'] ?? '',
+            'rules' => $this->rulesFromForm($state['rules'] ?? []),
+            'forbidden_topics' => $this->topicsFromForm($state['forbidden_topics'] ?? []),
+            // Имя правит замок идентичности, поэтому обязано попадать
+            // в предпросмотр: иначе владелец увидит не тот промпт, что уйдёт.
+            'bot_name' => $state['bot_name'] ?? '',
+            'bot_gender' => $this->genderFromForm($state['bot_gender'] ?? null),
+            'refusal' => $state['refusal'] ?? '',
+            'escalation' => $state['escalation'] ?? '',
+        ]);
+
+        $presence = app(OperatorPresence::class);
+        $profile = app(ProfileResolver::class)->resolve(null);
+        $tools = app(ToolRegistry::class)->forProfile($profile);
+
+        return (new SystemPromptBuilder(app(PromptCore::class), app(CatalogPrompt::class), $config, $store))->build(
+            $profile,
+            withCatalog: ToolRegistry::includesCatalog($tools),
             operatorsOnline: $presence->isOnline(),
             workingHours: $presence->scheduleSummary(),
+            workingTime: $presence->isWorkingTime(),
+            withSpecs: ToolRegistry::includesSpecs($tools),
         );
     }
 
@@ -396,21 +383,19 @@ class AssistantSettings extends Page implements HasForms
     /**
      * Живое присутствие словами — и где правится то, от чего оно зависит.
      *
-     * Режим работы отвечает на вопрос «как обычно», а обещание бота зависит
-     * от «как сейчас»: открытая админка перебивает часы работы. Не сказать
-     * об этом здесь — значит оставить владельца править режим работы
-     * в уверенности, что он один и решает.
+     * Режим работы отвечает на вопрос «когда обычно», а режим чата —
+     * «звать ли менеджера вообще». Не сказать здесь о втором — значит
+     * оставить владельца править часы в уверенности, что он один и решает.
      */
     private function presenceHint(): string
     {
         $presence = app(OperatorPresence::class);
-        $state = $presence->resolve();
 
-        $now = $state['online'] ? 'сейчас на связи' : 'сейчас не на связи';
-        $source = match ($state['source']) {
-            OperatorPresence::SOURCE_OVERRIDE => 'вручную',
-            OperatorPresence::SOURCE_ACTIVITY => 'по работе в админке',
-            default => 'по режиму работы магазина',
+        $now = $presence->isOnline() ? 'сейчас на связи' : 'сейчас не на связи';
+        $mode = match ($presence->mode()) {
+            OperatorPresence::MODE_ON => '«всегда на связи»',
+            OperatorPresence::MODE_OFF => '«не звать в чат»',
+            default => '«по режиму работы»',
         };
 
         $scheduleId = Setting::query()->where('key', 'company.work_schedule')->value('id');
@@ -421,7 +406,7 @@ class AssistantSettings extends Page implements HasForms
         return 'На связи менеджер — бот предлагает позвать его в чат; нет — сразу просит оставить контакты. '
             .'Основа — режим работы магазина (<a href="'.e($scheduleUrl).'" class="text-primary-600 underline">'
             .'«Настройки» → «Режим работы»</a>, '.e($presence->scheduleSummary()).'), тот же, что в шапке сайта. '
-            .'Работа в админке перебивает его: пока вы открываете страницы, вы на связи. '
-            .'<strong>Менеджер '.e($now).'</strong> — определено '.e($source).'.';
+            .'Режим чата переключается кнопкой «Чат» в верхней панели админки, сейчас — '.e($mode).'. '
+            .'<strong>Менеджер '.e($now).'</strong>.';
     }
 }
