@@ -167,7 +167,8 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 >
 > - **Команды — пакета:** `chatbot:kb-doctor`, `chatbot:kb-reindex`, `chatbot:kb-search`,
 >   `chatbot:kb-forget`, `chatbot:kb-calibrate --questions=resources/bot/kb-calibration-questions.json`,
->   `chatbot:chat`, `chatbot:bench --cases=…`, `chatbot:gateway-probe`, `chatbot:chat-purge`.
+>   `chatbot:chat`, `chatbot:bench --cases=resources/bot/bench-cases.json`, `chatbot:gateway-probe`,
+>   `chatbot:chat-purge`. Без `--cases` замер пакета не запускается вовсе — набора по умолчанию у него нет.
 >   Своя осталась одна — `ai:catalog-embed` (зеркало каталога), плюс `--status` у неё вместо
 >   раздела «Смысловой поиск» доктора. Пробу шлюза (каждые 5 мин) и чистку переписки (03:40)
 >   ставит в расписание сам пакет, переиндексацию базы в 04:00 — `routes/console.php`.
@@ -195,6 +196,11 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 > - **Выкладка перевода:** очередь `assistant` должна быть пуста, а отложенные задачи
 >   прежних классов (`App\Jobs\…`) в Redis не переживут выкладку — на деве 11.10 так
 >   упали 180 старых задач переиндексации.
+> - **Канал `deepseek` на пакете проверен на деве 11.10.2026** (в дев-`.env` канала нет — там
+>   aitunnel, поэтому `AI_CHAT_CHANNEL=deepseek AI_CHAT_RESERVE=aitunnel` перед командой и обход privoxy):
+>   `chatbot:kb-doctor --probe` — «канал deepseek», ключ принят; `chatbot:bench --channels=deepseek --runs=1`
+>   — 33 из 33, сорвалось 0, 77 вызовов без ошибок, 0,08 ₽ за ответ, в логе 77 `LLM call` с
+>   `"channel":"deepseek"` и ни одного `LLM failover`.
 
 Движок бота **не знает моделей магазина**.
 Товар, каталог и цены приходят к нему контрактами
@@ -324,7 +330,8 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 - **Замер — `ai:bench`**: варианты `модель` и `модель+latency` идут ВПЕРЕМЕШКУ, со сдвигом
   очерёдности на каждом вопросе. Варианты в разные часы не сравнивать: шлюз плавает
   в разы за день. Ответ в замере стоит 0,8–0,9 ₽ (своя сессия, кэш префикса не
-  работает) — полный набор × 3 × 2 порядка 150 ₽. Набор (`BenchSuite`) сверен с базой
+  работает) — полный набор × 3 × 2 порядка 150 ₽. Набор (`resources/bot/bench-cases.json`, до 10.3.4 —
+  класс `BenchSuite`) сверен с базой
   знаний и карточкой CrossAir CA5.5-8RA: поправят их — провалы будут в наборе, а не в боте.
 - **Живой пин адреса** (`GatewayAddressPin`, из kratonshop): `ai:gateway-probe` каждые
   5 минут пробивает каждую A-запись шлюза и подставляет клиенту живую. С workstation
