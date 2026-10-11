@@ -36,7 +36,7 @@
         (AI_CHAT_PREVIEW), виджет видят только сотрудники и те, кто пришёл
         по ссылке с ключом.
     --}}
-    @if (app(\App\Services\Chat\ChatPreviewGate::class)->visibleNow())
+    @if (app(\App\Shop\Chat\ChatPreviewGate::class)->visibleNow())
         <x-support.chat-launcher />
     @endif
 

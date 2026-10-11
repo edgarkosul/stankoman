@@ -17,12 +17,12 @@
 @props([
     'face',
     'avatar' => null,
-    'icon' => \App\Services\Chat\ChatLauncher::ICON_PATHS['chat'],
+    'icon' => \App\Shop\Chat\ChatLauncher::ICON_PATHS['chat'],
     'variant' => 'bubble',
     'preview' => false,
 ])
 
-@if ($face === \App\Services\Chat\ChatAppearance::FACE_ROBOT)
+@if ($face === \App\Shop\Chat\ChatAppearance::FACE_ROBOT)
     @if ($preview)
         <span class="chat-mascot-slot--sm relative block h-full w-full">
             <img src="{{ \Illuminate\Support\Facades\Vite::asset('resources/js/mascot/robot-head.svg') }}" alt="" class="chat-mascot">
@@ -32,7 +32,7 @@
     @else
         <span x-ref="bubbleMascot" class="chat-mascot-slot--sm relative block h-full w-full"></span>
     @endif
-@elseif ($face === \App\Services\Chat\ChatAppearance::FACE_AVATAR && $avatar)
+@elseif ($face === \App\Shop\Chat\ChatAppearance::FACE_AVATAR && $avatar)
     <img src="{{ $avatar }}" alt="" aria-hidden="true"
          class="block h-full w-full rounded-full bg-white object-cover">
 @else

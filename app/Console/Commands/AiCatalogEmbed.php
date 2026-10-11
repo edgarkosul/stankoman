@@ -3,11 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Models\Product;
-use App\Services\Ai\Contracts\LlmClient;
-use App\Services\Catalog\CatalogSemanticIndex;
+use App\Shop\Catalog\CatalogSemanticIndex;
 use App\Shop\ProductEmbeddingText;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Siteko\Chatbot\Ai\Contracts\LlmClient;
 use Throwable;
 
 /**
@@ -36,7 +36,8 @@ class AiCatalogEmbed extends Command
         {--limit= : Обработать не больше стольких товаров}
         {--force : Переэмбеддить всё, даже неизменившееся}
         {--dry-run : Только посчитать, что изменилось, без вызовов модели}
-        {--fields-only : Обновить в зеркале поля (цену, наличие, разделы) без эмбеддингов}';
+        {--fields-only : Обновить в зеркале поля (цену, наличие, разделы) без эмбеддингов}
+        {--status : Только показать состояние зеркала — ничего не менять}';
 
     protected $description = 'Посчитать векторы товаров для поиска по смыслу';
 
@@ -45,8 +46,12 @@ class AiCatalogEmbed extends Command
         ProductEmbeddingText $builder,
         CatalogSemanticIndex $index,
     ): int {
+        if ((bool) $this->option('status')) {
+            return $this->status($llm, $index);
+        }
+
         $model = $llm->embeddingModel();
-        $dimensions = (int) config('ai_support.embedding.dimensions');
+        $dimensions = (int) config('chatbot.embedding.dimensions');
         $batchSize = (int) config('ai_support.catalog_search.batch');
         $limit = $this->option('limit') !== null ? max(1, (int) $this->option('limit')) : null;
         $force = (bool) $this->option('force');
@@ -324,5 +329,68 @@ class AiCatalogEmbed extends Command
         DB::table('product_embeddings')->whereIn('product_id', $gone)->delete();
 
         $this->info('Убрано из зеркала снятых с публикации: '.count($gone).'.');
+    }
+
+    /**
+     * Состояние зеркала: сколько документов, той ли моделью считаны векторы,
+     * объявлен ли эмбеддер. Раньше это был раздел «Смысловой поиск»
+     * у `ai:kb-doctor`; доктор пакета бота про зеркало магазина не знает.
+     *
+     * Код выхода 1 — только при поломке: пустое зеркало до первого прогона —
+     * рабочий режим (бот ищет по словам), а не авария.
+     */
+    private function status(LlmClient $llm, CatalogSemanticIndex $index): int
+    {
+        $active = (int) DB::table('products')->where('is_active', true)->count();
+        $documents = $index->count();
+
+        $rows = DB::table('product_embeddings')
+            ->selectRaw('count(*) as total, min(dimensions) as min_dim')
+            ->first();
+
+        $embedded = (int) ($rows->total ?? 0);
+
+        if ($embedded === 0) {
+            $this->warn('Векторов каталога нет — бот ищет товары по словам, без смысла. Собрать: php artisan ai:catalog-embed');
+
+            return self::SUCCESS;
+        }
+
+        $this->info(sprintf('Зеркало «%s»: %d документов, векторов посчитано %d, активных товаров %d.',
+            $index->name(), $documents, $embedded, $active));
+
+        $problems = [];
+
+        // Разошлись — значит часть каталога боту не видна вовсе: либо ночной
+        // прогон не доходил, либо документы не доехали до индекса.
+        if (abs($documents - $active) > max(10, (int) ($active * 0.02))) {
+            $problems[] = sprintf('Зеркало разошлось с каталогом на %d товаров — нужен прогон ai:catalog-embed.', abs($documents - $active));
+        }
+
+        if (! $index->embedderDeclared()) {
+            $problems[] = 'Эмбеддер в зеркале НЕ объявлен: поиск по смыслу не работает, хотя векторы есть. Лечится прогоном ai:catalog-embed.';
+        }
+
+        $models = DB::table('product_embeddings')->distinct()->pluck('model')->all();
+
+        if (count($models) > 1) {
+            $problems[] = 'Векторы от разных моделей: '.implode(', ', $models).'. Нужен ai:catalog-embed --force.';
+        } elseif ($models !== [] && $models[0] !== $llm->embeddingModel()) {
+            $problems[] = sprintf('Векторы посчитаны моделью %s, а в конфиге %s. Нужен ai:catalog-embed --force.', $models[0], $llm->embeddingModel());
+        }
+
+        if ((int) ($rows->min_dim ?? 0) !== $llm->embeddingDimensions()) {
+            $problems[] = sprintf('Размерность векторов %d, в конфиге %d. Нужен ai:catalog-embed --force.', (int) ($rows->min_dim ?? 0), $llm->embeddingDimensions());
+        }
+
+        foreach ($problems as $problem) {
+            $this->error($problem);
+        }
+
+        if ($problems === []) {
+            $this->info('Эмбеддер объявлен, модель и размерность векторов совпадают с конфигом.');
+        }
+
+        return $problems === [] ? self::SUCCESS : self::FAILURE;
     }
 }

@@ -57,8 +57,8 @@
             </span>
         </label>
 
-        @if ($conversation->callbackRequest)
-            @php($lead = $conversation->callbackRequest)
+        @if ($conversation->lead)
+            @php($lead = $conversation->lead)
 
             <div class="col-span-2 sm:col-span-4">
                 <div class="text-xs font-medium text-gray-500">
@@ -90,7 +90,7 @@
         @forelse ($messages as $message)
             @php($role = $message->role)
 
-            @if ($role === \App\Models\ChatMessage::ROLE_SYSTEM)
+            @if ($role === \Siteko\Chatbot\Models\ChatMessage::ROLE_SYSTEM)
                 {{-- Служебная пометка: кто взял, когда вернул, почему бот замолчал --}}
                 <div class="flex justify-center" wire:key="msg-{{ $message->id }}">
                     <div class="rounded-full bg-gray-100 px-3 py-1 text-center text-xs text-gray-500">
@@ -99,7 +99,7 @@
                     </div>
                 </div>
             @else
-                @php($fromVisitor = $role === \App\Models\ChatMessage::ROLE_VISITOR)
+                @php($fromVisitor = $role === \Siteko\Chatbot\Models\ChatMessage::ROLE_VISITOR)
                 {{--
                     Ключ обязателен: лента перерисовывается каждым тиком
                     опроса, и без него Livewire переиспользует чужой узел —
@@ -109,8 +109,8 @@
                      wire:key="msg-{{ $message->id }}">
                     <div class="text-xs text-gray-500">
                         @switch($role)
-                            @case(\App\Models\ChatMessage::ROLE_VISITOR) Покупатель @break
-                            @case(\App\Models\ChatMessage::ROLE_OPERATOR) {{ $message->operator?->name ?? 'Оператор' }} @break
+                            @case(\Siteko\Chatbot\Models\ChatMessage::ROLE_VISITOR) Покупатель @break
+                            @case(\Siteko\Chatbot\Models\ChatMessage::ROLE_OPERATOR) {{ $message->operator?->name ?? 'Оператор' }} @break
                             @default Бот
                         @endswitch
                         · {{ $message->created_at?->format('d.m H:i') }}
@@ -126,8 +126,8 @@
                         'whitespace-pre-line' => $fromVisitor,
                         'chat-md' => ! $fromVisitor,
                         'bg-primary-600 text-white' => $fromVisitor,
-                        'bg-gray-100 text-gray-950' => $role === \App\Models\ChatMessage::ROLE_ASSISTANT,
-                        'bg-success-50 text-gray-950 ring-1 ring-success-200' => $role === \App\Models\ChatMessage::ROLE_OPERATOR,
+                        'bg-gray-100 text-gray-950' => $role === \Siteko\Chatbot\Models\ChatMessage::ROLE_ASSISTANT,
+                        'bg-success-50 text-gray-950 ring-1 ring-success-200' => $role === \Siteko\Chatbot\Models\ChatMessage::ROLE_OPERATOR,
                     ])>@if ($fromVisitor){{ $message->body }}@else{!! $markdown->toHtml($message->body) !!}@endif</div>
 
                     {{--
@@ -135,7 +135,7 @@
                         Помеченный ответ уезжает в «Пробелы» вместе с вопросом
                         покупателя — там из него делается статья.
                     --}}
-                    @if ($role === \App\Models\ChatMessage::ROLE_OPERATOR)
+                    @if ($role === \Siteko\Chatbot\Models\ChatMessage::ROLE_OPERATOR)
                         <div class="text-xs">
                             @if ($message->meta['to_kb'] ?? false)
                                 <span class="inline-flex items-center gap-1 rounded bg-success-50 px-1.5 py-0.5
@@ -160,8 +160,8 @@
                         «почему он так сказал»: чем кончился ход, куда
                         сходил и что нашёл.
                     --}}
-                    @if ($role === \App\Models\ChatMessage::ROLE_ASSISTANT)
-                        @php($telemetry = \App\Services\Chat\ChatMessageTelemetry::for($message))
+                    @if ($role === \Siteko\Chatbot\Models\ChatMessage::ROLE_ASSISTANT)
+                        @php($telemetry = \App\Shop\Chat\ChatMessageTelemetry::for($message))
 
                         <div class="max-w-[80%] space-y-1 text-xs text-gray-500">
                             {{--
@@ -188,10 +188,10 @@
 ">ничего не нашёл</span>
                             @endif
 
-                            @if ($message->rating === \App\Models\ChatMessage::RATING_DOWN)
+                            @if ($message->rating === \Siteko\Chatbot\Models\ChatMessage::RATING_DOWN)
                                 <span class="mr-2 rounded bg-danger-100 px-1.5 py-0.5 text-danger-700
 ">покупатель: не помогло</span>
-                            @elseif ($message->rating === \App\Models\ChatMessage::RATING_UP)
+                            @elseif ($message->rating === \Siteko\Chatbot\Models\ChatMessage::RATING_UP)
                                 <span class="mr-2 rounded bg-success-100 px-1.5 py-0.5 text-success-700
 ">покупатель: помогло</span>
                             @endif
@@ -340,7 +340,7 @@
                         Та же форма контактов, что показывает бот своим
                         инструментом. Скрыта, когда контакты уже есть.
                     --}}
-                    @if ($conversation->callback_request_id === null)
+                    @if ($conversation->lead_ref === null)
                         <x-filament::button
                             color="gray"
                             icon="heroicon-o-envelope"

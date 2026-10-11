@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
  * а ночная команда решит, что переэмбеддивать нечего.
  *
  * Сам вектор здесь НЕ лежит. Он живёт в зеркале Meilisearch рядом с товаром
- * (App\Services\Catalog\CatalogSemanticIndex): держать его ещё и в MySQL
+ * (App\Shop\Catalog\CatalogSemanticIndex): держать его ещё и в MySQL
  * значило бы хранить ~15 МБ ради данных, которые нужны одному только поиску.
  *
  * `content_hash` считается по ТОМУ ЖЕ тексту, который уходит в модель.

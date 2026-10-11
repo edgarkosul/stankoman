@@ -3,46 +3,35 @@
 namespace App\Livewire\Admin;
 
 use App\Filament\Pages\AssistantSettings;
-use App\Services\Ai\AssistantConfig;
-use App\Services\Chat\OperatorPresence;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Livewire\Component;
+use Siteko\Chatbot\Ai\AssistantConfig;
+use Siteko\Chatbot\Chat\OperatorPresence;
 
 /**
- * Переключатель «я на смене» в топбаре админки.
+ * Режим чата в топбаре админки: звать ли менеджера в чат.
  *
  * Нужен потому, что расписание врёт в обе стороны: в субботу кто-то
  * разгребает заказы, а в среду в полдень весь отдел уехал к поставщику.
- * От присутствия зависит, предложит ли чат позвать менеджера или сразу
+ * От режима зависит, предложит ли чат позвать менеджера или сразу
  * попросит контакты, — поэтому переключатель на глазах, а не в настройках.
+ *
+ * Режимы — пакета бота (решение Эдгара 10.10, реестр bots 10.3): «не звать»,
+ * «по расписанию», «всегда». Срока годности у них нет, и автоматического
+ * «раз вы в админке — вы на связи» больше нет: выбор действует, пока его
+ * не поменяют, а «по расписанию» — то, к чему возвращаются.
  *
  * ЭТО НЕ ВЫКЛЮЧАТЕЛЬ БОТА, и путать их дорого. Здесь — есть ли сейчас
  * живой человек; отвечает ли в чате бот, решает «ИИ бот» → «Настройки
  * бота». Но подпись считается по ОБОИМ состояниям сразу: у донора она
  * считалась по одному присутствию и над выключенным ботом писала
  * «отвечает бот» — этот скриншот дошёл до заказчика.
- *
- * Ручное решение живёт не дольше своего TTL — и это главное в нём.
- * Переключатель без срока годности забывают включённым, и магазин
- * месяцами обещает живого менеджера в четыре утра.
  */
 class OperatorPresenceToggle extends Component
 {
-    public function goOnline(OperatorPresence $presence): void
+    public function setMode(string $mode, OperatorPresence $presence): void
     {
-        $presence->setOverride(true, Auth::id());
-    }
-
-    public function goOffline(OperatorPresence $presence): void
-    {
-        $presence->setOverride(false, Auth::id());
-    }
-
-    /** Вернуться к расписанию и автодетекту. */
-    public function followSchedule(OperatorPresence $presence): void
-    {
-        $presence->clearOverride();
+        $presence->setMode($mode);
     }
 
     /**
@@ -68,19 +57,21 @@ class OperatorPresenceToggle extends Component
 
     public function render(OperatorPresence $presence, AssistantConfig $assistant): View
     {
-        $state = $presence->resolve();
-        $online = $state['online'];
+        $online = $presence->isOnline();
         $botEnabled = $assistant->enabled();
+        $schedule = $presence->scheduleSummary();
 
         [$label, $tone] = self::badge($botEnabled, $online);
 
         return view('livewire.admin.operator-presence-toggle', [
             'label' => $label,
             'tone' => $tone,
-            'online' => $online,
-            'source' => $state['source'],
-            'until' => $state['until'],
-            'schedule' => $presence->scheduleSummary(),
+            'mode' => $presence->mode(),
+            'modes' => [
+                OperatorPresence::MODE_ON => 'Звать всегда',
+                OperatorPresence::MODE_SCHEDULE => 'По расписанию',
+                OperatorPresence::MODE_OFF => 'Не звать в чат',
+            ],
             /*
              * Что увидит покупатель, если откроет чат прямо сейчас, —
              * единственная формулировка, которую нельзя понять неправильно.
@@ -88,14 +79,14 @@ class OperatorPresenceToggle extends Component
              * разное при живом и при выключенном боте.
              */
             'chatEffect' => match (true) {
-                ! $botEnabled => 'Поля для вопроса нет: покупатель видит форму контактов. Присутствие на это не влияет.',
+                ! $botEnabled => 'Поля для вопроса нет: покупатель видит форму контактов. Режим на это не влияет.',
                 $online => 'Отвечает бот и предлагает позвать вас в чат.',
                 default => 'Отвечает бот; звать человека он не предлагает — просит оставить почту.',
             },
             /*
              * Почему бот молчит — с именем виновника. Аварийный рубильник
              * из `.env` админ не найдёт никогда, а выключатель в «Настройках
-             * бота» снимет сам. Без этой строки он щёлкает присутствием,
+             * бота» снимет сам. Без этой строки он щёлкает режимом,
              * ничего не меняется, и объяснить это может только разработчик.
              */
             'botOffReason' => match (true) {
@@ -104,13 +95,12 @@ class OperatorPresenceToggle extends Component
                 default => 'Бот выключен разработчиком в конфигурации — из админки не включить.',
             },
             'settingsUrl' => $assistant->disabledByAdmin() ? AssistantSettings::getUrl(panel: 'admin') : null,
-            'explanation' => match ($state['source']) {
-                OperatorPresence::SOURCE_OVERRIDE => $online
-                    ? 'Вы вручную включили режим «менеджер на смене».'
-                    : 'Вы вручную ушли со смены.',
-                OperatorPresence::SOURCE_ACTIVITY => 'Определено по работе в админке: раз вы здесь, значит на связи.',
-                default => 'В админке сейчас никого, поэтому по расписанию: '.$presence->scheduleSummary().'.',
+            'explanation' => match ($presence->mode()) {
+                OperatorPresence::MODE_ON => 'Менеджера зовут в чат в любое время.',
+                OperatorPresence::MODE_OFF => 'Менеджера в чат не зовут: когда нужен человек, бот просит оставить контакты.',
+                default => ($online ? 'Сейчас рабочее время' : 'Сейчас нерабочее время').' — по режиму работы: '.$schedule.'.',
             },
+            'hold' => (int) config('chatbot.operators.hold_minutes'),
         ]);
     }
 }

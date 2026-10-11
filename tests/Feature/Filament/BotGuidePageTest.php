@@ -5,7 +5,7 @@ use App\Filament\Resources\ChatConversations\ChatConversationResource;
 use App\Filament\Resources\KbArticles\KbArticleResource;
 use App\Models\Setting;
 use App\Models\User;
-use App\Services\Ai\AssistantConfig;
+use Siteko\Chatbot\Ai\AssistantConfig;
 
 /*
  * Инструкция владельцу. Проверяем не текст, а то, из-за чего она перестала бы

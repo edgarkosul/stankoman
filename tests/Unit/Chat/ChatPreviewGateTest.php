@@ -1,6 +1,6 @@
 <?php
 
-use App\Services\Chat\ChatPreviewGate;
+use App\Shop\Chat\ChatPreviewGate;
 use Illuminate\Http\Request;
 
 /*

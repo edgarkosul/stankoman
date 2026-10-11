@@ -4,8 +4,9 @@ namespace App\Shop;
 
 use App\Livewire\Common\RequestCallback;
 use App\Models\CallbackRequest;
-use App\Services\Chat\Contracts\LeadIntake;
-use App\Services\Chat\Data\ClaimedLead;
+use Siteko\Chatbot\Chat\Contracts\LeadIntake;
+use Siteko\Chatbot\Chat\Data\ClaimedLead;
+use Siteko\Chatbot\Models\ChatConversation;
 
 /**
  * Заявка «перезвоните» как форма контактов в чате.
@@ -19,15 +20,32 @@ final class CallbackLeadIntake implements LeadIntake
     /** Сколько минут заявка ещё считается «только что оставленной». */
     private const CLAIM_WINDOW_MINUTES = 5;
 
+    /** Комментарий заявки начинается с этого: менеджер видит, откуда вопрос. */
+    private const TOPIC_PREFIX = 'Вопрос из чата: ';
+
     public function formComponent(): string
     {
         return 'common.request-callback';
     }
 
-    public function formParameters(?string $topic): array
+    /**
+     * Тема — то, что бот назвал, предлагая форму: менеджер отвечает,
+     * уже понимая вопрос.
+     */
+    public function formParameters(ChatConversation $conversation, ?string $topic): array
     {
         return [
-            'topic' => $topic,
+            'topic' => filled($topic) ? self::TOPIC_PREFIX.trim($topic) : null,
+            'source' => CallbackRequest::SOURCE_CHAT,
+            'channel' => RequestCallback::CHANNEL_EMAIL,
+        ];
+    }
+
+    /** Форма без разговора — когда бот выключен и вместо чата форма. */
+    public function standaloneFormParameters(int $siteId, ?array $page, array $source): array
+    {
+        return [
+            'topic' => null,
             'source' => CallbackRequest::SOURCE_CHAT,
             'channel' => RequestCallback::CHANNEL_EMAIL,
         ];
@@ -44,9 +62,13 @@ final class CallbackLeadIntake implements LeadIntake
      * Третье условие у донора отсутствовало. Событие формы слышно всей
      * странице, и заявка, оставленная кнопкой на карточке товара при
      * загруженной панели чата, прицепилась бы к разговору — хотя покупатель
-     * о чате в этот момент и не думал.
+     * о чате в этот момент и не думал. С панелью в своей рамке (`/chat/panel`)
+     * событие до неё со страницы не доходит, но проверка дешёвая и остаётся.
+     *
+     * Адрес — этого запроса: привязку зовёт панель из того же браузера,
+     * что отправил форму.
      */
-    public function claim(int $leadId, ?string $ip): ?ClaimedLead
+    public function claim(int $leadId, ChatConversation $conversation): ?ClaimedLead
     {
         $request = CallbackRequest::query()->find($leadId);
 
@@ -54,9 +76,26 @@ final class CallbackLeadIntake implements LeadIntake
             && $request->source === CallbackRequest::SOURCE_CHAT
             && $request->created_at !== null
             && $request->created_at->greaterThan(now()->subMinutes(self::CLAIM_WINDOW_MINUTES))
-            && (string) $request->ip_address === (string) $ip;
+            && (string) $request->ip_address === (string) request()->ip();
 
         return $mine ? new ClaimedLead((int) $request->getKey(), self::contactsLeft($request)) : null;
+    }
+
+    /**
+     * Открыта — пока менеджер не ответил: бот не предлагает форму второй раз
+     * и говорит, что заявка уже у менеджера. Ответил или отменил — разговор
+     * снова может кончиться новой заявкой.
+     */
+    public function hasOpenLead(ChatConversation $conversation): bool
+    {
+        if ($conversation->lead_ref === null) {
+            return false;
+        }
+
+        return CallbackRequest::query()
+            ->whereKey($conversation->lead_ref)
+            ->where('status', CallbackRequest::STATUS_PENDING)
+            ->exists();
     }
 
     /**

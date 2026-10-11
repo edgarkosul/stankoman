@@ -3,9 +3,9 @@
 namespace App\Shop;
 
 use App\Models\Page;
-use App\Services\Kb\Contracts\KbSource;
-use App\Services\Kb\Data\KbDocument;
-use App\Services\Kb\HtmlKbTextExtractor;
+use Siteko\Chatbot\Kb\Contracts\KbSource;
+use Siteko\Chatbot\Kb\Data\KbDocument;
+use Siteko\Chatbot\Kb\HtmlKbTextExtractor;
 
 /**
  * Информационные страницы сайта как источник базы знаний.

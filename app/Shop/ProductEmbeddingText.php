@@ -3,8 +3,8 @@
 namespace App\Shop;
 
 use App\Models\Product;
-use App\Services\Ai\Support\ProductTextExtractor;
 use App\Support\Products\ProductSpecs;
+use Siteko\Chatbot\Ai\Support\ProductTextExtractor;
 
 /**
  * Текст товара, уходящий в вектор.

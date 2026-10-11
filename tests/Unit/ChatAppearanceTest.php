@@ -1,12 +1,14 @@
 <?php
 
-use App\Services\Chat\ChatAppearance;
+use App\Shop\Chat\ChatAppearance;
 use Illuminate\Support\Facades\Storage;
+use Siteko\Chatbot\Settings\ArraySettingsStore;
 use Tests\TestCase;
 
 /*
- * Вид чата читается из конфига, куда его раскладывает SettingsServiceProvider,
- * — значит проверяется без базы: лаунчер спрашивает его на каждой странице.
+ * Кнопка чата читается из конфига, куда её раскладывает SettingsServiceProvider,
+ * аватар — из настроек бота (`widget.avatar`): и то и другое проверяется без
+ * базы — лаунчер спрашивает их на каждой странице.
  */
 uses(TestCase::class);
 
@@ -19,11 +21,16 @@ beforeEach(function (): void {
 
 function appearance(array $settings): ChatAppearance
 {
+    $avatar = $settings['avatar'] ?? null;
+    unset($settings['avatar']);
+
     foreach ($settings as $key => $value) {
         config()->set('settings.assistant.'.$key, $value);
     }
 
-    return new ChatAppearance;
+    return new ChatAppearance(new ArraySettingsStore(
+        $avatar === null ? [] : [ChatAppearance::AVATAR => $avatar],
+    ));
 }
 
 it('без настроек — робот на кнопке, в подсказке и в шапке', function (): void {
@@ -58,7 +65,7 @@ it('без робота лицо — аватар, а без аватара — 
 
     config()->set('settings.assistant.avatar', null);
 
-    expect((new ChatAppearance)->face())->toBe(ChatAppearance::FACE_ICON);
+    expect(appearance([])->face())->toBe(ChatAppearance::FACE_ICON);
 });
 
 it('картинка на кнопке — аватар, своя или никакой', function (): void {

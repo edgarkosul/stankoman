@@ -4,12 +4,12 @@ namespace App\Filament\Resources\KbArticles\Pages;
 
 use App\Filament\Pages\KbGaps;
 use App\Filament\Resources\KbArticles\KbArticleResource;
-use App\Models\ChatMessage;
-use App\Services\Kb\KbArticleTitle;
 use Filament\Resources\Pages\CreateRecord;
 use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Cache;
+use Siteko\Chatbot\Kb\KbArticleTitle;
+use Siteko\Chatbot\Models\ChatMessage;
 
 /**
  * Создание статьи — обычная форма Filament плюс мост из диалогов.

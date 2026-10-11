@@ -2,9 +2,9 @@
 
 namespace App\Shop;
 
-use App\Services\Kb\Contracts\KbSource;
-use App\Services\Kb\Data\KbDocument;
 use App\Support\WorkSchedule;
+use Siteko\Chatbot\Kb\Contracts\KbSource;
+use Siteko\Chatbot\Kb\Data\KbDocument;
 
 /**
  * Реквизиты и режим работы магазина из настроек — один синтетический документ.
@@ -16,7 +16,7 @@ use App\Support\WorkSchedule;
  * Страницы сайта эти данные больше не набирают руками, а показывают блоками —
  * и блоки в текст для бота не попадают, так что второй версии фактов у него нет.
  *
- * Свежесть держит ночной `ai:kb-reindex`, а не наблюдатель за настройками:
+ * Свежесть держит ночной `chatbot:kb-reindex`, а не наблюдатель за настройками:
  * воркер очереди читает конфиг один раз при запуске, и переиндексация из него
  * взяла бы прежние значения. Процесс планировщика стартует заново и видит
  * текущие.

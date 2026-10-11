@@ -1,14 +1,15 @@
 <?php
 
-use App\Jobs\ReindexKbDocumentJob;
-use App\Models\KbArticle;
 use App\Models\Page;
-use App\Services\Kb\KbVectorIndexer;
-use App\Services\Kb\Sources\KbArticleKbSource;
 use App\Shop\PageKbSource;
-use Database\Factories\KbArticleFactory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Siteko\Chatbot\Database\Factories\KbArticleFactory;
+use Siteko\Chatbot\Jobs\ReindexKbDocumentJob;
+use Siteko\Chatbot\Kb\KbSourceRegistry;
+use Siteko\Chatbot\Kb\KbVectorIndexer;
+use Siteko\Chatbot\Kb\Sources\KbArticleKbSource;
+use Siteko\Chatbot\Models\KbArticle;
 
 beforeEach(function (): void {
     Queue::fake();
@@ -22,7 +23,8 @@ $delivery = fn (array $attributes = []): Page => Page::factory()->create([
     ...$attributes,
 ]);
 
-$reindex = fn (string $source, string $key) => (new ReindexKbDocumentJob($source, $key))->handle(app(KbVectorIndexer::class));
+$reindex = fn (string $source, string $key) => (new ReindexKbDocumentJob(1, $source, $key))
+    ->handle(app(KbVectorIndexer::class), app(KbSourceRegistry::class));
 
 it('ставит правку страницы из базы знаний в очередь ассистента', function () use ($delivery): void {
     $delivery();

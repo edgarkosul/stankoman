@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Services\Catalog;
+namespace App\Shop\Catalog;
 
-use App\Services\Ai\Contracts\LlmClient;
-use App\Services\Ai\Support\PiiRedactor;
 use Closure;
 use Illuminate\Support\Facades\Log;
+use Siteko\Chatbot\Ai\Contracts\LlmClient;
+use Siteko\Chatbot\Ai\Support\PiiRedactor;
 use Throwable;
 
 /**

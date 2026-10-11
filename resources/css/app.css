@@ -725,47 +725,9 @@ select:focus[data-flux-control] {
 /*
  * ===== Чат с консультантом =====
  *
- * Фоновый рисунок ленты — артворк донора (kratonshop), серый штрих #e5e5e5.
- *
- * Плиткой в один столбец на всю ширину панели (`--chat-bg-tile: 100%`):
- * по вертикальному шву артворк стыкуется почти честно (рассинхрон 0.6 px),
- * а по горизонтальному половина линий обрывается. Столбец в ширину панели
- * не даёт вертикальных швов ни при какой ширине окна, а горизонтальный —
- * один, на высоте в ширину панели.
- *
- * Заливка остаётся белой (`bg-white` на панели) — рисунок ложится поверх
- * неё, и все пузыри, плашки и подсказки перекрывают его непрозрачно.
+ * Панель — компонент пакета siteko/chatbot в рамке `/chat/panel` со своими
+ * стилями (`chatbot::widget-styles`); здесь — кнопка, маскот и подсказка.
  */
-.chat-panel {
-    --chat-bg-tile: 100%;
-
-    background-image: url("../images/chat-bg.svg");
-    background-repeat: repeat;
-    background-size: var(--chat-bg-tile);
-}
-
-/*
- * Лента чата прижата к низу.
- *
- * Разговор растёт сверху вниз и упирается в строку ввода, поэтому короткий
- * (а пустой чат с одним приветствием — это первый экран у всех) должен
- * лежать внизу, у поля ответа, а не висеть под шапкой.
- *
- * Делается это auto-отступом у первого сообщения, а не `justify-end` на
- * самой ленте: лента ещё и скроллится, а `justify-content` в скролл-
- * контейнере вытесняет переполнение за верхний край, докуда прокрутка
- * не достаёт. Auto-margin в тесноте просто схлопывается в ноль.
- *
- * `flex-shrink: 0` — чтобы длинный ответ бота не ужимался колонкой,
- * а скроллился вместе с лентой.
- */
-.chat-feed > * {
-    flex-shrink: 0;
-}
-
-.chat-feed > :first-child {
-    margin-top: auto;
-}
 
 /*
  * Маскот на кнопке чата.
@@ -819,7 +781,7 @@ select:focus[data-flux-control] {
 }
 
 /*
- * Кнопка чата — вид из «Вида чата» в админке (`App\Services\Chat\ChatLauncher`).
+ * Кнопка чата — вид из «Вида чата» в админке (`App\Shop\Chat\ChatLauncher`).
  *
  * Перенесено из bots (`resources/widget/launcher.css`, 06.10.2026) через
  * kratonshop. Свои
@@ -1152,96 +1114,4 @@ select:focus[data-flux-control] {
 @keyframes cl-dot-pulse {
     0% { box-shadow: 0 0 0 0 var(--cl-online); opacity: 0.7; }
     70%, 100% { box-shadow: 0 0 0 calc(var(--cl-size) * 0.14) var(--cl-online); opacity: 0; }
-}
-
-/*
- * Три бегущие точки — общепринятый знак того, что ответ набирают. Сдвиг
- * на два пикселя вместе с прозрачностью: одной прозрачности на полутора-
- * пиксельной точке почти не видно.
- */
-.chat-typing-dot {
-    animation: chat-typing 1.2s ease-in-out infinite;
-}
-
-.chat-typing-dot:nth-child(2) {
-    animation-delay: 0.15s;
-}
-
-.chat-typing-dot:nth-child(3) {
-    animation-delay: 0.3s;
-}
-
-@keyframes chat-typing {
-    0%,
-    60%,
-    100% {
-        opacity: 0.35;
-        transform: translateY(0);
-    }
-
-    30% {
-        opacity: 1;
-        transform: translateY(-2px);
-    }
-}
-
-/* Кому движение мешает — тому статичные точки: смысл строки в тексте рядом. */
-@media (prefers-reduced-motion: reduce) {
-    .chat-typing-dot {
-        animation: none;
-        opacity: 0.75;
-    }
-}
-
-/*
- * Разметка ответа в пузыре. Preflight Tailwind снимает с абзацев и списков
- * все отступы и маркеры, а ответ бота — это как раз абзацы и списки.
- */
-.chat-md > :first-child {
-    margin-top: 0;
-}
-
-.chat-md > :last-child {
-    margin-bottom: 0;
-}
-
-.chat-md p {
-    margin: 0 0 0.5rem;
-}
-
-.chat-md ul,
-.chat-md ol {
-    margin: 0 0 0.5rem;
-    padding-left: 1.15rem;
-    list-style-position: outside;
-}
-
-.chat-md ul {
-    list-style-type: disc;
-}
-
-.chat-md ol {
-    list-style-type: decimal;
-}
-
-.chat-md li {
-    margin: 0.125rem 0;
-}
-
-/*
- * Ссылка на товар — главное, что есть в ответе: цветом сайта, как ссылки
- * на витрине, и полужирная. Полужирной её делал не стиль, а модель:
- * deepseek-v4-flash оборачивал ссылку в **…**, deepseek-v4.1-flash так не
- * делает ни у одного провайдера (bots, 07.10.2026). Выделяет виджет.
- */
-.chat-md a {
-    color: var(--color-brand-green);
-    font-weight: 600;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    overflow-wrap: anywhere;
-}
-
-.chat-md code {
-    font-size: 0.9em;
 }

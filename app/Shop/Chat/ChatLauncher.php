@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Chat;
+namespace App\Shop\Chat;
 
 /**
  * Кнопка чата на витрине: какой она формы, что на ней, чем она привлекает

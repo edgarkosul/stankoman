@@ -1,6 +1,6 @@
 <?php
 
-use App\Services\Chat\ChatLauncher;
+use App\Shop\Chat\ChatLauncher;
 
 /*
  * Кнопка чата: значения выбирают в админке, а становятся они классами

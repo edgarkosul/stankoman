@@ -3,7 +3,6 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Resources\Products\Pages\EditProduct;
-use App\Http\Middleware\TrackOperatorActivity;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -71,13 +70,6 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-                /*
-                 * Работа в админке = «кто-то на связи» для чата на витрине.
-                 * После Authenticate, а не среди общих посредников, как
-                 * у донора: там «на смене» включал бы любой, кто открыл
-                 * /admin/login, — включая краулеры, которые его и открывают.
-                 */
-                TrackOperatorActivity::class,
             ])
             ->homeUrl(fn (): string => route('home'))
             ->brandName(fn (): string => $this->resolveBrandName())

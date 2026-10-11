@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\KbCategories;
 
 use App\Filament\Resources\KbCategories\Pages\ManageKbCategories;
-use App\Models\KbCategory;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -13,6 +12,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Siteko\Chatbot\Models\KbCategory;
 use UnitEnum;
 
 /**

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ChatPanelController;
 use App\Http\Controllers\ChatResumeController;
 use App\Http\Controllers\ChatUnreadController;
 use App\Http\Controllers\Hooks\MaxHookController;
@@ -22,9 +23,13 @@ use App\Models\Page;
 use App\Support\Products\ProductSearchService;
 use App\Support\Seo\SitemapGenerator;
 use App\Support\Seo\SiteSeoDataBuilder;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 Route::get('/', function (SiteSeoDataBuilder $seoBuilder) {
     $homePage = Page::query()->where('slug', 'home')->first();
@@ -128,10 +133,27 @@ Route::get('/chat/unread', ChatUnreadController::class)
     ->withoutMiddleware([
         StartSession::class,
         ShareErrorsFromSession::class,
-        ValidateCsrfToken::class,
+        // В Laravel 13 CSRF — PreventRequestForgery; ValidateCsrfToken — его
+        // устаревший наследник, и по его имени родитель не снимается.
+        PreventRequestForgery::class,
         SubstituteBindings::class,
     ])
     ->name('chat.unread');
+
+/*
+ * Панель чата — компонент пакета siteko/chatbot в рамке со своего же домена.
+ * Лаунчер на странице создаёт рамку при первом открытии и говорит с ней
+ * протоколом `widget.js` пакета (см. alpine/chat-launcher.js).
+ *
+ * Своя страница, а не компонент на странице витрины: стили пакетной панели
+ * рассчитаны на свой документ, а витринные `.chat-*` и Tailwind столкнулись
+ * бы с ними (решение Эдгара 10.10, реестр bots 10.3).
+ *
+ * Выше /chat/{token}: иначе слово «panel» уехало бы в токен.
+ */
+Route::get('/chat/panel', ChatPanelController::class)
+    ->middleware('throttle:60,1')
+    ->name('chat.panel');
 
 /*
  * Возврат в чат по ссылке из письма «менеджер ответил»: переписка

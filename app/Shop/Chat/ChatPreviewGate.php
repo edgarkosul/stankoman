@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Chat;
+namespace App\Shop\Chat;
 
 use Closure;
 use Illuminate\Http\Request;

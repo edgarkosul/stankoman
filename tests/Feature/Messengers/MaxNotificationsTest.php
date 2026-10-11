@@ -7,18 +7,18 @@ use App\Jobs\DeliverMaxMessageJob;
 use App\Listeners\CallbackRequests\NotifyMessengersAboutCallback;
 use App\Listeners\Orders\NotifyMessengersAboutOrder;
 use App\Models\CallbackRequest;
-use App\Models\ChatConversation;
 use App\Models\MessengerChannel;
 use App\Models\Order;
 use App\Models\User;
 use App\Services\Messengers\ChatGone;
 use App\Services\Messengers\MaxClient;
 use App\Services\Messengers\MaxLinks;
-use App\Services\Notifications\Contracts\EscalationNotifier;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+use Siteko\Chatbot\Models\ChatConversation;
+use Siteko\Chatbot\Notifications\Contracts\EscalationNotifier;
 
 /*
  * Уведомления менеджерам в MAX: чаты подключаются кнопкой, дальше туда уходят
@@ -89,7 +89,7 @@ it('заявка на звонок уходит один раз и не дубл
     // Ту же форму показывает панель чата: там заявку привязывают к диалогу,
     // и про неё уже написала эскалация — второе сообщение было бы дублем.
     $fromChat = CallbackRequest::factory()->create(['source' => CallbackRequest::SOURCE_CHAT]);
-    ChatConversation::factory()->create(['callback_request_id' => $fromChat->getKey()]);
+    ChatConversation::factory()->create(['lead_ref' => $fromChat->getKey()]);
 
     app(NotifyMessengersAboutCallback::class)->handle(new CallbackRequestSubmitted($fromChat));
 

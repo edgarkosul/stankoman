@@ -4,12 +4,12 @@ namespace App\Filament\Resources\KbArticles\Schemas;
 
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\ImageBlock;
 use App\Filament\Forms\Components\RichEditor\RichContentCustomBlocks\PdfLinkBlock;
-use App\Models\KbCategory;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Schema;
+use Siteko\Chatbot\Models\KbCategory;
 
 /**
  * Редактор статьи — тот же RichEditor, что у страниц сайта, но хранит JSON.

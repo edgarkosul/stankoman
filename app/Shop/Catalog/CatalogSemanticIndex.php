@@ -1,9 +1,10 @@
 <?php
 
-namespace App\Services\Catalog;
+namespace App\Shop\Catalog;
 
 use Illuminate\Support\Facades\Log;
 use Meilisearch\Client;
+use Siteko\Chatbot\Catalog\CatalogQueryShape;
 use Throwable;
 
 /**
@@ -213,7 +214,7 @@ final class CatalogSemanticIndex
      *
      * Без него гибридный поиск отвечает ошибкой на каждый запрос с вектором,
      * а документы с `_vectors` кладутся молча — то есть зеркало выглядит
-     * собранным и не работает. Спрашивает `ai:kb-doctor`.
+     * собранным и не работает. Спрашивает `ai:catalog-embed --status`.
      */
     public function embedderDeclared(): bool
     {

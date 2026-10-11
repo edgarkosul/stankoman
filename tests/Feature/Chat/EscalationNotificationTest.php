@@ -1,33 +1,37 @@
 <?php
 
-use App\Jobs\NotifyManagersAboutEscalationJob;
-use App\Mail\ChatEscalationManagerMail;
-use App\Models\ChatConversation;
-use App\Models\ChatMessage;
 use App\Models\User;
-use App\Services\Chat\ChatEscalationService;
-use App\Services\Chat\Contracts\EscalationTarget;
-use App\Services\Chat\OperatorPresence;
-use App\Services\Notifications\Contracts\EscalationNotifier;
 use Carbon\CarbonImmutable;
 use Filament\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
+use Siteko\Chatbot\Chat\ChatEscalationService;
+use Siteko\Chatbot\Chat\Contracts\EscalationTarget;
+use Siteko\Chatbot\Chat\OperatorPresence;
+use Siteko\Chatbot\Jobs\NotifyManagersAboutEscalationJob;
+use Siteko\Chatbot\Mail\EscalationManagerMail;
+use Siteko\Chatbot\Models\ChatConversation;
+use Siteko\Chatbot\Models\ChatMessage;
+use Siteko\Chatbot\Notifications\Contracts\EscalationNotifier;
 
 /*
  * Эскалация доходит до человека: письмо менеджерам, уведомление в админке
  * и пуш в мессенджер. Проверяем не только «ушло», но и когда НЕ уходит:
  * тихое дублирование сигнала стоит менеджеру внимания, а разобранный
  * диалог, о котором пришло письмо, — доверия к каналу.
+ *
+ * Джоба и письмо — пакета бота; здесь проверяется, что они доходят через
+ * наши швы: почты из настроек магазина, колокольчик Filament, смена по
+ * режиму работы магазина.
  */
 
 beforeEach(function (): void {
     config([
         'settings.general.manager_emails' => ['manager@intertooler.test'],
         'settings.general.filament_admin_emails' => ['admin@intertooler.test'],
-        'ai_support.escalation.notify_max' => false,
+        'chatbot.escalation.notify_max' => false,
     ]);
 
     Cache::flush();
@@ -96,12 +100,13 @@ it('шлёт письмо менеджерам и уведомление в ко
     ]);
 
     (new NotifyManagersAboutEscalationJob(
+        1,
         $conversation->id,
         ChatEscalationService::TRIGGER_VISITOR,
         'Покупатель просит менеджера.',
     ))->handle(app(OperatorPresence::class), app(EscalationNotifier::class), app(EscalationTarget::class));
 
-    Mail::assertSent(ChatEscalationManagerMail::class, fn (ChatEscalationManagerMail $mail): bool => $mail->hasTo('manager@intertooler.test')
+    Mail::assertSent(EscalationManagerMail::class, fn (EscalationManagerMail $mail): bool => $mail->hasTo('manager@intertooler.test')
         && $mail->conversation->is($conversation));
 
     Notification::assertSentTo(
@@ -118,15 +123,15 @@ it('каждому менеджеру — своё письмо, без чужи
 
     $conversation = ChatConversation::factory()->escalated()->create();
 
-    (new NotifyManagersAboutEscalationJob($conversation->id, ChatEscalationService::TRIGGER_BOT))
+    (new NotifyManagersAboutEscalationJob(1, $conversation->id, ChatEscalationService::TRIGGER_BOT))
         ->handle(app(OperatorPresence::class), app(EscalationNotifier::class), app(EscalationTarget::class));
 
-    Mail::assertSent(ChatEscalationManagerMail::class, 2);
+    Mail::assertSent(EscalationManagerMail::class, 2);
 
     // Один мейлабл на двоих накопил бы оба адреса во втором письме.
     Mail::assertSent(
-        ChatEscalationManagerMail::class,
-        fn (ChatEscalationManagerMail $mail): bool => $mail->hasTo('second@intertooler.test')
+        EscalationManagerMail::class,
+        fn (EscalationManagerMail $mail): bool => $mail->hasTo('second@intertooler.test')
             && ! $mail->hasTo('first@intertooler.test'),
     );
 });
@@ -140,7 +145,7 @@ it('молчит про разговор, который уже разобрал
     // Пока джоба ждала очереди, менеджер закрыл разговор.
     $conversation = ChatConversation::factory()->closed()->escalated()->create();
 
-    (new NotifyManagersAboutEscalationJob($conversation->id, ChatEscalationService::TRIGGER_FAILURE))
+    (new NotifyManagersAboutEscalationJob(1, $conversation->id, ChatEscalationService::TRIGGER_FAILURE))
         ->handle(app(OperatorPresence::class), app(EscalationNotifier::class), app(EscalationTarget::class));
 
     Mail::assertNothingSent();
@@ -152,7 +157,7 @@ it('откладывает пуш в мессенджер до начала см
     Mail::fake();
     Notification::fake();
 
-    config(['ai_support.escalation.notify_max' => true]);
+    config(['chatbot.escalation.notify_max' => true]);
 
     // Вторник, четыре утра: смена начнётся в девять.
     CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-03-24 04:00:00', 'Europe/Moscow'));
@@ -176,7 +181,7 @@ it('откладывает пуш в мессенджер до начала см
 
     $conversation = ChatConversation::factory()->escalated()->create();
 
-    (new NotifyManagersAboutEscalationJob($conversation->id, ChatEscalationService::TRIGGER_FAILURE))
+    (new NotifyManagersAboutEscalationJob(1, $conversation->id, ChatEscalationService::TRIGGER_FAILURE))
         ->handle(app(OperatorPresence::class), $push, app(EscalationTarget::class));
 
     expect($push->sent)->toBe([]);
@@ -195,7 +200,7 @@ it('в рабочее время шлёт пуш сразу', function (): void 
     Mail::fake();
     Notification::fake();
 
-    config(['ai_support.escalation.notify_max' => true]);
+    config(['chatbot.escalation.notify_max' => true]);
 
     CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-03-24 11:00:00', 'Europe/Moscow'));
 
@@ -218,11 +223,11 @@ it('в рабочее время шлёт пуш сразу', function (): void 
 
     $conversation = ChatConversation::factory()->escalated()->create();
 
-    (new NotifyManagersAboutEscalationJob($conversation->id, ChatEscalationService::TRIGGER_VISITOR))
+    (new NotifyManagersAboutEscalationJob(1, $conversation->id, ChatEscalationService::TRIGGER_VISITOR))
         ->handle(app(OperatorPresence::class), $push, app(EscalationTarget::class));
 
     expect($push->sent)->toHaveCount(1)
-        ->and($push->sent[0])->toContain('Покупатель просит менеджера в чате');
+        ->and($push->sent[0])->toContain('Посетитель просит менеджера в чате');
 
     Queue::assertNotPushed(NotifyManagersAboutEscalationJob::class);
 

@@ -1,15 +1,18 @@
 <?php
 
-use App\Livewire\Support\ChatPanel;
 use App\Models\Page;
 use Illuminate\Support\Facades\Storage;
-use Livewire\Livewire;
+use Siteko\Chatbot\Contracts\SettingsStore;
+use Siteko\Chatbot\Settings\Keys;
 
 /*
  * Вид кнопки чата из «Вида чата». Проверяем не анимацию — она живёт
  * в браузере, — а то, что разметка соглашается с настройкой во ВСЕХ трёх
  * местах: на кнопке, в подсказке у неё и в шапке панели. Разойтись они
  * не имеют права: робот на кнопке и фото в шапке читаются как поломка.
+ *
+ * Кнопка — магазина (`settings`), аватар — настройка бота (`widget.avatar`):
+ * его показывает и шапка панели пакета в рамке /chat/panel.
  */
 
 beforeEach(function (): void {
@@ -46,10 +49,8 @@ it('старый выключатель робота даёт значок и р
 
 it('пилюля с аватаром слева: картинка на кнопке, имя и угол', function (): void {
     Storage::disk('public')->put('chat-avatars/face.webp', 'x');
-    config([
-        'settings.assistant.launcher' => ['style' => 'pill', 'image' => 'avatar', 'side' => 'left', 'effect' => 'rings'],
-        'settings.assistant.avatar' => 'chat-avatars/face.webp',
-    ]);
+    config(['settings.assistant.launcher' => ['style' => 'pill', 'image' => 'avatar', 'side' => 'left', 'effect' => 'rings']]);
+    app(SettingsStore::class)->set(Keys::WIDGET_AVATAR, 'chat-avatars/face.webp');
 
     $this->get(route('page.show', launcherPage()->slug))
         ->assertOk()
@@ -59,17 +60,19 @@ it('пилюля с аватаром слева: картинка на кноп�
         ->assertDontSee('x-ref="bubbleMascot"', escape: false);
 });
 
-it('шапка панели соглашается с кнопкой', function (): void {
-    Livewire::test(ChatPanel::class)
-        ->assertSee('chatAvatar(40)', escape: false);
-
+it('шапка панели в рамке показывает тот же аватар, что кнопка', function (): void {
     Storage::disk('public')->put('chat-avatars/face.webp', 'x');
-    config([
-        'settings.assistant.launcher' => ['image' => 'icon'],
-        'settings.assistant.avatar' => 'chat-avatars/face.webp',
-    ]);
+    config(['settings.assistant.launcher' => ['image' => 'avatar']]);
+    app(SettingsStore::class)->set(Keys::WIDGET_AVATAR, 'chat-avatars/face.webp');
 
-    Livewire::test(ChatPanel::class)
-        ->assertDontSee('chatAvatar(40)', escape: false)
+    $this->get(route('page.show', launcherPage()->slug))
+        ->assertOk()
+        ->assertSee('/chat-avatars/face.webp', escape: false)
+        // Рамку лаунчер создаёт сам при первом открытии — адрес у него в конфиге.
+        ->assertSee('frameUrl', escape: false)
+        ->assertSee('chat\\\\\\/panel', escape: false);
+
+    $this->get(route('chat.panel'))
+        ->assertOk()
         ->assertSee('/chat-avatars/face.webp', escape: false);
 });

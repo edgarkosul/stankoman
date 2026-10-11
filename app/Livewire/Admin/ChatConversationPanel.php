@@ -2,18 +2,7 @@
 
 namespace App\Livewire\Admin;
 
-use App\Models\ChatConversation;
-use App\Models\ChatMessage;
 use App\Models\User;
-use App\Services\Ai\AssistantConfig;
-use App\Services\Ai\ShopAssistant;
-use App\Services\Ai\Support\PiiRedactor;
-use App\Services\Chat\ChatConversationService;
-use App\Services\Chat\ChatEscalationService;
-use App\Services\Chat\ChatMarkdown;
-use App\Services\Chat\OperatorPresence;
-use App\Services\Chat\PageContext;
-use App\Services\Kb\KbVectorStore;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\MarkdownEditor;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -26,6 +15,18 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
+use Siteko\Chatbot\Ai\Assistant;
+use Siteko\Chatbot\Ai\Support\PiiRedactor;
+use Siteko\Chatbot\Ai\Tools\ToolContext;
+use Siteko\Chatbot\Chat\ChatConversationService;
+use Siteko\Chatbot\Chat\ChatEscalationService;
+use Siteko\Chatbot\Chat\ChatMarkdown;
+use Siteko\Chatbot\Chat\Contracts\LeadIntake;
+use Siteko\Chatbot\Chat\OperatorPresence;
+use Siteko\Chatbot\Chat\PageContext;
+use Siteko\Chatbot\Kb\KbVectorStore;
+use Siteko\Chatbot\Models\ChatConversation;
+use Siteko\Chatbot\Models\ChatMessage;
 use Throwable;
 
 /**
@@ -187,8 +188,9 @@ class ChatConversationPanel extends Component implements HasForms
      */
     public function draftWithBot(
         ChatConversationService $chat,
-        ShopAssistant $assistant,
+        Assistant $assistant,
         OperatorPresence $presence,
+        LeadIntake $leads,
     ): void {
         $this->authorizeStaff();
 
@@ -242,11 +244,14 @@ class ChatConversationPanel extends Component implements HasForms
                 // префикса общий, значит черновик стоит втрое дешевле.
                 sessionId: $conversation->promptSessionId(),
                 page: PageContext::toPrompt($question->page_context),
-                settings: app(AssistantConfig::class)->promptSettings(),
-                // Цену бот называет ту, что видит этот покупатель, — как в джобе.
-                seesDiscounts: $conversation->user_id !== null,
+                // Цену бот называет ту, что видит этот покупатель: вошёл
+                // в аккаунт — значит, «для своих», как на витрине.
+                attributes: [ToolContext::SEES_MEMBER_PRICES => $conversation->user_id !== null],
                 operatorsOnline: $presence->isOnline(),
                 workingHours: $presence->scheduleSummary(),
+                workingTime: $presence->isWorkingTime(),
+                pageUrl: PageContext::url($question->page_context),
+                leadOpen: $leads->hasOpenLead($conversation),
             );
         } catch (Throwable $e) {
             Log::warning('operator draft failed', [
@@ -375,7 +380,7 @@ class ChatConversationPanel extends Component implements HasForms
             return;
         }
 
-        if ($conversation->callback_request_id !== null) {
+        if ($conversation->lead_ref !== null) {
             Notification::make()->title('Контакты уже оставлены')->body('Заявка по этому разговору есть.')->info()->send();
 
             return;
@@ -484,14 +489,14 @@ class ChatConversationPanel extends Component implements HasForms
      *
      * Две дороги к пустоте: посетитель нажал «Очистить переписку» —
      * его право стереть написанное сильнее нашего удобства, — и ночной
-     * `chat:purge`, дошедший до диалога, который у кого-то открыт.
+     * `chatbot:chat-purge`, дошедший до диалога, который у кого-то открыт.
      * С findOrFail обе дороги кончались бы ошибкой прямо в тике опроса,
      * поверх открытой страницы.
      */
     private function conversation(): ?ChatConversation
     {
         return ChatConversation::query()
-            ->with(['user', 'operator', 'callbackRequest'])
+            ->with(['user', 'operator', 'lead'])
             ->find($this->conversationId);
     }
 

@@ -2,14 +2,8 @@
 
 use App\Models\Category;
 use App\Models\Product;
-use App\Services\Ai\Contracts\LlmClient;
-use App\Services\Ai\Data\ProductQuery;
-use App\Services\Ai\Data\ProductSort;
-use App\Services\Ai\Providers\FakeLlmClient;
-use App\Services\Ai\Support\PiiRedactor;
-use App\Services\Ai\Support\ProductTextExtractor;
-use App\Services\Catalog\CatalogSemanticIndex;
-use App\Services\Catalog\CatalogSemanticSearch;
+use App\Shop\Catalog\CatalogSemanticIndex;
+use App\Shop\Catalog\CatalogSemanticSearch;
 use App\Shop\CatalogSections;
 use App\Shop\EloquentProductLookup;
 use App\Shop\ProductEmbeddingText;
@@ -18,6 +12,12 @@ use App\Support\Search\ProductTextSearch;
 use Meilisearch\Client;
 use Meilisearch\Endpoints\Indexes;
 use Meilisearch\Search\SearchResult;
+use Siteko\Chatbot\Ai\Contracts\LlmClient;
+use Siteko\Chatbot\Ai\Data\ProductQuery;
+use Siteko\Chatbot\Ai\Data\ProductSort;
+use Siteko\Chatbot\Ai\Providers\FakeLlmClient;
+use Siteko\Chatbot\Ai\Support\PiiRedactor;
+use Siteko\Chatbot\Ai\Support\ProductTextExtractor;
 
 /*
  * Смысловой поиск по каталогу на живых моделях (фаза 8).

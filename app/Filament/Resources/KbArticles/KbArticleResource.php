@@ -7,10 +7,10 @@ use App\Filament\Resources\KbArticles\Pages\EditKbArticle;
 use App\Filament\Resources\KbArticles\Pages\ListKbArticles;
 use App\Filament\Resources\KbArticles\Schemas\KbArticleForm;
 use App\Filament\Resources\KbArticles\Tables\KbArticlesTable;
-use App\Models\KbArticle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Table;
+use Siteko\Chatbot\Models\KbArticle;
 use UnitEnum;
 
 /**

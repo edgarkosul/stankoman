@@ -14,23 +14,23 @@ use App\Filament\Resources\KbCategories\KbCategoryResource;
 use App\Filament\Widgets\AssistantSpendOverview;
 use App\Livewire\Admin\ChatConversationPanel;
 use App\Models\CallbackRequest;
-use App\Models\ChatConversation;
-use App\Models\ChatMessage;
 use App\Models\Setting;
 use App\Models\User;
-use App\Services\Ai\AssistantConfig;
-use App\Services\Ai\Data\AssistantReply;
-use App\Services\Chat\ChatAbuseGuard;
-use App\Services\Chat\ChatAppearance;
-use App\Services\Chat\ChatConversationService;
-use App\Services\Chat\OperatorPresence;
-use App\Services\Kb\Data\KbGapQuestion;
-use App\Services\Kb\KbGapAnalyzer;
-use App\Services\Kb\KbVectorStore;
+use App\Shop\Chat\ChatAppearance;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Siteko\Chatbot\Ai\AssistantConfig;
+use Siteko\Chatbot\Ai\Data\AssistantReply;
+use Siteko\Chatbot\Chat\ChatAbuseGuard;
+use Siteko\Chatbot\Chat\ChatConversationService;
+use Siteko\Chatbot\Kb\Data\KbGapQuestion;
+use Siteko\Chatbot\Kb\KbGapAnalyzer;
+use Siteko\Chatbot\Kb\KbVectorStore;
+use Siteko\Chatbot\Models\ChatConversation;
+use Siteko\Chatbot\Models\ChatMessage;
 
 /*
  * Рабочее место администратора бота на sqlite: разделы открываются,
@@ -248,7 +248,7 @@ it('форма статьи не подставляет ответ бота вм
         ->assertSet('sourceQuestions', []);
 });
 
-it('сохраняет настройки бота в таблицу и применяет их сразу', function (): void {
+it('сохраняет настройки бота в настройки пакета и применяет их сразу', function (): void {
     $this->actingAs($this->admin);
 
     Livewire::test(AssistantSettings::class)
@@ -260,7 +260,9 @@ it('сохраняет настройки бота в таблицу и прим
 
     $config = app(AssistantConfig::class);
 
-    expect(Setting::query()->where('key', 'assistant.enabled')->value('value'))->toBe('0')
+    // Настройки бота — в `chatbot_settings` пакета, а не в `settings` магазина.
+    expect(DB::table('chatbot_settings')->where('site_id', 1)->where('key', 'assistant.enabled')->value('value'))->toBe('false')
+        ->and(Setting::query()->where('key', 'assistant.enabled')->exists())->toBeFalse()
         ->and($config->enabled())->toBeFalse()
         ->and($config->disabledByAdmin())->toBeTrue()
         ->and($config->promptSettings())->toMatchArray([
@@ -332,16 +334,6 @@ it('показывает промпт по несохранённой форме
         ->and(Setting::query()->where('key', 'assistant.about')->exists())->toBeFalse();
 });
 
-it('считает менеджера на связи по переходам в админке, но не по странице входа', function (): void {
-    $presence = app(OperatorPresence::class);
-
-    $this->get('/admin/login')->assertSuccessful();
-    expect($presence->lastActivityAt())->toBeNull();
-
-    $this->actingAs($this->admin)->get(KbCategoryResource::getUrl('index'))->assertSuccessful();
-    expect($presence->lastActivityAt())->not->toBeNull();
-});
-
 it('заводит заявку по контактам из переписки без письма самому себе', function (): void {
     Event::fake([CallbackRequestSubmitted::class]);
 
@@ -363,7 +355,7 @@ it('заводит заявку по контактам из переписки 
     expect($lead->phone)->toBe('+79991112233')
         ->and($lead->source)->toBe(CallbackRequest::SOURCE_CHAT)
         ->and($lead->notified_at)->not->toBeNull()
-        ->and($conversation->refresh()->callback_request_id)->toBe($lead->id);
+        ->and($conversation->refresh()->lead_ref)->toBe($lead->id);
 
     Event::assertNotDispatched(CallbackRequestSubmitted::class);
 });
@@ -387,8 +379,8 @@ it('виджет расхода показывает выбранный днев
      * этой плитки объяснения нет нигде.
      */
     config([
-        'ai_support.gateway.key' => '',
-        'ai_support.chat.abuse.daily_tokens' => 1000,
+        'chatbot.gateway.key' => '',
+        'chatbot.chat.abuse.daily_tokens' => 1000,
     ]);
     app()->forgetInstance(ChatAbuseGuard::class);
     app(ChatAbuseGuard::class)->recordSpend(1000);
@@ -402,7 +394,7 @@ it('виджет расхода показывает выбранный днев
 });
 
 it('виджет расхода считает по расходной книге и честно говорит о бюджете без ключа', function (): void {
-    config(['ai_support.gateway.key' => '']);
+    config(['chatbot.gateway.key' => '']);
 
     $conversation = ChatConversation::factory()->create();
     app(ChatConversationService::class)->addAssistantMessage(

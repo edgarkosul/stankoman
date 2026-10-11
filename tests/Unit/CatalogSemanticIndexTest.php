@@ -1,6 +1,6 @@
 <?php
 
-use App\Services\Catalog\CatalogSemanticIndex;
+use App\Shop\Catalog\CatalogSemanticIndex;
 use Meilisearch\Client;
 use Meilisearch\Endpoints\Indexes;
 use Meilisearch\Search\SearchResult;

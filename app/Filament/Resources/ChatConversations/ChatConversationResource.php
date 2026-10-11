@@ -5,10 +5,10 @@ namespace App\Filament\Resources\ChatConversations;
 use App\Filament\Resources\ChatConversations\Pages\ListChatConversations;
 use App\Filament\Resources\ChatConversations\Pages\ViewChatConversation;
 use App\Filament\Resources\ChatConversations\Tables\ChatConversationsTable;
-use App\Models\ChatConversation;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Table;
+use Siteko\Chatbot\Models\ChatConversation;
 use UnitEnum;
 
 /**

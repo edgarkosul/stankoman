@@ -4,23 +4,24 @@ namespace App\Shop;
 
 use App\Models\Category;
 use App\Models\Product;
-use App\Services\Ai\Contracts\ProductLookup;
-use App\Services\Ai\Data\CatalogSection;
-use App\Services\Ai\Data\ProductCard;
-use App\Services\Ai\Data\ProductMatches;
-use App\Services\Ai\Data\ProductQuery;
-use App\Services\Ai\Data\SpecMatches;
-use App\Services\Ai\Data\SpecQuery;
-use App\Services\Ai\Support\ProductTextExtractor;
-use App\Services\Catalog\CatalogQueryShape;
-use App\Services\Catalog\CatalogSemanticSearch;
-use App\Services\Catalog\SpecMatcher;
+use App\Shop\Catalog\CatalogSemanticSearch;
 use App\Support\Products\DiscountVisibility;
 use App\Support\Products\ProductSpecs;
 use App\Support\Search\ProductTextSearch;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Laravel\Scout\Builder as ScoutBuilder;
+use Siteko\Chatbot\Ai\Contracts\ProductLookup;
+use Siteko\Chatbot\Ai\Contracts\SpecLookup;
+use Siteko\Chatbot\Ai\Data\CatalogSection;
+use Siteko\Chatbot\Ai\Data\ProductCard;
+use Siteko\Chatbot\Ai\Data\ProductMatches;
+use Siteko\Chatbot\Ai\Data\ProductQuery;
+use Siteko\Chatbot\Ai\Data\SpecCandidate;
+use Siteko\Chatbot\Ai\Data\SpecScope;
+use Siteko\Chatbot\Ai\Support\ProductTextExtractor;
+use Siteko\Chatbot\Ai\Tools\ToolContext;
+use Siteko\Chatbot\Catalog\CatalogQueryShape;
 use Throwable;
 
 /**
@@ -34,7 +35,7 @@ use Throwable;
  * что и крупное число на карточке товара (ProductController::buildSummary).
  * Назвать в чате другое число значит спорить с собственной витриной.
  */
-final class EloquentProductLookup implements ProductLookup
+final class EloquentProductLookup implements ProductLookup, SpecLookup
 {
     private const BRANDS_CACHE_KEY = 'ai:catalog:brands:v1';
 
@@ -50,7 +51,7 @@ final class EloquentProductLookup implements ProductLookup
         private readonly CatalogSections $sections,
         private readonly ProductSpecs $specs,
         private readonly ProductTextExtractor $extractor,
-        /** Потолок описания в знаках — config ai_support.agent.product_description_limit. */
+        /** Потолок описания в знаках — config chatbot.agent.product_description_limit. */
         private readonly int $descriptionLimit,
         /** Сколько строк характеристик у товара в СПИСКЕ выдачи; у одной карточки — все. */
         private readonly int $specsInList,
@@ -64,10 +65,18 @@ final class EloquentProductLookup implements ProductLookup
          * подбирает, но не отказывает покупателю.
          */
         private readonly ?CatalogSemanticSearch $semantic = null,
-        private readonly SpecMatcher $matcher = new SpecMatcher,
     ) {}
 
-    public function find(string $sku, string $slug, bool $seesDiscounts): ?ProductCard
+    /** Каталог у магазина есть всегда: это и есть магазин. */
+    public function hasCatalog(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes  кто спрашивает — `ToolContext::$attributes`
+     */
+    public function find(string $sku, string $slug, array $attributes = []): ?ProductCard
     {
         $sku = trim($sku);
         $slug = trim($slug);
@@ -95,7 +104,7 @@ final class EloquentProductLookup implements ProductLookup
 
         return $product === null
             ? null
-            : $this->card($product, $seesDiscounts, withDescription: true, specsLimit: 0);
+            : $this->card($product, self::seesMemberPrices($attributes), withDescription: true, specsLimit: 0);
     }
 
     public function search(ProductQuery $query): ProductMatches
@@ -116,7 +125,7 @@ final class EloquentProductLookup implements ProductLookup
          * цена на него не влияет, и «подбери подешевле» без этого правила
          * отдавало первую пятёрку по релевантности (разговор 5, 05.10.2026).
          */
-        $sort = $query->sort === null ? [] : [$query->sort->rule()];
+        $sort = $query->sort === null ? [] : ['price:'.$query->sort->direction()];
 
         /*
          * Слова ищет ProductTextSearch — та же точка входа, что у шапки сайта
@@ -235,7 +244,7 @@ final class EloquentProductLookup implements ProductLookup
 
             $cards[] = $this->card(
                 $product,
-                $query->seesDiscounts,
+                self::seesMemberPrices($query->attributes),
                 withDescription: $isNamed,
                 specsLimit: $isNamed ? 0 : $this->specsInList,
             );
@@ -244,129 +253,72 @@ final class EloquentProductLookup implements ProductLookup
         return new ProductMatches($cards, $outcome->text, $outcome->unmatched, $outcome->relaxed, $semantic);
     }
 
-    public function bySpec(SpecQuery $query): SpecMatches
+    /**
+     * Все товары разделов — кандидаты подбора по порогу (`find_by_spec`).
+     *
+     * Из базы, а не из индекса: смысл подбора в том, чтобы просмотреть
+     * ВЕСЬ раздел, а индекс отдаёт окно по совпадению слов. Разделы —
+     * сотни товаров (самый большой, «Винтовые компрессоры», — 568),
+     * и описание с его тысячами знаков здесь не читается вовсе. Сверку
+     * с порогом, порядок и подсказки делает движок (`SpecSearch`).
+     *
+     * Цена кандидата — базовая, без скидки: по ней движок ставит дешёвые
+     * первыми, и порядок не должен зависеть от того, вошёл ли посетитель.
+     * Цена по запросу (0) — null: про неё «дешевле» сказать нельзя.
+     */
+    public function specCandidates(SpecScope $scope): array
     {
-        $sectionIds = $query->categoryId !== null ? [$query->categoryId] : $query->sectionIds;
-        $conditions = $query->conditions;
-
-        if ($sectionIds === [] || $conditions === []) {
-            return new SpecMatches([], 0, 0, 0, array_fill(0, count($conditions), 0), []);
+        if ($scope->sectionIds === []) {
+            return [];
         }
 
-        /*
-         * Из базы, а не из индекса: смысл подбора в том, чтобы просмотреть
-         * ВЕСЬ раздел, а индекс отдаёт окно по совпадению слов. Разделы —
-         * сотни товаров (самый большой, «Винтовые компрессоры», — 568),
-         * и описание с его тысячами знаков здесь не читается вовсе.
-         */
-        $products = Product::query()
-            ->select(['id', 'name', 'slug', 'sku', 'brand', 'in_stock', 'price_amount', 'discount_price', 'warranty', 'specs'])
+        return Product::query()
+            ->select(['id', 'in_stock', 'price_amount', 'specs'])
             ->where('is_active', true)
-            ->whereHas('categories', static fn ($q) => $q->whereIn('categories.id', $sectionIds))
-            ->when($query->inStockOnly, static fn ($q) => $q->where('in_stock', true))
-            ->when($query->priceMin !== null, static fn ($q) => $q->where('price_amount', '>=', $query->priceMin))
-            ->when($query->priceMax !== null, static fn ($q) => $q->where('price_amount', '<=', $query->priceMax))
-            ->get();
+            ->whereHas('categories', static fn ($q) => $q->whereIn('categories.id', $scope->sectionIds))
+            ->when($scope->inStockOnly, static fn ($q) => $q->where('in_stock', true))
+            ->when($scope->priceMin !== null, static fn ($q) => $q->where('price_amount', '>=', $scope->priceMin))
+            ->when($scope->priceMax !== null, static fn ($q) => $q->where('price_amount', '<=', $scope->priceMax))
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Product $product): SpecCandidate => new SpecCandidate(
+                id: (int) $product->getKey(),
+                price: (int) $product->price_amount > 0 ? (int) $product->price_amount : null,
+                inStock: (bool) $product->in_stock,
+                rows: $this->rows($product),
+            ))
+            ->all();
+    }
 
-        $passed = [];
-        $failed = 0;
-        $near = [];
-        $noData = array_fill(0, count($conditions), 0);
-        $names = [];
+    /**
+     * Карточки найденного подбором — в порядке номеров, без характеристик:
+     * строки, по которым шёл подбор, движок показывает сам.
+     *
+     * @param  list<int>  $ids
+     * @param  array<string, mixed>  $attributes
+     * @return list<ProductCard>
+     */
+    public function cards(array $ids, array $attributes = []): array
+    {
+        if ($ids === []) {
+            return [];
+        }
 
-        foreach ($products as $product) {
-            $rows = array_map(
-                static fn (array $row): array => ['name' => $row['name'], 'value' => $row['value']],
-                $this->specs->rows($product),
-            );
+        $products = Product::query()
+            ->whereIn('id', $ids)
+            ->where('is_active', true)
+            ->get()
+            ->keyBy('id');
 
-            foreach ($rows as $row) {
-                if (preg_match('/\d/u', $row['value']) === 1) {
-                    $key = mb_strtolower(str_replace("\u{00AD}", '', $row['name']));
-                    $names[$key] ??= ['name' => str_replace("\u{00AD}", '', $row['name']), 'count' => 0];
-                    $names[$key]['count']++;
-                }
-            }
+        $cards = [];
 
-            $statuses = [];
-            $lines = [];
-
-            foreach ($conditions as $index => $condition) {
-                $result = $this->matcher->check($condition, $rows);
-                $statuses[] = $result['status'];
-                $lines = [...$lines, ...$result['lines']];
-
-                if ($result['status'] === 'nodata') {
-                    $noData[$index]++;
-                }
-            }
-
-            if (in_array('fail', $statuses, true)) {
-                $failed++;
-
-                if (count($conditions) === 1) {
-                    $near[] = [
-                        'product' => $product,
-                        'lines' => $result['lines'],
-                        'gap' => SpecMatcher::distance($conditions[0], $result['values']) ?? INF,
-                    ];
-                }
-            } elseif (! in_array('nodata', $statuses, true)) {
-                $passed[] = ['product' => $product, 'lines' => array_values(array_unique($lines, SORT_REGULAR))];
+        foreach ($ids as $id) {
+            if (($product = $products->get($id)) instanceof Product) {
+                $cards[] = $this->card($product, self::seesMemberPrices($attributes), withDescription: false, specsLimit: 0, specs: []);
             }
         }
 
-        /*
-         * От дешёвых к дорогим: подбор по порогу отвечает на «что подходит»,
-         * и первым покупателю нужно самое доступное из подходящего. Цена
-         * по запросу (0) — в конец: про неё сказать «дешевле» нельзя.
-         */
-        usort($passed, static function (array $a, array $b): int {
-            $priceA = (int) $a['product']->price_amount ?: PHP_INT_MAX;
-            $priceB = (int) $b['product']->price_amount ?: PHP_INT_MAX;
-
-            return $priceA <=> $priceB;
-        });
-
-        $cards = array_map(
-            fn (array $row): ProductCard => $this->card(
-                $row['product'],
-                $query->seesDiscounts,
-                withDescription: false,
-                specsLimit: 0,
-                specs: $row['lines'],
-            ),
-            array_slice($passed, 0, $query->limit),
-        );
-
-        usort($names, static fn (array $a, array $b): int => $b['count'] <=> $a['count']);
-
-        /*
-         * Ближайшие к порогу — только когда не подошло ничего и условие одно:
-         * при двух условиях «ближе» не определено (дотянул по мощности, но
-         * тяжелее — это ближе или дальше?), и выдумывать порядок не надо.
-         */
-        $nearest = [];
-
-        if ($passed === [] && $near !== []) {
-            usort($near, static fn (array $a, array $b): int => [$a['gap'], (int) $a['product']->price_amount]
-                <=> [$b['gap'], (int) $b['product']->price_amount]);
-
-            $nearest = array_map(
-                fn (array $row): ProductCard => $this->card($row['product'], $query->seesDiscounts, withDescription: false, specsLimit: 0, specs: $row['lines']),
-                array_slice($near, 0, 3),
-            );
-        }
-
-        return new SpecMatches(
-            cards: $cards,
-            scanned: $products->count(),
-            passed: count($passed),
-            failed: $failed,
-            noData: $noData,
-            names: array_slice($names, 0, 40),
-            nearest: $nearest,
-        );
+        return $cards;
     }
 
     public function sections(string $query, int $limit): array
@@ -519,14 +471,36 @@ final class EloquentProductLookup implements ProductLookup
             priceNote: $priceNote,
             vatNote: $price !== null && $this->vatRate > 0 ? 'НДС '.$this->vatRate.'% в том числе' : '',
             warranty: $warranty !== '' ? $warranty : null,
-            specs: $specs ?? array_map(
-                static fn (array $row): array => ['name' => $row['name'], 'value' => $row['value']],
-                $this->specs->rows($product, $specsLimit),
-            ),
+            specs: $specs ?? $this->rows($product, $specsLimit),
             description: $withDescription
                 ? $this->extractor->toText($product->description, $this->descriptionLimit)
                 : null,
         );
+    }
+
+    /**
+     * Строки характеристик для бота — те же, что на вкладке товара, но
+     * с понятными названиями вместо загадок поставщика (`SupplierSpecNames`).
+     *
+     * @return list<array{name: string, value: string}>
+     */
+    private function rows(Product $product, int $limit = 0): array
+    {
+        return array_map(
+            static fn (array $row): array => ['name' => SupplierSpecNames::readable($row['name']), 'value' => $row['value']],
+            $this->specs->rows($product, $limit),
+        );
+    }
+
+    /**
+     * Видит ли посетитель цены «для своих». Решает панель чата при открытии
+     * (вошёл в аккаунт — да), а движок только передаёт: см. `/chat/panel`.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private static function seesMemberPrices(array $attributes): bool
+    {
+        return (bool) ($attributes[ToolContext::SEES_MEMBER_PRICES] ?? false);
     }
 
     /**

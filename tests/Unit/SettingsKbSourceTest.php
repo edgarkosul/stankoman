@@ -1,8 +1,8 @@
 <?php
 
-use App\Services\Kb\Data\KbDocument;
-use App\Services\Kb\KbChunker;
 use App\Shop\SettingsKbSource;
+use Siteko\Chatbot\Kb\Data\KbDocument;
+use Siteko\Chatbot\Kb\KbChunker;
 use Tests\TestCase;
 
 uses(TestCase::class);

@@ -158,7 +158,7 @@ return [
          * А Scout шлёт документы пачками и о векторах не знает: любой новый
          * товар выпадал бы из поиска САЙТА до ближайшей ночи, а `scout:import`
          * падал бы весь. Векторы живут в отдельном зеркале `products_semantic`
-         * (App\Services\Catalog\CatalogSemanticIndex), и настройки поиска
+         * (App\Shop\Catalog\CatalogSemanticIndex), и настройки поиска
          * по словам оно берёт отсюда же — своей копии этого списка нет.
          */
         'index-settings' => [

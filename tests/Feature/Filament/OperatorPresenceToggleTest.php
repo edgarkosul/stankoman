@@ -3,13 +3,14 @@
 use App\Filament\Resources\ChatConversations\ChatConversationResource;
 use App\Livewire\Admin\OperatorPresenceToggle;
 use App\Models\User;
-use App\Services\Ai\AssistantConfig;
-use App\Services\Chat\OperatorPresence;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Livewire;
+use Siteko\Chatbot\Ai\AssistantConfig;
+use Siteko\Chatbot\Chat\OperatorPresence;
 
 /*
- * Переключатель «я на смене» в топбаре админки.
+ * Режим чата в топбаре админки: звать ли менеджера в чат (режимы пакета —
+ * «не звать», «по расписанию», «всегда»).
  *
  * Главное здесь — подпись. Она считается по КОМБИНАЦИИ «работает ли бот»
  * и «есть ли человек»: у донора она считалась по одному присутствию и над
@@ -38,36 +39,32 @@ it('подпись считает бота и присутствие вмест�
         ->toBe(['Чат: только форма контактов', 'contacts']);
 });
 
-it('переключает присутствие вручную и возвращает автоопределение', function (): void {
+it('переключает режим чата и возвращает расписание', function (): void {
     $presence = app(OperatorPresence::class);
 
     Livewire::actingAs($this->admin)
         ->test(OperatorPresenceToggle::class)
-        ->call('goOffline');
+        ->call('setMode', OperatorPresence::MODE_OFF)
+        ->assertSee('Не звать в чат — сейчас');
 
-    expect($presence->isOnline())->toBeFalse()
-        ->and($presence->source())->toBe(OperatorPresence::SOURCE_OVERRIDE);
-
-    Livewire::actingAs($this->admin)
-        ->test(OperatorPresenceToggle::class)
-        ->call('goOnline');
-
-    expect($presence->isOnline())->toBeTrue()
-        // Ручное решение живёт не дольше своего срока: переключатель
-        // без TTL забывают включённым.
-        ->and($presence->override()['until'])->not->toBeNull();
+    expect($presence->mode())->toBe(OperatorPresence::MODE_OFF)
+        ->and($presence->isOnline())->toBeFalse();
 
     Livewire::actingAs($this->admin)
         ->test(OperatorPresenceToggle::class)
-        ->call('followSchedule');
+        ->call('setMode', OperatorPresence::MODE_ON);
 
-    expect($presence->override())->toBeNull();
+    expect($presence->isOnline())->toBeTrue();
+
+    Livewire::actingAs($this->admin)
+        ->test(OperatorPresenceToggle::class)
+        ->call('setMode', OperatorPresence::MODE_SCHEDULE);
+
+    expect($presence->mode())->toBe(OperatorPresence::MODE_SCHEDULE);
 });
 
 it('называет виновника, когда бот выключен в админке', function (): void {
-    // Настройки разложены в config на старте приложения — бот читает
-    // именно их, а не таблицу.
-    config(['settings.'.AssistantConfig::PREFIX.'enabled' => false]);
+    app(AssistantConfig::class)->save(['enabled' => false]);
 
     Livewire::actingAs($this->admin)
         ->test(OperatorPresenceToggle::class)
@@ -77,7 +74,7 @@ it('называет виновника, когда бот выключен в �
 });
 
 it('аварийный рубильник в конфиге отличает от выключателя в админке', function (): void {
-    config(['ai_support.agent.enabled' => false]);
+    config(['chatbot.agent.enabled' => false]);
 
     Livewire::actingAs($this->admin)
         ->test(OperatorPresenceToggle::class)

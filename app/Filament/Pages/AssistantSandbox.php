@@ -2,18 +2,18 @@
 
 namespace App\Filament\Pages;
 
-use App\Models\ChatMessage;
-use App\Services\Ai\AssistantConfig;
-use App\Services\Ai\Data\AssistantReply;
-use App\Services\Ai\ShopAssistant;
-use App\Services\Ai\Support\PiiRedactor;
-use App\Services\Chat\Contracts\PageContextSource;
-use App\Services\Chat\OperatorPresence;
-use App\Services\Chat\PageContext;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Str;
+use Siteko\Chatbot\Ai\Assistant;
+use Siteko\Chatbot\Ai\Data\AssistantReply;
+use Siteko\Chatbot\Ai\Support\PiiRedactor;
+use Siteko\Chatbot\Ai\Tools\ToolContext;
+use Siteko\Chatbot\Chat\Contracts\PageContextSource;
+use Siteko\Chatbot\Chat\OperatorPresence;
+use Siteko\Chatbot\Chat\PageContext;
+use Siteko\Chatbot\Models\ChatMessage;
 use Throwable;
 use UnitEnum;
 
@@ -155,15 +155,16 @@ class AssistantSandbox extends Page
         }
 
         try {
-            $reply = app(ShopAssistant::class)->ask(
+            $reply = app(Assistant::class)->ask(
                 question: $question,
                 history: $this->historyForModel(),
                 sessionId: $this->sessionId,
                 page: $page,
-                settings: app(AssistantConfig::class)->promptSettings(),
-                seesDiscounts: $this->seesDiscounts,
+                attributes: [ToolContext::SEES_MEMBER_PRICES => $this->seesDiscounts],
                 operatorsOnline: $presence->isOnline(),
                 workingHours: $presence->scheduleSummary(),
+                workingTime: $presence->isWorkingTime(),
+                pageUrl: is_string($page['url'] ?? null) ? $page['url'] : null,
             );
         } catch (Throwable $e) {
             Notification::make()
@@ -201,7 +202,10 @@ class AssistantSandbox extends Page
             return null;
         }
 
-        return PageContext::toPrompt(app(PageContextSource::class)->describe($locator, $this->seesDiscounts));
+        return PageContext::toPrompt(app(PageContextSource::class)->describe(
+            $locator,
+            [ToolContext::SEES_MEMBER_PRICES => $this->seesDiscounts],
+        ));
     }
 
     /** С витрины удобнее скопировать адрес целиком — вытаскиваем слаг сами. */
@@ -277,7 +281,7 @@ class AssistantSandbox extends Page
             'cached_tokens' => $reply->cachedTokens,
             'cost_rub' => $reply->costRub,
             'latency_ms' => $reply->latencyMs,
-            'kb_miss' => $reply->isKbMiss((float) config('ai_support.knowledge_base.min_score')),
+            'kb_miss' => $reply->isKbMiss((float) config('chatbot.knowledge_base.min_score')),
             /*
              * Провал показываем как есть, а не заглушкой для покупателя:
              * «модель вернула пустоту» — это и есть ответ на вопрос
