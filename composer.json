@@ -127,14 +127,8 @@
             "url": "git@github.com:siteko-net/filament-restic-backups.git"
         },
         "siteko-chatbot": {
-            "type": "path",
-            "url": "../bots/packages/chatbot",
-            "options": {
-                "symlink": false,
-                "versions": {
-                    "siteko/chatbot": "0.1.0"
-                }
-            }
+            "type": "vcs",
+            "url": "git@github.com:siteko-net/chatbot.git"
         }
     }
 }

@@ -726,6 +726,19 @@ composer config --global --unset use-github-api
 `--unset` в конце — настройка глобальная, а API заметно быстрее клонирования
 для всех остальных проектов.
 
+То же нужно для `composer update siteko/chatbot` (обновление движка бота): метаданные
+restic composer читает при любом `update`. Пакет бота на деве ещё и требует подмены
+адреса: личный ключ репозиторий `siteko-net/chatbot` не видит, нужен ключ организации
+(алиас `github-siteko`). Ставится один раз:
+
+```bash
+git config --global url."git@github-siteko:siteko-net/chatbot.git".insteadOf "git@github.com:siteko-net/chatbot.git"
+```
+
+На бою у `deploy` своя подмена (`github-chatbot`), и там `update` не делают: хук ставит
+ровно тот коммит, что в `composer.lock`. Поэтому версию движка выбирает `update` на деве —
+после него сверить `version` и `source.reference` пакета в lock.
+
 Вторая ловушка **сейчас не воспроизводится, но легко возвращается.** Если
 `safe.bareRepository` выставлен в `explicit`, git отказывается работать с
 bare-репозиториями, найденными автоматически. Composer кладёт VCS-зависимости
