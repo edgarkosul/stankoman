@@ -17,11 +17,11 @@ Laravel 13 + Livewire 4 (Flux free) + Filament 5, PHP 8.4, MariaDB, Redis
 печать карточки товара — Dompdf, импорт/экспорт таблиц — PhpSpreadsheet,
 подсказки по реквизитам — DaData.
 
-**Guzzle закреплён на 7** (`guzzlehttp/guzzle ^7.8.2` в `composer.json`, 10.10.2026),
-хотя Laravel 13 принимает и 8. Копия движка бота при сетевой ошибке зовёт
-`ConnectException::getHandlerContext()` (`AitunnelLlmClient`), а в Guzzle 8 его нет;
-пакету `siteko/chatbot`, наоборот, нужен 8-й. Поэтому Guzzle меняется в одной выкладке
-с переводом на пакет (bots, реестр 10.3.4), а до неё ограничение не снимать.
+**Guzzle 8** (`guzzlehttp/guzzle ^8`) — с переводом бота на пакет `siteko/chatbot`
+(bots, реестр 10.3.4): пакет в гонке дубля вектора зовёт `$handler->close()`, которого
+в Guzzle 7 нет. Заодно ушёл `http-interop/http-factory-guzzle` — рецепт Scout, который
+держал `psr7` на 2-й версии: фабрики PSR-17 Meilisearch находит у самого Guzzle
+(`GuzzleHttp\Psr7\HttpFactory`) через php-http/discovery.
 
 CSRF-мидлвар в Laravel 13 называется `PreventRequestForgery`; `VerifyCsrfToken` и
 `ValidateCsrfToken` остались его устаревшими наследниками. Снимать с маршрута надо
@@ -154,20 +154,53 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 
 ### ИИ-ассистент: шов к магазину
 
-> **Движок бота развивается в bots** — пакет `siteko/chatbot`
-> (`/home/edgar/projects/bots/packages/chatbot`), решение от 09.10.2026. Здесь
-> `app/Services/{Ai,Kb,Chat,Catalog}` — **замороженная копия** до перевода intertooler
-> на пакет: общие правки делаются в пакете, а сюда — только аварийные (сайт лёг,
-> неверные деньги, утечка ПДн), с повтором в пакете. Своё у intertooler — адаптеры
-> `app/Shop`, данные каталога, настройки и набор вопросов замера. Всё описанное ниже про
-> движок — состояние этой копии; что из неё ещё не попало в пакет, записано в
-> `bots/docs/platform.md` («Открытые вопросы и долги»).
+> **Движок бота — пакет `siteko/chatbot`** (разрабатывается в bots,
+> `/home/edgar/projects/bots/packages/chatbot`; ставится composer из
+> `git@github.com:siteko-net/chatbot.git`, теги версий). Перевод — реестр bots 10.3.4
+> (11.10.2026), копия движка (`app/Services/{Ai,Kb,Chat,Catalog}`) удалена. Правки движка —
+> только в пакете, сессией bots, новым тегом. Своё у intertooler — адаптеры `app/Shop`,
+> данные каталога, настройки и набор вопросов замера. Разделы ниже местами описывают
+> копию в момент её последних правок; классы и числа там — пакета, имена команд — старые
+> (до 10.3.4 `ai:*`). Переписать их ссылкой на bots — реестр 10.3.6.
+>
+> **Что изменилось с переводом (держать в голове прежде разделов ниже):**
+>
+> - **Команды — пакета:** `chatbot:kb-doctor`, `chatbot:kb-reindex`, `chatbot:kb-search`,
+>   `chatbot:kb-forget`, `chatbot:kb-calibrate --questions=resources/bot/kb-calibration-questions.json`,
+>   `chatbot:chat`, `chatbot:bench --cases=…`, `chatbot:gateway-probe`, `chatbot:chat-purge`.
+>   Своя осталась одна — `ai:catalog-embed` (зеркало каталога), плюс `--status` у неё вместо
+>   раздела «Смысловой поиск» доктора. Пробу шлюза (каждые 5 мин) и чистку переписки (03:40)
+>   ставит в расписание сам пакет, переиндексацию базы в 04:00 — `routes/console.php`.
+> - **Конфиг:** движок — `chatbot.*` пакета под теми же `AI_*`; в `config/chatbot.php`
+>   магазина — номер сайта (1, `CHATBOT_SITE_ID`) и `brand_lookalikes`; в
+>   `config/ai_support.php` — только своё (зеркало каталога, страницы в базе знаний, кука,
+>   свои хосты, предпросмотр). `AI_ESCALATION_NOTIFY_DB` стал `AI_ESCALATION_NOTIFY_PANEL`.
+> - **Данные:** таблицы бота приняты миграцией `2026_09_18_235900_adopt_chatbot_package`
+>   (`site_id` = 1, `callback_request_id` → `lead_ref`, источник статей `intertooler-kb` →
+>   `articles`), настройки бота — в `chatbot_settings` (`2026_10_11_120000_…`), кроме лаунчера:
+>   он витрина магазина и остался в `settings` (`assistant.launcher*`). Название, почта,
+>   режим работы, адрес сайта пакет читает из «Настроек» магазина (`App\Shop\ShopSettingsStore`).
+> - **Панель чата — компонент пакета в рамке `/chat/panel`** со своего домена; лаунчер
+>   создаёт рамку при первом открытии и говорит протоколом `widget.js` пакета. Токен — та же
+>   httpOnly-кука `intertooler_chat` (`CookieConversationToken`).
+> - **«Менеджер на связи» — режимы пакета:** «не звать / по расписанию / всегда», кнопка
+>   в топбаре админки (`OperatorPresenceToggle`). Срока годности у режима нет, учёта
+>   «открыл админку — на связи» больше нет.
+> - **Письмо об эскалации — пакета** (`chatbot::mail.escalation-manager`); колокольчик,
+>   MAX и письмо «менеджер ответил» — швы магазина (`SettingsEscalationTarget`,
+>   `MaxChannelsNotifier`, `VisitorReplyNotifier`). Почта админа без пользователя пишется
+>   в лог каждой эскалацией.
+> - **Названия строк поставщиков** для подбора по порогу — `App\Shop\SupplierSpecNames`
+>   («90° (мм)» → «Сечение заготовки под 90°, мм»).
+> - **Выкладка перевода:** очередь `assistant` должна быть пуста, а отложенные задачи
+>   прежних классов (`App\Jobs\…`) в Redis не переживут выкладку — на деве 11.10 так
+>   упали 180 старых задач переиндексации.
 
-Сервисы бота (`app/Services/{Ai,Kb,Chat,Catalog}`) **не знают моделей магазина**.
-Товар, каталог и цены приходят к ним контрактом
-`App\Services\Ai\Contracts\ProductLookup`, а про `Product` и `Category` знает
-только `App\Shop`. Правило держит тест `tests/Unit/AiServicesSeamTest.php`:
-`use App\Models\…` в сервисах его роняет. Причина не в чистоте — тот же бот
+Движок бота **не знает моделей магазина**.
+Товар, каталог и цены приходят к нему контрактами
+`Siteko\Chatbot\Ai\Contracts\{ProductLookup,SpecLookup}`, а про `Product` и `Category` знает
+только `App\Shop`. Правило теперь держит граница пакета: модели магазина ему
+недоступны вовсе. Причина не в чистоте — тот же бот
 ставится и в kratonshop — у него другой хозяин и другая ценовая политика, и код,
 читающий модель напрямую, переезжает вместе с чужим правилом.
 
@@ -378,14 +411,16 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
 ### Чат на витрине
 
 Лаунчер `x-support.chat-launcher` стоит в лэйауте витрины; до клика это Blade и Alpine
-без единого запроса, панель `support.chat-panel` грузится `lazy` из скрытого контейнера.
+без единого запроса, рамку панели (`/chat/panel`, компонент пакета `chatbot.chat-panel`)
+скрипт создаёт при первом открытии. Имя бота и подсказку лаунчер берёт из `chatbot_settings` —
+один запрос к базе на страницу.
 Посетителя опознаёт только httpOnly-кука `intertooler_chat` с токеном разговора — id
 от клиента не принимаются нигде. Ответ готовит `GenerateChatReplyJob` на `redis-assistant`:
 без запущенного воркера (`composer dev`, процесс `assistant`) панель «печатает» 210 секунд
 и сдаётся заглушкой — это первое, что проверять, когда чат «завис».
 
-- **Чат тоже за швом.** `app/Services/Chat` моделей магазина не знает (сторож тот же,
-  `AiServicesSeamTest`): страницу и цену на ней отдаёт `App\Shop\ShopPageContext` через
+- **Чат тоже за швом.** Чат пакета моделей магазина не знает: страницу посетителя он
+  получает адресом от лаунчера, а товар и цену на ней отдаёт `App\Shop\ShopPageContext` через
   `ProductLookup`, форму контактов — `App\Shop\CallbackLeadIntake` (заявка «перезвоните»
   с `source=chat`). Своей формулы цены для контекста страницы не заводить.
 - **Вид кнопки** — «ИИ бот» → «Вид чата» (`ChatAppearanceSettings`, перенесено из bots через
@@ -399,10 +434,9 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
   сотрудники (`isFilamentAdmin()`) и те, кто открыл сайт с `?bot=<ключ>`. Пустой ключ
   при включённом предпросмотре — «никому», а не «всем».
 - **«Менеджер на связи»** — `OperatorPresence` по режиму работы `company.work_schedule`,
-  тому же, что в шапке. Перебить его вручную можно переключателем «я на смене»
-  в топбаре админки (`App\Livewire\Admin\OperatorPresenceToggle`, хук `USER_MENU_BEFORE`);
-  ручное решение живёт не дольше `operators.override_ttl_minutes` — переключатель
-  без срока годности забывают включённым.
+  тому же, что в шапке. Режим чата — «не звать / по расписанию / всегда» — переключается
+  в топбаре админки (`App\Livewire\Admin\OperatorPresenceToggle`, хук `USER_MENU_BEFORE`),
+  срока годности у него нет (решение 10.10, реестр bots 10.3).
 - **Эскалация зовёт человека тремя каналами** (`NotifyManagersAboutEscalationJob`
   на очереди `default`, не на ассистентской): уведомление в колокольчике админки —
   источник истины, плюс письмо менеджерам и пуш в MAX, оба best-effort. Один сигнал
@@ -410,9 +444,9 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
   контакты идут мимо кулдауна — это уже не сигнал, а задача. Вне смены пуш в MAX
   откладывается до её начала: ночью он разбудит и ничего не изменит.
   ⚠️ **Тихая авария:** почта в `general.filament_admin_emails` без строки в `users`
-  получателем DB-уведомления не станет, и ошибки не будет нигде. Проверяет
-  `ai:kb-doctor` разделом «Эскалация» — на 15.09.2026 из двух прод-почт пользователь
-  есть только у `r_kodachenko@mail.ru`.
+  получателем DB-уведомления не станет. С 10.3.4 каждая такая эскалация пишет в лог
+  `Escalation panel recipients without user rows` с этими почтами — на 15.09.2026 из
+  двух прод-почт пользователь был только у `r_kodachenko@mail.ru`.
 - **Уведомления в MAX — не одна переменная, а таблица чатов** (`messenger_channels`,
   страница «Продажи» → «Уведомления в MAX»). Номера чата в окружении нет: менеджер
   жмёт «Подключить MAX», бот открывается ссылкой `?start=<одноразовый код>`, код
@@ -475,7 +509,7 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
   вовсе, а воркер php-fpm тратится.
 - `/session/keepalive` и `resources/js/modules/livewire-session-guard.js` действуют на весь
   сайт: вместо английского «This page has expired» Livewire молча получает свежий токен.
-- Переписка обезличивается через 30 дней и удаляется через 180 (`chat:purge`, 04:15);
+- Переписка обезличивается через 30 дней и удаляется через 180 (`chatbot:chat-purge` пакета, 03:40);
   расходная книга `ai_usage_entries` при этом остаётся.
 
 ### Рабочее место бота в админке
@@ -500,13 +534,10 @@ Meilisearch нужен и в деве тоже (`SCOUT_DRIVER=meilisearch`, ло
   черновик статьи на «Пробелах» и песочница. Это осознанное исключение из правила
   «LLM не в PHP-FPM»: там его ждёт покупатель и воркеров мало, здесь кнопку жмёт
   один сотрудник и смотрит на кружок. Везде поднят `set_time_limit`.
-- **Настройки бота пишутся в `settings` под префиксом `assistant.`**, и пишет их
-  страница, а не `AssistantConfig`: сервисы ассистента моделей магазина (включая
-  `Setting`) не знают — это тот же шов и тот же сторож `AiServicesSeamTest`.
-  Своего расписания у бота нет: режим работы один — `company.work_schedule`.
-- **`TrackOperatorActivity` стоит в `authMiddleware`,** а не в общем списке
-  посредников панели: иначе «менеджер на смене» включал бы любой заход
-  на `/admin/login`, в том числе краулерский.
+- **Настройки бота — `chatbot_settings` пакета** (`assistant.*`, `widget.avatar`, `widget.color`),
+  пишет их `AssistantConfig::save()` пакета. Кнопка чата — в `settings` магазина
+  (`assistant.launcher*`), пишет «Вид чата». Своего расписания у бота нет: режим работы
+  один — `company.work_schedule`, пакет читает его через `ShopSettingsStore`.
 - **Тема админки** (`resources/css/filament/admin/theme.css`) знает про
   `app/Livewire/Admin` и `resources/views/livewire/admin` и несёт стили `chat-md` —
   без них ответ бота в ленте слипается в один абзац. Утилит `dark:` в новых
@@ -617,11 +648,11 @@ composer test    # config:clear + pint --test + artisan test
 response 403», а `ai:kb-doctor` докладывает «Шлюз недоступен: HTTP 403». Ключ при этом
 рабочий: тот же запрос напрямую отдаёт 200, и с боя — тоже. То есть это не ключ,
 не лимит и не блокировка шлюзом. Любая команда бота, которой нужен шлюз
-(`ai:kb-reindex`, `ai:catalog-embed`, `ai:chat`, `ai:kb-doctor --probe`), на деве
+(`chatbot:kb-reindex`, `ai:catalog-embed`, `chatbot:chat`, `chatbot:kb-doctor --probe`), на деве
 запускается в обход прокси:
 
 ```bash
-env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY php artisan ai:kb-reindex
+env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY php artisan chatbot:kb-reindex
 ```
 
 Обычный прогон тестов это не задевает: там `AI_EMBEDDING_FAKE=true` и сети нет вовсе.
@@ -662,7 +693,8 @@ Pest, sqlite `:memory:` (нужен пакет `php8.4-sqlite3`). В `phpunit.xm
 безопасная (sqlite либо имя с `_test` — иначе бросает и не даёт снести дев-базу),
 пересоздаёт таблицы категорий (unit-тесты делят одну память, пивот от прошлого
 файла прицепился бы к чужому товару) и создаёт таблицы плагина бэкапов, которых
-нет в миграциях приложения.
+нет в миграциях приложения. Unit-тестам с приложением (те, что рисуют витрину на своей
+урезанной схеме) он же создаёт `chatbot_settings` пакета: лаунчер читает из неё имя бота.
 
 Часть тестов падает на чистом `main` (зависят от данных/локали/внешних утилит).
 Перед тем как считать падение регрессией — прогнать тесты на `main` и сравнить.
@@ -906,8 +938,8 @@ Cloudflare принимает зону на любом своём адресе �
 
 ```bash
 cd /srv/www/intertooler/current
-php artisan ai:gateway-probe          # каждый адрес из DNS и запасные, «←» — пин
-php artisan ai:gateway-probe --show   # доля успешных проб за сутки
+php artisan chatbot:gateway-probe          # каждый адрес из DNS и запасные, «←» — пин
+php artisan chatbot:gateway-probe --show   # доля успешных проб за сутки
 grep -h 'Aitunnel probe' storage/logs/laravel*.log | tail
 ```
 
