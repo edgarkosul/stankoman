@@ -732,34 +732,39 @@ Pest, sqlite `:memory:` (нужен пакет `php8.4-sqlite3`). В `phpunit.xm
 
 ### Composer
 
-В `composer.json` есть приватный VCS-репозиторий `siteko/filament-restic-backups`
-(`git@github.com:siteko-net/filament-restic-backups.git`). Доступ к нему даёт
-SSH-ключ из проброшенного ssh-agent; **токена GitHub в `auth.json` нет**
-(`github-oauth` пустой, проверено 2026-09-10).
+В `composer.json` два приватных VCS-репозитория — `siteko/filament-restic-backups`
+и `siteko/chatbot` (оба `git@github.com:siteko-net/…`), и у обоих стоит `"no-api": true`.
+Без него composer, увидев github.com, идёт не клонировать, а в **REST API**
+(`use-github-api`, по умолчанию `true`), а тому для приватного репозитория нужен токен.
+Так и было 12.10.2026: в глобальном `~/.config/composer/auth.json` лежал мёртвый токен
+(май 2026, GitHub отвечал 401), и `composer update siteko/chatbot` просил ввести новый.
+С `no-api` composer всегда ходит git по SSH — токен и глобальные настройки его не касаются.
+Прежний обход (`composer config --global use-github-api false` на время команды) больше
+не нужен.
 
-Отсюда ловушка: увидев VCS-репозиторий на github.com, composer по умолчанию идёт
-не клонировать, а в **REST API** (`use-github-api`, по умолчанию `true`) — быстрее,
-но для приватного репозитория требует токен. Получается «Could not authenticate
-against github.com», хотя ключ, которым можно склонировать, на месте. Лечится
-переключением на git/SSH:
-
-```bash
-composer config --global use-github-api false
-composer install
-composer config --global --unset use-github-api
-```
-
-`--unset` в конце — настройка глобальная, а API заметно быстрее клонирования
-для всех остальных проектов.
-
-То же нужно для `composer update siteko/chatbot` (обновление движка бота): метаданные
-restic composer читает при любом `update`. Пакет бота на деве ещё и требует подмены
-адреса: личный ключ репозиторий `siteko-net/chatbot` не видит, нужен ключ организации
-(алиас `github-siteko`). Ставится один раз:
+Доступ даёт **ключ организации** (`~/.ssh/github-siteko.pub`, в KeePassXC — `github-work`).
+Личный ключ (`edgarkosul`) не видит ни один из двух репозиториев (проверено 12.10.2026).
+Адрес бота подменяется на алиас с нужным ключом, ставится один раз:
 
 ```bash
 git config --global url."git@github-siteko:siteko-net/chatbot.git".insteadOf "git@github.com:siteko-net/chatbot.git"
 ```
+
+⚠️ **Тихая ловушка: без ключа организации в агенте `update` не падает.** KeePassXC кладёт
+в агент не все ключи: 12.10.2026 там было шесть, а `github-work` — нет. Composer пишет
+«Failed to update git@github.com:siteko-net/chatbot.git, package information from this
+repository may be outdated», берёт метаданные из своего кэша и отвечает «Nothing to modify
+in lock file» — то есть новых тегов просто не видит. Перед обновлением движка:
+
+```bash
+ssh -T github-siteko                 # «Hi …» — ключ в агенте; «Permission denied» — нет
+composer update siteko/chatbot
+```
+
+`Load key ".../github-siteko.pub": bad permissions` в ответе ssh — тот же симптом: ключа нет
+в агенте, и ssh пробует прочитать файл как приватный ключ. restic подмены адреса не имеет
+и идёт первым ключом агента — личным, то есть такое же предупреждение о нём при `update`
+будет всегда; на `update siteko/chatbot` оно не влияет.
 
 На бою у `deploy` своя подмена (`github-chatbot`), и там `update` не делают: хук ставит
 ровно тот коммит, что в `composer.lock`. Поэтому версию движка выбирает `update` на деве —

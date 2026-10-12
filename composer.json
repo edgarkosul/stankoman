@@ -124,11 +124,13 @@
     "repositories": {
         "siteko-restic-backups": {
             "type": "vcs",
-            "url": "git@github.com:siteko-net/filament-restic-backups.git"
+            "url": "git@github.com:siteko-net/filament-restic-backups.git",
+            "no-api": true
         },
         "siteko-chatbot": {
             "type": "vcs",
-            "url": "git@github.com:siteko-net/chatbot.git"
+            "url": "git@github.com:siteko-net/chatbot.git",
+            "no-api": true
         }
     }
 }
