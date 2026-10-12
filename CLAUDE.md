@@ -743,11 +743,13 @@ Pest, sqlite `:memory:` (нужен пакет `php8.4-sqlite3`). В `phpunit.xm
 не нужен.
 
 Доступ даёт **ключ организации** (`~/.ssh/github-siteko.pub`, в KeePassXC — `github-work`).
-Личный ключ (`edgarkosul`) не видит ни один из двух репозиториев (проверено 12.10.2026).
-Адрес бота подменяется на алиас с нужным ключом, ставится один раз:
+Личный ключ (`edgarkosul`) не видит ни один из двух репозиториев (проверено 12.10.2026),
+а по голому `git@github.com` ssh идёт первым ключом агента — как раз личным. Поэтому
+адреса обоих подменяются на алиас с ключом организации, ставится один раз:
 
 ```bash
 git config --global url."git@github-siteko:siteko-net/chatbot.git".insteadOf "git@github.com:siteko-net/chatbot.git"
+git config --global url."git@github-siteko:siteko-net/filament-restic-backups.git".insteadOf "git@github.com:siteko-net/filament-restic-backups.git"
 ```
 
 ⚠️ **Тихая ловушка: без ключа организации в агенте `update` не падает.** KeePassXC кладёт
@@ -762,9 +764,7 @@ composer update siteko/chatbot
 ```
 
 `Load key ".../github-siteko.pub": bad permissions` в ответе ssh — тот же симптом: ключа нет
-в агенте, и ssh пробует прочитать файл как приватный ключ. restic подмены адреса не имеет
-и идёт первым ключом агента — личным, то есть такое же предупреждение о нём при `update`
-будет всегда; на `update siteko/chatbot` оно не влияет.
+в агенте, и ssh пробует прочитать файл как приватный ключ.
 
 На бою у `deploy` своя подмена (`github-chatbot`), и там `update` не делают: хук ставит
 ровно тот коммит, что в `composer.lock`. Поэтому версию движка выбирает `update` на деве —
